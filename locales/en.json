@@ -1,0 +1,11 @@
+{
+    "registration_success": "Registration successful",
+    "registration_error": "Error during registration",
+    "login_user_not_found": "User not found",
+    "login_incorrect_password": "Incorrect password",
+    "login_success": "Login successful",
+    "missing_token": "Missing or invalid token",
+    "invalid_token": "Invalid token",
+    "access_denied": "Access denied"
+  }
+  

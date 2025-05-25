@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const competenceSchema = new mongoose.Schema({
   code: { type: String, required: true },
   nom: { type: String, required: true },
-  description: String,
+  description: {type:String},
   familleMetier: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'FamilleMetier',

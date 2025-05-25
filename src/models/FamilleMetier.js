@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 
 const familleMetierSchema = new mongoose.Schema({
   nom: { type: String, required: true },
-  description: String
+  description: {type:String}
 }, { timestamps: true });
 
 const FamilleMetier = mongoose.model('FamilleMetier', familleMetierSchema);

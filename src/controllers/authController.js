@@ -11,9 +11,9 @@ export const register = async (req, res) => {
   try {
     const utilisateur = new Utilisateur(req.body);
     await utilisateur.save();
-    res.status(201).json(t('registration_success', lang));
+    res.status(201).json(t('inscription_reussie', lang));
   } catch (err) {
-    res.status(400).json({ error: t('registration_error', lang), details: err.message });
+    res.status(400).json({ error: t('erreur_inscription', lang), details: err.message });
   }
 };
 
@@ -22,10 +22,10 @@ export const login = async (req, res) => {
   const { email, motDePasse } = req.body;
 console.log(JWT_SECRET)
   const utilisateur = await Utilisateur.findOne({ email });
-  if (!utilisateur) return res.status(404).json({ error: t('login_user_not_found', lang) });
+  if (!utilisateur) return res.status(404).json({ error: t('utilisateur_non_trouve', lang) });
 
   const isMatch = await utilisateur.comparePassword(motDePasse);
-  if (!isMatch) return res.status(401).json({ error: t('login_incorrect_password', lang) });
+  if (!isMatch) return res.status(401).json({ error: t('mp_incorrect', lang) });
 
   const token = jwt.sign(
     { id: utilisateur._id, role: utilisateur.role },
@@ -33,5 +33,5 @@ console.log(JWT_SECRET)
     { expiresIn: '8h' }
   );
 
-  res.status(200).json({ token, utilisateur, message: t('login_success', lang) });
+  res.status(200).json({ token, utilisateur, message: t('connexion_reussie', lang) });
 };

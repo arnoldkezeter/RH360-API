@@ -5,7 +5,7 @@ export const authenticate = (req, res, next) => {
   const lang = req.headers['accept-language'] || 'fr';
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer '))
-    return res.status(401).json({ error: t('missing_token', lang) });
+    return res.status(401).json({ error: t('token_manquant', lang) });
 
   const token = authHeader.split(' ')[1];
 
@@ -14,6 +14,6 @@ export const authenticate = (req, res, next) => {
     req.user = decoded;
     next();
   } catch {
-    return res.status(403).json({ error: t('invalid_token', lang) });
+    return res.status(403).json({ error: t('token_invalide', lang) });
   }
 };

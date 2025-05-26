@@ -1,11 +1,26 @@
 {
-    "registration_success": "Inscription réussie",
-    "registration_error": "Erreur lors de l'inscription",
-    "login_user_not_found": "Utilisateur non trouvé",
-    "login_incorrect_password": "Mot de passe incorrect",
-    "login_success": "Connexion réussie",
-    "missing_token": "Token manquant ou invalide",
-    "invalid_token": "Token invalide",
-    "access_denied": "Accès refusé"
+    "inscription_reussie": "Inscription réussie",
+    "erreur_inscription": "Erreur lors de l'inscription",
+    "utilisateur_non_trouve": "Utilisateur non trouvé",
+    "mp_incorrect": "Mot de passe incorrect",
+    "connexion_reussie": "Connexion réussie",
+    "token_manquant": "Token manquant ou invalide",
+    "token_invalide": "Token invalide",
+    "acces_refuse": "Accès refusé",
+    "erreur_serveur":"Erreur serveur",
+    "champs_obligatoires":"Tous les champs obligatoires doivent être fournis",
+    "ajouter_succes": "Ajouté avec succès",
+    "supprimer_succes": "Supprimé avec succès",
+    "modifier_succes": "Modifié avec succès",
+    "identifiant_invalide":"Identifiant invalide",
+    "nom_requis":"Le nom est requis pour la recherche",
+    
+    
+    
+    "structure_non_trouvee":"Structure non trouvée",
+    "structure_existante_fr":"Une structure avec le même nom en français existe déjà",
+    "structure_existante_en":"Une structure avec le même nom en anglais existe déjà",
+    "chef_struture_non_trouve":"Le chef de la structure n'a pas été trouvé"
+    
   }
   

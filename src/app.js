@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 dotenv.config();
 import authRoutes from './routes/authRoutes.js';
+import structureRoutes from './routes/structureRoutes.js';
 import { authenticate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -21,7 +22,9 @@ app.use(morgan('dev'));
 connectDB();
 
 //Route d'autentification
-app.use('/auth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
+
+app.use('/api/v1/structure', structureRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

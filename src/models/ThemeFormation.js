@@ -7,23 +7,10 @@ const themeFormationSchema = new mongoose.Schema({
   lieux: [{lieu:{type : String}, cohorte:{type: mongoose.Schema.Types.ObjectId, ref: 'Cohorte'}}],
   dateDebut: {type : Date},
   dateFin: {type : Date},
-  dureeHeures: Number,
-  formateurs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
-  interne: Boolean,
+  formateurs: [{formateur:{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }, interne:{type:Boolean}}],
+  responsable: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' },
   supports: [String],
-  evaluations: {
-    aChaud: String,
-    parFormateur: String,
-    retourExperience: String
-  },
   participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
-  statistiques: {
-    parGenre: Object,
-    parGrade: Object,
-    parService: Object,
-    parTrancheAge: Object,
-    parCategorieProfessionnelle: Object
-  }
 }, { timestamps: true });
 
 const ThemeFormation = mongoose.model('ThemeFormation', themeFormationSchema);

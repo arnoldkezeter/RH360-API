@@ -1,11 +1,25 @@
 {
-    "registration_success": "Registration successful",
-    "registration_error": "Error during registration",
-    "login_user_not_found": "User not found",
-    "login_incorrect_password": "Incorrect password",
-    "login_success": "Login successful",
-    "missing_token": "Missing or invalid token",
-    "invalid_token": "Invalid token",
-    "access_denied": "Access denied"
+    "inscription_reussie": "Registration successful",
+    "erreur_inscription": "Error during registration",
+    "utilisateur_non_trouve": "User not found",
+    "mp_incorrect": "Incorrect password",
+    "connexion_reussie": "Login successful",
+    "token_manquant": "Missing or invalid token",
+    "token_invalide": "Invalid token",
+    "acces_refuse": "Access denied",
+    "erreur_serveur":"Server error",
+    "champs_obigatoires":"All required fields must be provided",
+    "ajouter_succes": "Successfully added",
+    "supprimer_succes": "Successfully deleted",
+    "modifier_succes": "Successfully updated",
+    "identifiant_invalide": "Invalid identifier",
+    "nom_requis": "Name is required for the search",
+    
+
+
+    "structure_non_trouvee":"Structure not found",
+    "structure_existante_fr":"A structure with the same French name already exists.",
+    "structure_existante_en":"A structure with the same English name already exists.",
+    "chef_struture_non_trouve": "Structure head not found"
   }
   

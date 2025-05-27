@@ -6,6 +6,19 @@ import dotenv from 'dotenv';
 dotenv.config();
 import authRoutes from './routes/authRoutes.js';
 import structureRoutes from './routes/structureRoutes.js';
+import axeStrategiqueRoutes from './routes/axeStrategiqueRoutes.js';
+import cohorteRoutes from './routes/cohorteRoutes.js';
+import competenceRoutes from './routes/competenceRoutes.js';
+import etablissementRoutes from './routes/etablissementRoutes.js';
+import familleMetierRoutes from './routes/familleMetierRoutes.js';
+import posteDeTravailRoutes from './routes/posteDTravailRoutes.js';
+import gradeRoutes from './routes/gradeRoutes.js';
+import serviceRoutes from './routes/serviceRoutes.js';
+import categorieProfessionnelleRoutes from './routes/categorieProfessionnelleRoutes.js';
+import taxeRoutes from './routes/taxeRoutes.js';
+import regionRoutes from './routes/regionRoutes.js';
+import departementRoutes from './routes/departementRoutes.js';
+import communeRoutes from './routes/communeRoutes.js';
 import { authenticate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -25,6 +38,20 @@ connectDB();
 app.use('/api/v1/auth', authRoutes);
 
 app.use('/api/v1/structure', structureRoutes);
+app.use('/api/v1/axe-strategique', axeStrategiqueRoutes);
+app.use('/api/v1/cohorte', cohorteRoutes);
+app.use('/api/v1/competence', competenceRoutes);
+app.use('/api/v1/etablissement', etablissementRoutes);
+app.use('/api/v1/famille-metier', familleMetierRoutes);
+app.use('/api/v1/grade', gradeRoutes);
+app.use('/api/v1/poste-de-travail', posteDeTravailRoutes);
+app.use('/api/v1/service', serviceRoutes);
+app.use('/api/v1/categorie-professionnelle', categorieProfessionnelleRoutes);
+app.use('/api/v1/taxe', taxeRoutes);
+app.use('/api/v1/region', regionRoutes);
+app.use('/api/v1/departement', departementRoutes);
+app.use('/api/v1/commune', communeRoutes);
+
 
 // Route racine
 app.get('/', (req, res) => {

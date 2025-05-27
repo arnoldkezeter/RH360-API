@@ -9,7 +9,7 @@ import {
   getStructuresForDropdown,
 } from '../controllers/structureController.js';
 import { authenticate } from '../middlewares/auth.js';
-import { validateStructure } from '../middlewares/fieldsValidation.js';
+import { validateFields } from '../middlewares/validateFields/validateStructure.js';
 
 // import hasPermission from '../middlewares/hasPermission.js'; // À prévoir
 
@@ -17,8 +17,8 @@ const router = express.Router();
 
 // Créer une structure
 router.post(
-  '/createStructure',
-  validateStructure,
+  '/',
+  validateFields,
   authenticate,
 //   hasPermission('structure:create'), // À activer dès que la gestion des permissions est prête
   createStructure
@@ -26,8 +26,8 @@ router.post(
 
 // Modifier une structure
 router.put(
-  '/updateStructure/:id',
-  validateStructure,
+  '/:id',
+  validateFields,
   authenticate,
 //   hasPermission('structure:update'),
   updateStructure
@@ -35,7 +35,7 @@ router.put(
 
 // Supprimer une structure
 router.delete(
-  '/deleteStructure/:id',
+  '/:id',
   authenticate,
 //   hasPermission('structure:delete'),
   deleteStructure
@@ -43,7 +43,7 @@ router.delete(
 
 // Obtenir la liste des structures (avec pagination)
 router.get(
-  '/getStructures',
+  '/',
   authenticate,
 //   hasPermission('structure:read'),
   getStructures
@@ -51,14 +51,14 @@ router.get(
 
 // Obtenir une structure par ID
 router.get(
-  '/getStructureById/:id',
+  '/:id',
   authenticate,
 //   hasPermission('structure:read'),
   getStructureById
 );
 
 //Obtenir la liste des structure (_id nomFr nomEn)
-router.get('/getStructuresForDropdown',
+router.get('/dropdown/all',
     authenticate, 
     //   hasPermission('structure:search'),
     getStructuresForDropdown
@@ -66,7 +66,7 @@ router.get('/getStructuresForDropdown',
 
 
 //Rechercher
-router.get('/search',
+router.get('/search/by-name',
     authenticate, 
     //   hasPermission('structure:search'),
     searchStructureByName

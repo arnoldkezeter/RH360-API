@@ -16,10 +16,70 @@
     "nom_requis": "Name is required for the search",
     
 
-
     "structure_non_trouvee":"Structure not found",
     "structure_existante_fr":"A structure with the same French name already exists.",
     "structure_existante_en":"A structure with the same English name already exists.",
-    "chef_struture_non_trouve": "Structure head not found"
+    "chef_struture_non_trouve": "Structure head not found",
+
+
+    "axe_strategique_existante_non_trouvee": "Strategic axis not found",
+    "axe_strategique_existante_fr": "A strategic axis with the same name in French already exists",
+    "axe_strategique_existante_en": "A strategic axis with the same name in English already exists",
+
+
+    "cohorte_non_trouvee": "Cohort not found",
+    "cohorte_existante_fr": "A cohort with the same name in French already exists",
+    "cohorte_existante_en": "A cohort with the same name in English already exists",
+
+
+    "competence_non_trouvee": "Skill not found",
+    "competence_existante_fr": "A skill with the same French name already exists",
+    "competence_existante_en": "A skill with the same English name already exists",
+    
+    
+    "famille_metier_non_trouvee": "Job family not found",
+    "famille_metier_existante_fr": "A job family with the same name in French already exists",
+    "famille_metier_existante_en": "A job family with the same name in English already exists",
+
+
+    "etablissement_non_trouvee": "Institution not found",
+    "etablissement_existante_fr": "An institution with the same name in French already exists",
+    "etablissement_existante_en": "An institution with the same name in English already exists",
+
+    "grade_non_trouve": "Grade not found",
+    "grade_existante_fr": "A grade with the same name in French already exists",
+    "grade_existante_en": "A grade with the same name in English already exists",
+
+
+    "poste_de_travail_non_trouve": "Work position not found",
+    "poste_de_travail_existante_fr": "A work position with the same French name already exists",
+    "poste_de_travail_existante_en": "A work position with the same English name already exists",
+
+
+    "service_non_trouve": "Service not found",
+    "service_existante_fr": "A service with the same French name already exists",
+    "service_existante_en": "A service with the same English name already exists",
+
+
+    "categorie_professionnelle_non_trouvee": "Professional category not found",
+    "categorie_professionnelle_existante_fr": "A professional category with the same French name already exists",
+    "categorie_professionnelle_existante_en": "A professional category with the same English name already exists",
+
+    "taxe_non_trouvee": "Tax not found",
+    "taxe_existante_fr": "A tax with the same French nature already exists",  
+    "taxe_existante_en": "A tax with the same English nature already exists",
+    "nature_requise": "Nature is required",
+
+    "region_non_trouvee": "Region not found",
+    "region_existante_fr": "A region with the same name in French already exists",
+    "region_existante_en": "A region with the same name in English already exists",
+
+    "departement_non_trouve": "Department not found",
+    "departement_existante_fr": "A department with the same name in French already exists",
+    "departement_existante_en": "A department with the same name in English already exists",
+
+    "commune_non_trouvee": "Municipality not found",
+    "commune_existante_fr": "A municipality with the same name in French already exists",
+    "commune_existante_en": "A municipality with the same name in English already exists"
   }
   

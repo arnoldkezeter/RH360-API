@@ -20,7 +20,71 @@
     "structure_non_trouvee":"Structure non trouvée",
     "structure_existante_fr":"Une structure avec le même nom en français existe déjà",
     "structure_existante_en":"Une structure avec le même nom en anglais existe déjà",
-    "chef_struture_non_trouve":"Le chef de la structure n'a pas été trouvé"
+    "chef_struture_non_trouve":"Le chef de la structure n'a pas été trouvé",
+
+    "axe_strategique_existante_non_trouvee":"Axe strategique non trouvé",
+    "axe_strategique_existante_fr": "Un axe strategique avec le même nom en français existe déjà",
+    "axe_strategique_existante_en":"Un axe strategique avec le même nom en anglais existe déjà",
+
+
+    "cohorte_non_trouvee":"Cohorte non trouvée",
+    "cohorte_existante_fr":"Une cohorte avec le même nom en français existe déjà",
+    "cohorte_existante_en":"Une cohorte avec le même nom en anglais existe déjà",
     
+    
+    "competence_non_trouvee": "Compétence non trouvée",
+    "competence_existante_fr": "Une compétence avec le même nom en français existe déjà",
+    "competence_existante_en": "Une compétence avec le même nom en anglais existe déjà",
+    
+    
+    "famille_metier_non_trouvee": "Famille métier non trouvée",
+    "famille_metier_existante_fr": "Une famille métier avec le même nom en français existe déjà",
+    "famille_metier_existante_en": "Une famille métier avec le même nom en anglais existe déjà",
+
+
+    "etablissement_non_trouvee": "Établissement non trouvé",
+    "etablissement_existante_fr": "Un établissement avec le même nom en français existe déjà",
+    "etablissement_existante_en": "Un établissement avec le même nom en anglais existe déjà",
+
+
+    "grade_non_trouve": "Grade non trouvé",
+    "grade_existante_fr": "Un grade avec le même nom en français existe déjà",
+    "grade_existante_en": "Un grade avec le même nom en anglais existe déjà",
+
+    
+    "poste_de_travail_non_trouve": "Poste de travail non trouvé",
+    "poste_de_travail_existante_fr": "Un poste de travail avec le même nom en français existe déjà",
+    "poste_de_travail_existante_en": "Un poste de travail avec le même nom en anglais existe déjà",
+
+
+    "service_non_trouve": "Service non trouvé",
+    "service_existante_fr": "Un service avec le même nom en français existe déjà",
+    "service_existante_en": "Un service avec le même nom en anglais existe déjà",
+
+
+    "categorie_professionnelle_non_trouvee": "Catégorie professionnelle non trouvée",
+    "categorie_professionnelle_existante_fr": "Une catégorie professionnelle avec le même nom en français existe déjà",
+    "categorie_professionnelle_existante_en": "Une catégorie professionnelle avec le même nom en anglais existe déjà",
+
+
+    "taxe_non_trouvee": "Taxe non trouvée",
+    "taxe_existante_fr": "Une taxe avec la même nature en français existe déjà",
+    "taxe_existante_en": "Une taxe avec la même nature en anglais existe déjà",
+    "nature_requise": "La nature est requise",
+
+
+    "region_non_trouvee": "Region non trouvée",
+    "region_existante_fr": "Une region avec la même nature en français existe déjà",
+    "region_existante_en": "Une region avec la même nature en anglais existe déjà",
+
+
+    "departement_non_trouve": "Departement non trouvé",
+    "departement_existante_fr": "Un departement avec le même nom en français existe déjà",
+    "departement_existante_en": "Un departement avec le même nom en anglais existe déjà",
+
+
+    "commune_non_trouvee": "Commune non trouvée",
+    "commune_existante_fr": "Une commune avec la même nature en français existe déjà",
+    "commune_existante_en": "Une commune avec la même nature en anglais existe déjà"
   }
   

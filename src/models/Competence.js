@@ -3,8 +3,10 @@ import mongoose from 'mongoose';
 
 const competenceSchema = new mongoose.Schema({
   code: { type: String, required: true },
-  nom: { type: String, required: true },
-  description: {type:String},
+  nomFr: { type: String, required: true },
+  nomEn: { type: String, required: true },
+  descriptionFr: {type:String},
+  descriptionEn: {type:String},
   familleMetier: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'FamilleMetier',

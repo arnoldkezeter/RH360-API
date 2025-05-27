@@ -2,9 +2,11 @@
 import mongoose from 'mongoose';
 
 const cohorteSchema = new mongoose.Schema({
-  nom: { type: String, required: true },
-  description: {type:String},
-  utilisateur: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
+  nomFr: { type: String, required: true },
+  nomEn: { type: String, required: true },
+  descriptionFr: {type:String},
+  descriptionEn: {type:String},
+  utilisateurs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
 }, { timestamps: true });
 
 const Cohorte = mongoose.model('Cohorte', cohorteSchema);

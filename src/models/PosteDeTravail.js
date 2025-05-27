@@ -2,9 +2,11 @@
 import mongoose from 'mongoose';
 
 const posteDeTravailSchema = new mongoose.Schema({
-  nom: { type: String, required: true },
-  description: {type:String},
-  familleMetier: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier' },
+  nomFr: { type: String, required: true },
+  nomEn: { type: String, required: true },
+  descriptionFr: {type:String},
+  descriptionEn: {type:String},
+  familleMetier: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier', required:true },
 }, { timestamps: true });
 
 const PosteDeTravail = mongoose.model('PosteDeTravail', posteDeTravailSchema);

@@ -2,8 +2,10 @@
 import mongoose from 'mongoose';
 
 const serviceSchema = new mongoose.Schema({
-  nom: { type: String, required: true },
-  description: {type:String},
+  nomFr: { type: String, required: true },
+  nomEn: { type: String, required: true },
+  descriptionFr: {type:String},
+  descriptionEn: {type:String},
   chefService:{type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
   structure:{type: mongoose.Schema.Types.ObjectId, ref: 'Structure'},
   nbPlaceStage:{type:Number}

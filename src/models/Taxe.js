@@ -2,7 +2,8 @@
 import mongoose from 'mongoose';
 
 const taxeSchema = new mongoose.Schema({
-  nature: { type: String, required: true },
+  natureFr: { type: String, required: true },
+  natureEn: { type: String, required: true },
   taux: {type:Number, required:true},
 }, { timestamps: true });
 

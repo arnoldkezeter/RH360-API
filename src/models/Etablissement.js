@@ -2,7 +2,8 @@
 import mongoose from 'mongoose';
 
 const etablissementSchema = new mongoose.Schema({
-  nom: { type: String, required: true },
+  nomFr: { type: String, required: true },
+  nomEn: { type: String },
 }, { timestamps: true });
 
 const Etablissement = mongoose.model('Etablissement', etablissementSchema);

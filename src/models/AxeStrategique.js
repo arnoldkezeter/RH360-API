@@ -2,8 +2,10 @@
 import mongoose from 'mongoose';
 
 const axeStrategiqueSchema = new mongoose.Schema({
-  nom: { type: String, required: true },
-  description: String
+  nomFr: { type: String, required: true },
+  nomEn: { type: String, required: true },
+  descriptionFr: {type:String},
+  descriptionEn: {type:String}
 }, { timestamps: true });
 
 const AxeStrategique = mongoose.model('AxeStrategique', axeStrategiqueSchema);

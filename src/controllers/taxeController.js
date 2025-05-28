@@ -14,25 +14,27 @@ export const createTaxe = async (req, res) => {
         message: t('champs_obligatoires', lang),
         errors: errors.array().map(err => err.msg),
         });
-    }
+    }    
 
     try {
         const { natureFr, natureEn, taux } = req.body;
-
+        if(typeof taux === 'number' && !isNaN(taux)){
+            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
+        }
         // Vérifier unicité natureFr et natureEn
         if (await Taxe.exists({ natureFr })) {
-        return res.status(409).json({ success: false, message: t('taxe_existante_fr', lang) });
+            return res.status(409).json({ success: false, message: t('taxe_existante_fr', lang) });
         }
         if (await Taxe.exists({ natureEn })) {
-        return res.status(409).json({ success: false, message: t('taxe_existante_en', lang) });
+            return res.status(409).json({ success: false, message: t('taxe_existante_en', lang) });
         }
 
         const taxe = await Taxe.create({ natureFr, natureEn, taux });
 
         return res.status(201).json({
-        success: true,
-        message: t('ajouter_succes', lang),
-        data: taxe
+            success: true,
+            message: t('ajouter_succes', lang),
+            data: taxe
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -59,22 +61,26 @@ export const updateTaxe = async (req, res) => {
     }
 
     try {
+        if(typeof taux === 'number' && !isNaN(taux)){
+            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
+        }
+
         const taxe = await Taxe.findById(id);
         if (!taxe) {
-        return res.status(404).json({ success: false, message: t('taxe_non_trouvee', lang) });
+            return res.status(404).json({ success: false, message: t('taxe_non_trouvee', lang) });
         }
 
         // Vérifier unicité natureFr et natureEn sauf cet enregistrement
         if (natureFr) {
-        const existsFr = await Taxe.findOne({ natureFr, _id: { $ne: id } });
-        if (existsFr) return res.status(409).json({ success: false, message: t('taxe_existante_fr', lang) });
-        taxe.natureFr = natureFr;
+            const existsFr = await Taxe.findOne({ natureFr, _id: { $ne: id } });
+            if (existsFr) return res.status(409).json({ success: false, message: t('taxe_existante_fr', lang) });
+                taxe.natureFr = natureFr;
         }
 
         if (natureEn) {
-        const existsEn = await Taxe.findOne({ natureEn, _id: { $ne: id } });
-        if (existsEn) return res.status(409).json({ success: false, message: t('taxe_existante_en', lang) });
-        taxe.natureEn = natureEn;
+            const existsEn = await Taxe.findOne({ natureEn, _id: { $ne: id } });
+            if (existsEn) return res.status(409).json({ success: false, message: t('taxe_existante_en', lang) });
+                taxe.natureEn = natureEn;
         }
 
         if (taux !== undefined) taxe.taux = taux;
@@ -82,9 +88,9 @@ export const updateTaxe = async (req, res) => {
         await taxe.save();
 
         return res.status(200).json({
-        success: true,
-        message: t('modifier_succes', lang),
-        data: taxe
+            success: true,
+            message: t('modifier_succes', lang),
+            data: taxe
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });

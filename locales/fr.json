@@ -71,6 +71,7 @@
     "taxe_existante_fr": "Une taxe avec la même nature en français existe déjà",
     "taxe_existante_en": "Une taxe avec la même nature en anglais existe déjà",
     "nature_requise": "La nature est requise",
+    "taux_nombre_requis": "Le taux doit être un nombre.",
 
 
     "region_non_trouvee": "Region non trouvée",
@@ -85,6 +86,15 @@
 
     "commune_non_trouvee": "Commune non trouvée",
     "commune_existante_fr": "Une commune avec la même nature en français existe déjà",
-    "commune_existante_en": "Une commune avec la même nature en anglais existe déjà"
+    "commune_existante_en": "Une commune avec la même nature en anglais existe déjà",
+
+
+    "budget_non_trouve": "Budget non trouvé.",
+    "section_non_trouvee": "Section non trouvée.",
+    "depense_non_trouvee": "Dépense non trouvée.",
+    "quantite_nombre_requis": "La quantité doit être un nombre.",
+    "montant_ht_nombre_requis": "Le montant HT doit être un nombre."
+    
+
   }
   

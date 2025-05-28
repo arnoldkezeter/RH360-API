@@ -80,6 +80,11 @@
 
     "commune_non_trouvee": "Municipality not found",
     "commune_existante_fr": "A municipality with the same name in French already exists",
-    "commune_existante_en": "A municipality with the same name in English already exists"
+    "commune_existante_en": "A municipality with the same name in English already exists",
+
+
+    "budget_non_trouve": "Budget not found.",
+    "section_non_trouvee": "Section not found.",
+    "depense_non_trouvee": "Expense not found."
   }
   

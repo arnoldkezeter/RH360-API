@@ -8,7 +8,7 @@ import {
   searchStructureByName,
   getStructuresForDropdown,
 } from '../controllers/structureController.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateStructure.js';
 
 // import hasPermission from '../middlewares/hasPermission.js'; // À prévoir
@@ -19,7 +19,7 @@ const router = express.Router();
 router.post(
   '/',
   validateFields,
-  authenticate,
+  authentificate,
 //   hasPermission('structure:create'), // À activer dès que la gestion des permissions est prête
   createStructure
 );
@@ -28,7 +28,7 @@ router.post(
 router.put(
   '/:id',
   validateFields,
-  authenticate,
+  authentificate,
 //   hasPermission('structure:update'),
   updateStructure
 );
@@ -36,7 +36,7 @@ router.put(
 // Supprimer une structure
 router.delete(
   '/:id',
-  authenticate,
+  authentificate,
 //   hasPermission('structure:delete'),
   deleteStructure
 );
@@ -44,7 +44,7 @@ router.delete(
 // Obtenir la liste des structures (avec pagination)
 router.get(
   '/',
-  authenticate,
+  authentificate,
 //   hasPermission('structure:read'),
   getStructures
 );
@@ -52,14 +52,14 @@ router.get(
 // Obtenir une structure par ID
 router.get(
   '/:id',
-  authenticate,
+  authentificate,
 //   hasPermission('structure:read'),
   getStructureById
 );
 
 //Obtenir la liste des structure (_id nomFr nomEn)
 router.get('/dropdown/all',
-    authenticate, 
+    authentificate, 
     //   hasPermission('structure:search'),
     getStructuresForDropdown
 );
@@ -67,7 +67,7 @@ router.get('/dropdown/all',
 
 //Rechercher
 router.get('/search/by-name',
-    authenticate, 
+    authentificate, 
     //   hasPermission('structure:search'),
     searchStructureByName
 );

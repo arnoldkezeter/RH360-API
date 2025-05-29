@@ -10,16 +10,16 @@ import {
   getServicesByStructure
 } from '../controllers/serviceController.js';
 import { validateFields } from '../middlewares/validateFields/validateService.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate, createService);
-router.put('/:id', validateFields, authenticate, updateService);
-router.delete('/:id', authenticate, deleteService);
-router.get('/', authenticate, getServices);
-router.get('/search/by-name', authenticate, searchServicesByName);
-router.get('/structure/:structureId', authenticate, getServicesByStructure);
-router.get('/:id', authenticate, getServiceById);
+router.post('/', validateFields, authentificate, createService);
+router.put('/:id', validateFields, authentificate, updateService);
+router.delete('/:id', authentificate, deleteService);
+router.get('/', authentificate, getServices);
+router.get('/search/by-name', authentificate, searchServicesByName);
+router.get('/structure/:structureId', authentificate, getServicesByStructure);
+router.get('/:id', authentificate, getServiceById);
 
 export default router;

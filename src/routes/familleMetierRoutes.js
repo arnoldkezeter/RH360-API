@@ -9,16 +9,16 @@ import {
   searchFamilleMetierByName
 } from '../controllers/familleMetierController.js';
 import { validateFields } from '../middlewares/validateFields/validateFamilleMetier.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate,createFamilleMetier);
-router.put('/:id', validateFields, authenticate, updateFamilleMetier);
-router.delete('/:id', authenticate, deleteFamilleMetier);
-router.get('/', authenticate, getFamillesMetier);
-router.get('/dropdown/all', authenticate, getFamillesMetierForDropdown);
-router.get('/search/by-name', authenticate, searchFamilleMetierByName);
-router.get('/:id', authenticate, getFamilleMetierById);
+router.post('/', validateFields, authentificate,createFamilleMetier);
+router.put('/:id', validateFields, authentificate, updateFamilleMetier);
+router.delete('/:id', authentificate, deleteFamilleMetier);
+router.get('/', authentificate, getFamillesMetier);
+router.get('/dropdown/all', authentificate, getFamillesMetierForDropdown);
+router.get('/search/by-name', authentificate, searchFamilleMetierByName);
+router.get('/:id', authentificate, getFamilleMetierById);
 
 export default router;

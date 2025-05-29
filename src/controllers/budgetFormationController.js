@@ -8,7 +8,7 @@ export const createBudget = async (req, res) => {
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
   
     try {
-        const { theme, budgetReel } = req.body;
+        const { theme } = req.body;
 
         // Validation basique
         const errors = validationResult(req);
@@ -23,7 +23,6 @@ export const createBudget = async (req, res) => {
         // Créer le budget avec sections vides
         const newBudget = new BudgetFormation({
             theme,
-            budgetReel,
             sections: [],
         });
 
@@ -55,9 +54,9 @@ export const updateBudget = async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-            errors: errors.array().map(err => err.msg),
+                success: false,
+                message: t('champs_obligatoires', lang),
+                errors: errors.array().map(err => err.msg),
             });
         }
 
@@ -76,8 +75,8 @@ export const updateBudget = async (req, res) => {
             });
         }
     
-        if (updates.budgetReel !== undefined) {
-            budget.budgetReel = updates.budgetReel;
+        if (updates.theme !== undefined) {
+            budget.theme = updates.theme;
         }
     
         await budget.save();
@@ -113,8 +112,8 @@ export const deleteBudget = async (req, res) => {
     
         if (!budget) {
             return res.status(404).json({
-            success: false,
-            message: t('budget_non_trouve'),
+                success: false,
+                message: t('budget_non_trouve'),
             });
         }
     
@@ -136,7 +135,7 @@ export const addDepense = async (req, res) => {
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
     try {
         const { budgetId, sectionType } = req.params;
-        const { natureDepenseFr, natureDepenseEn, montantUnitaireHT, quantite, natureTaxe } = req.body;
+        const { natureDepenseFr, natureDepenseEn, montantUnitairePrevuHT,montantUnitaireReelHT, quantite, natureTaxe } = req.body;
         
         if (!mongoose.Types.ObjectId.isValid(budgetId)) {
             return res.status(400).json({
@@ -155,7 +154,11 @@ export const addDepense = async (req, res) => {
             });
         }
 
-        if(typeof montantUnitaireHT === 'number' && !isNaN(montantUnitaireHT)){
+        if(typeof montantUnitairePrevuHT === 'number' && !isNaN(montantUnitairePrevuHT)){
+            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
+        }
+
+        if(typeof montantUnitaireReelHT === 'number' && !isNaN(montantUnitaireReelHT)){
             return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
         }
 
@@ -181,7 +184,8 @@ export const addDepense = async (req, res) => {
         section.lignes.push({
             natureDepenseFr,
             natureDepenseEn,
-            montantUnitaireHT,
+            montantUnitairePrevuHT,
+            montantUnitaireReelHT,
             quantite,
             natureTaxe,
         });
@@ -219,7 +223,11 @@ export const updateDepense = async (req, res) => {
             });
         }
 
-        if(typeof montantUnitaireHT === 'number' && !isNaN(montantUnitaireHT)){
+        if(typeof updates.montantUnitairePrevuHT === 'number' && !isNaN(updates.montantUnitairePrevuHT)){
+            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
+        }
+
+        if(typeof updates.montantUnitaireReelHT === 'number' && !isNaN(updates.montantUnitaireReelHT)){
             return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
         }
 
@@ -362,74 +370,81 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
             });
         }
 
-        // Récupérer tous les budgets liés aux thèmes de la formation
+        // Rechercher tous les budgets dont le thème est lié à la formation
         const budgets = await BudgetFormation.find()
-        .populate({
-            path: 'theme',
-            match: { formation: formationId },
-            select: 'titreFr titreEn',
-        })
-        .populate({
-            path: 'sections.lignes.natureTaxe',
-            select: 'taux',
-        })
-        .lean();
+            .populate({
+                path: 'theme',
+                match: { formation: formationId },
+                select: 'titreFr titreEn formation',
+            })
+            .populate({
+                path: 'sections.lignes.natureTaxe',
+                select: 'taux',
+            })
+            .lean();
 
-        // Regrouper les résultats par thèmeId + budgetReel
-        const map = new Map();
+        const resultMap = new Map();
 
         for (const budget of budgets) {
-        if (!budget.theme) continue;
+            if (!budget.theme) continue;
 
-        const themeId = budget.theme._id.toString();
-        const themeKey = `${themeId}_${budget.budgetReel ? 'reel' : 'prevu'}`;
+            const themeId = budget.theme._id.toString();
+            const key = themeId;
 
-        let totalHT = 0;
-        let totalTTC = 0;
+            let totalPrevuHT = 0;
+            let totalPrevuTTC = 0;
+            let totalReelHT = 0;
+            let totalReelTTC = 0;
 
-        budget.sections.forEach(section => {
-            section.lignes.forEach(ligne => {
-            const montantHT = (ligne.montantUnitaireHT || 0) * (ligne.quantite || 0);
-            const taux = ligne.natureTaxe?.taux || 0;
-            const montantTTC = montantHT + (montantHT * taux / 100);
+            for (const section of budget.sections) {
+                for (const ligne of section.lignes) {
+                    const quantite = ligne.quantite || 0;
+                    const taux = ligne.natureTaxe?.taux || 0;
 
-            totalHT += montantHT;
-            totalTTC += montantTTC;
+                    const montantPrevuHT = (ligne.montantUnitairePrevuHT || 0) * quantite;
+                    const montantPrevuTTC = montantPrevuHT + (montantPrevuHT * taux / 100);
+
+                    const montantReelHT = (ligne.montantUnitaireReelHT || 0) * quantite;
+                    const montantReelTTC = montantReelHT + (montantReelHT * taux / 100);
+
+                    totalPrevuHT += montantPrevuHT;
+                    totalPrevuTTC += montantPrevuTTC;
+                    totalReelHT += montantReelHT;
+                    totalReelTTC += montantReelTTC;
+                }
+            }
+
+            resultMap.set(key, {
+                theme: {
+                    _id: budget.theme._id,
+                    titreFr: budget.theme.titreFr,
+                    titreEn: budget.theme.titreEn,
+                },
+                totalPrevuHT: parseFloat(totalPrevuHT.toFixed(2)),
+                totalPrevuTTC: parseFloat(totalPrevuTTC.toFixed(2)),
+                totalReelHT: parseFloat(totalReelHT.toFixed(2)),
+                totalReelTTC: parseFloat(totalReelTTC.toFixed(2)),
             });
-        });
-
-        map.set(themeKey, {
-            theme: {
-            _id: budget.theme._id,
-            titreFr: budget.theme.titreFr,
-            titreEn: budget.theme.titreEn,
-            },
-            budgetReel: budget.budgetReel,
-            totalHT: parseFloat(totalHT.toFixed(2)),
-            totalTTC: parseFloat(totalTTC.toFixed(2)),
-        });
         }
 
-        const result = Array.from(map.values());
-
-        // Pagination manuelle
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + limit;
-        const paginatedResult = result.slice(startIndex, endIndex);
+        const results = Array.from(resultMap.values());
+        const totalItems = results.length;
+        const totalPages = Math.ceil(totalItems / limit);
+        const paginated = results.slice((page - 1) * limit, page * limit);
 
         return res.status(200).json({
             success: true,
-            data: paginatedResult,
+            data: paginated,
             currentPage: page,
-            totalPages: Math.ceil(result.length / limit),
-            totalItems: result.length,
+            totalPages,
+            totalItems,
         });
 
     } catch (err) {
         return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: err.message,
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
         });
     }
 };
@@ -452,54 +467,59 @@ export const getDepensesParThemeEtType = async (req, res) => {
             });
         }
 
-        // Rechercher les budgets du thème concerné
+        // Rechercher les budgets liés au thème
         const budgets = await BudgetFormation.find({ theme: themeId })
-        .populate('sections.lignes.natureTaxe')
-        .lean();
+            .populate('sections.lignes.natureTaxe', 'taux natureFr natureEn')
+            .lean();
 
-        let allLignes = [];
+        const lignesFiltres = [];
 
         for (const budget of budgets) {
-        for (const section of budget.sections) {
-            if (type && section.type !== type) continue;
+            for (const section of budget.sections || []) {
+                if (type && section.type !== type) continue;
 
-            for (const ligne of section.lignes) {
-            const montantHT = (ligne.montantUnitaireHT || 0) * (ligne.quantite || 0);
-            const taux = ligne.natureTaxe?.taux || 0;
-            const montantTTC = montantHT + (montantHT * taux / 100);
+                for (const ligne of section.lignes || []) {
+                    const quantite = ligne.quantite || 0;
+                    const taux = ligne.natureTaxe?.taux || 0;
 
-            allLignes.push({
-                budgetReel: budget.budgetReel,
-                type: section.type,
-                natureDepenseFr: ligne.natureDepenseFr,
-                natureDepenseEn: ligne.natureDepenseEn,
-                montantUnitaireHT: ligne.montantUnitaireHT,
-                quantite: ligne.quantite,
-                montantHT: parseFloat(montantHT.toFixed(2)),
-                montantTTC: parseFloat(montantTTC.toFixed(2)),
-                taxe: {
-                    taux,
-                    id: ligne.natureTaxe?._id || null,
-                    natureFr:ligne.natureTaxe?.natureFr || undefined,
-                    natureEn:ligne.natureTaxe?.natureEn || undefined
-                },
-            });
+                    const montantPrevuHT = (ligne.montantUnitairePrevuHT || 0) * quantite;
+                    const montantReelHT = (ligne.montantUnitaireReelHT || 0) * quantite;
+                    const montantPrevuTTC = montantPrevuHT + (montantPrevuHT * taux / 100);
+                    const montantReelTTC = montantReelHT + (montantReelHT * taux / 100);
+
+                    lignesFiltres.push({
+                        budgetReel: budget.budgetReel,
+                        type: section.type,
+                        natureDepenseFr: ligne.natureDepenseFr,
+                        natureDepenseEn: ligne.natureDepenseEn,
+                        montantUnitairePrevuHT: ligne.montantUnitairePrevuHT,
+                        montantUnitaireReelHT: ligne.montantUnitaireReelHT,
+                        quantite: ligne.quantite,
+                        montantPrevuHT: parseFloat(montantPrevuHT.toFixed(2)),
+                        montantPrevuTTC: parseFloat(montantPrevuTTC.toFixed(2)),
+                        montantReelHT: parseFloat(montantReelHT.toFixed(2)),
+                        montantReelTTC: parseFloat(montantReelTTC.toFixed(2)),
+                        taxe: ligne.natureTaxe ? {
+                            id: ligne.natureTaxe._id,
+                            taux,
+                            natureFr: ligne.natureTaxe.natureFr,
+                            natureEn: ligne.natureTaxe.natureEn,
+                        } : null,
+                    });
+                }
             }
         }
-        }
 
-        // Pagination manuelle
-        const totalItems = allLignes.length;
-        const startIndex = (pageInt - 1) * limitInt;
-        const endIndex = startIndex + limitInt;
-        const paginatedLignes = allLignes.slice(startIndex, endIndex);
+        const totalItems = lignesFiltres.length;
+        const totalPages = Math.ceil(totalItems / limitInt);
+        const paginated = lignesFiltres.slice((pageInt - 1) * limitInt, pageInt * limitInt);
 
         return res.status(200).json({
-        success: true,
-        data: paginatedLignes,
-        currentPage: pageInt,
-        totalPages: Math.ceil(totalItems / limitInt),
-        totalItems,
+            success: true,
+            data: paginated,
+            currentPage: pageInt,
+            totalPages,
+            totalItems,
         });
 
     } catch (err) {
@@ -512,13 +532,13 @@ export const getDepensesParThemeEtType = async (req, res) => {
 };
 
 
+
 //Histogramme budget prévu / réel
 export const getBudgetEcartParTheme = async (req, res) => {
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
     const { formationId } = req.params;
-  
+
     try {
-        
         if (!mongoose.Types.ObjectId.isValid(formationId)) {
             return res.status(400).json({
                 success: false,
@@ -526,56 +546,65 @@ export const getBudgetEcartParTheme = async (req, res) => {
             });
         }
 
-        // Recherche uniquement les budgets dont le thème appartient à la formation spécifiée
         const budgets = await BudgetFormation.find()
-        .populate({
-            path: 'theme',
-            match: formationId ? { formation: formationId } : {}, // <- filtre ici directement
-            select: 'titreFr titreEn formation'
-        })
-        .lean();
-  
+            .populate({
+                path: 'theme',
+                match: { formation: formationId },
+                select: 'titreFr titreEn formation'
+            })
+            .populate('sections.lignes.natureTaxe', 'taux') // uniquement les taux requis
+            .lean();
+
         const resultMap = new Map();
-  
+
         for (const budget of budgets) {
-            // Si le thème est null (filtré par le match), on ignore
-            if (!budget.theme) continue;
-    
-            const total = budget.sections.reduce((acc, section) => {
-            return acc + section.lignes.reduce((sum, ligne) => {
-                return sum + (ligne.montantUnitaireHT || 0) * (ligne.quantite || 0);
-            }, 0);
-            }, 0);
-    
-            const themeId = budget.theme._id.toString();
-    
+            const theme = budget.theme;
+            if (!theme) continue; // filtré par match
+
+            let totalPrevu = 0;
+            let totalReel = 0;
+
+            for (const section of budget.sections || []) {
+                for (const ligne of section.lignes || []) {
+                    const quantite = ligne.quantite || 0;
+                    const taux = ligne.natureTaxe?.taux || 0;
+
+                    const prevuHT = (ligne.montantUnitairePrevuHT || 0) * quantite;
+                    const prevuTTC = prevuHT + (prevuHT * taux / 100);
+
+                    const reelHT = (ligne.montantUnitaireReelHT || 0) * quantite;
+                    const reelTTC = reelHT + (reelHT * taux / 100);
+
+                    totalPrevu += prevuTTC;
+                    totalReel += reelTTC;
+                }
+            }
+
+            const themeId = theme._id.toString();
             if (!resultMap.has(themeId)) {
                 resultMap.set(themeId, {
                     themeId,
-                    titreFr: budget.theme.titreFr,
-                    titreEn: budget.theme.titreEn,
+                    titreFr: theme.titreFr,
+                    titreEn: theme.titreEn,
                     budgetPrevu: 0,
                     budgetReel: 0,
                 });
             }
-    
-            const themeData = resultMap.get(themeId);
-            if (budget.budgetReel) {
-                themeData.budgetReel += total;
-            } else {
-                themeData.budgetPrevu += total;
-            }
+
+            const entry = resultMap.get(themeId);
+            entry.budgetPrevu += parseFloat(totalPrevu.toFixed(2));
+            entry.budgetReel += parseFloat(totalReel.toFixed(2));
         }
-  
+
         const result = Array.from(resultMap.values()).map(item => ({
             ...item,
-            ecart: Math.abs(item.budgetReel - item.budgetPrevu),
+            ecart: parseFloat(Math.abs(item.budgetReel - item.budgetPrevu).toFixed(2)),
         }));
-  
+
         return res.status(200).json({
             success: true,
             data: result,
-         });
+        });
     } catch (err) {
         return res.status(500).json({
             success: false,
@@ -585,53 +614,140 @@ export const getBudgetEcartParTheme = async (req, res) => {
     }
 };
 
+
 //Total budget par formation
 export const getTotauxBudgetParFormation = async (req, res) => {
     const { formationId } = req.params;
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-  
+
     if (!mongoose.Types.ObjectId.isValid(formationId)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
         });
     }
-  
+
     try {
         const budgets = await BudgetFormation.find()
             .populate({
-            path: 'theme',
-            match: { formation: formationId },
-            select: 'formation',
+                path: 'theme',
+                match: { formation: formationId },
+                select: '_id formation'
+            })
+            .populate({
+                path: 'sections.lignes.natureTaxe',
+                select: 'taux'
             })
             .lean();
-    
+
         let totalBudgetReel = 0;
         let totalBudgetPrevu = 0;
-    
+
         for (const budget of budgets) {
             if (!budget.theme) continue;
-    
-            const total = budget.sections.reduce((acc, section) => {
-            return acc + section.lignes.reduce((sum, ligne) => {
-                return sum + (ligne.montantUnitaireHT || 0) * (ligne.quantite || 0);
-            }, 0);
-            }, 0);
-    
-            if (budget.budgetReel) {
-            totalBudgetReel += total;
-            } else {
-            totalBudgetPrevu += total;
+
+            for (const section of budget.sections || []) {
+                for (const ligne of section.lignes || []) {
+                    const quantite = ligne.quantite || 0;
+                    const taux = ligne.natureTaxe?.taux || 0;
+
+                    const prevuHT = (ligne.montantUnitairePrevuHT || 0) * quantite;
+                    const prevuTTC = prevuHT + (prevuHT * taux / 100);
+
+                    const reelHT = (ligne.montantUnitaireReelHT || 0) * quantite;
+                    const reelTTC = reelHT + (reelHT * taux / 100);
+
+                    totalBudgetPrevu += prevuTTC;
+                    totalBudgetReel += reelTTC;
+                }
             }
         }
-    
+
         return res.status(200).json({
             success: true,
             data: {
-            totalBudgetReel,
-            totalBudgetPrevu,
-            totalEcart: Math.abs(totalBudgetReel - totalBudgetPrevu),
+                totalBudgetReel: parseFloat(totalBudgetReel.toFixed(2)),
+                totalBudgetPrevu: parseFloat(totalBudgetPrevu.toFixed(2)),
+                totalEcart: parseFloat(Math.abs(totalBudgetReel - totalBudgetPrevu).toFixed(2)),
             },
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
+
+// Calculer le coût total prévu d’un thème de formation
+export const getCoutTotalPrevuParTheme = async (req, res) => {
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const { themeId } = req.params;
+
+    if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const budgets = await BudgetFormation.find({ theme: themeId });
+
+        const totalPrevu = budgets.reduce((acc, budget) => {
+            const lignesTotal = budget.lignes.reduce((sum, ligne) => {
+                const montant = ligne.montantUnitaireHT || 0;
+                const quantite = ligne.quantite || 0;
+                return sum + (montant * quantite);
+            }, 0);
+            return acc + lignesTotal;
+        }, 0);
+
+        return res.status(200).json({
+            success: true,
+            message: t('calcul_succes', lang),
+            data: { themeId, totalPrevu },
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
+
+// Calculer le coût total réel d’un thème de formation
+export const getCoutTotalReelParTheme = async (req, res) => {
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const { themeId } = req.params;
+
+    if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const budgets = await BudgetFormation.find({ theme: themeId, estReel: true });
+
+        const totalReel = budgets.reduce((acc, budget) => {
+            const lignesTotal = budget.lignes.reduce((sum, ligne) => {
+                const montant = ligne.montantUnitaireHT || 0;
+                const quantite = ligne.quantite || 0;
+                return sum + (montant * quantite);
+            }, 0);
+            return acc + lignesTotal;
+        }, 0);
+
+        return res.status(200).json({
+            success: true,
+            message: t('calcul_succes', lang),
+            data: { themeId, totalReel },
         });
     } catch (err) {
         return res.status(500).json({

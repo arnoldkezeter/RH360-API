@@ -11,16 +11,16 @@ import {
   searchGradesByName
 } from '../controllers/gradeController.js';
 import { validateFields } from '../middlewares/validateFields/validateGrade.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/',validateFields, authenticate,createGrade);
-router.put('/:id',validateFields, authenticate, updateGrade);
-router.delete('/:id', authenticate, deleteGrade);
-router.get('/', authenticate, getGrades);
-router.get('/dropdown', authenticate, getGradesForDropdown);
-router.get('/search', authenticate, searchGradesByName);
-router.get('/:id', authenticate, getGradeById);
+router.post('/',validateFields, authentificate,createGrade);
+router.put('/:id',validateFields, authentificate, updateGrade);
+router.delete('/:id', authentificate, deleteGrade);
+router.get('/', authentificate, getGrades);
+router.get('/dropdown', authentificate, getGradesForDropdown);
+router.get('/search', authentificate, searchGradesByName);
+router.get('/:id', authentificate, getGradeById);
 
 export default router;

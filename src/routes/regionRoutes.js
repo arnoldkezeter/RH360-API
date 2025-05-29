@@ -9,15 +9,15 @@ import {
   searchRegionsByNameOrCode
 } from '../controllers/regionController.js';
 import { validateFields } from '../middlewares/validateFields/validateRegion.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate,createRegion);
-router.put('/:id', validateFields, authenticate, updateRegion);
-router.delete('/:id', authenticate, deleteRegion);
-router.get('/', authenticate, getRegions);
-router.get('/search/by-name-or-code', authenticate, searchRegionsByNameOrCode);
-router.get('/:id', authenticate, getRegionById);
+router.post('/', validateFields, authentificate,createRegion);
+router.put('/:id', validateFields, authentificate, updateRegion);
+router.delete('/:id', authentificate, deleteRegion);
+router.get('/', authentificate, getRegions);
+router.get('/search/by-name-or-code', authentificate, searchRegionsByNameOrCode);
+router.get('/:id', authentificate, getRegionById);
 
 export default router;

@@ -19,9 +19,14 @@ import taxeRoutes from './routes/taxeRoutes.js';
 import regionRoutes from './routes/regionRoutes.js';
 import departementRoutes from './routes/departementRoutes.js';
 import communeRoutes from './routes/communeRoutes.js';
-import { authenticate } from './middlewares/auth.js';
+import budgetFormationRoutes from './routes/budgetFormationRoutes.js';
+import utilisateurRoutes from './routes/utilisateurRoutes.js';
+import objectifThemeRoutes from './routes/objectifThemeRoutes.js';
+import supportFormationRoutes from './routes/supportFormationRoutes.js';
+import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
+import path from 'path';
 
 
 
@@ -31,6 +36,9 @@ app.use(express.json());
 app.use(cors());
 app.use(helmet());
 app.use(morgan('dev'));
+
+//middleware pour servir les supports de formations
+app.use('/files/supports', express.static(path.join(process.cwd(), 'uploads/supports')));
 
 connectDB();
 
@@ -51,6 +59,10 @@ app.use('/api/v1/taxe', taxeRoutes);
 app.use('/api/v1/region', regionRoutes);
 app.use('/api/v1/departement', departementRoutes);
 app.use('/api/v1/commune', communeRoutes);
+app.use('/api/v1/budget-formation', budgetFormationRoutes);
+app.use('/api/v1/utilisateur', utilisateurRoutes);
+app.use('/api/v1/objectif-theme', objectifThemeRoutes);
+app.use('/api/v1/support-formation', supportFormationRoutes);
 
 
 // Route racine

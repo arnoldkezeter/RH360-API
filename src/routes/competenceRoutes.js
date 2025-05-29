@@ -9,17 +9,17 @@ import {
   searchCompetenceByName
 } from '../controllers/competenceController.js';
 import { validateFields } from '../middlewares/validateFields/validateCompetence.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 // Routes
-router.post('/', validateFields, authenticate, createCompetence);
-router.put('/:id', validateFields, authenticate, updateCompetence);
-router.delete('/:id', authenticate, deleteCompetence);
-router.get('/',authenticate, getCompetences);
-router.get('/dropdown/all',authenticate, getCompetencesForDropdown);
-router.get('/:id',authenticate, getCompetenceById);
-router.get('/search/by-name',authenticate, searchCompetenceByName);
+router.post('/', validateFields, authentificate, createCompetence);
+router.put('/:id', validateFields, authentificate, updateCompetence);
+router.delete('/:id', authentificate, deleteCompetence);
+router.get('/',authentificate, getCompetences);
+router.get('/dropdown/all',authentificate, getCompetencesForDropdown);
+router.get('/:id',authentificate, getCompetenceById);
+router.get('/search/by-name',authentificate, searchCompetenceByName);
 
 
 export default router;

@@ -8,20 +8,20 @@ import {
   searchAxeStrategiqueByName,
   getAxesStrategiqueForDropdown,
 } from '../controllers/axeStrategiqueController.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateAxeStrategique.js';
 
 // import hasPermission from '../middlewares/hasPermission.js'; // À prévoir
 
 const router = express.Router();
 
-router.post('/',validateFields,authenticate,createAxeStrategique);
-router.put('/:id',validateFields,authenticate,updateAxeStrategique);
-router.delete('/:id',authenticate,deleteAxeStrategique);
-router.get('/',authenticate,getAxesStrategique);
-router.get('/:id',authenticate,getAxeStrategiqueById);
-router.get('/dropdown/all',authenticate, getAxesStrategiqueForDropdown);
-router.get('/search/by-name',authenticate, searchAxeStrategiqueByName);
+router.post('/',validateFields,authentificate,createAxeStrategique);
+router.put('/:id',validateFields,authentificate,updateAxeStrategique);
+router.delete('/:id',authentificate,deleteAxeStrategique);
+router.get('/',authentificate,getAxesStrategique);
+router.get('/:id',authentificate,getAxeStrategiqueById);
+router.get('/dropdown/all',authentificate, getAxesStrategiqueForDropdown);
+router.get('/search/by-name',authentificate, searchAxeStrategiqueByName);
 
 
 export default router;

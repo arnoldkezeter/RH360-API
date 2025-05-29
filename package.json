@@ -24,6 +24,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.14.3",
     "morgan": "^1.10.0",
+    "multer": "^2.0.0",
+    "nodemailer": "^7.0.3",
     "pdfkit": "^0.17.1"
   },
   "devDependencies": {

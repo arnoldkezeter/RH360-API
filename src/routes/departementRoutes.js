@@ -10,16 +10,16 @@ import {
   getDepartementsByRegion
 } from '../controllers/departementController.js';
 import { validateFields } from '../middlewares/validateFields/validateDepartement.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate, createDepartement);
-router.put('/:id', validateFields, authenticate, updateDepartement);
-router.delete('/:id', authenticate, deleteDepartement);
-router.get('/', authenticate, getDepartements);
-router.get('/search/by-name-or-code', authenticate, searchDepartementsByNameOrCode);
-router.get('/region/:regionId', authenticate, getDepartementsByRegion);
-router.get('/:id', authenticate, getDepartementById);
+router.post('/', validateFields, authentificate, createDepartement);
+router.put('/:id', validateFields, authentificate, updateDepartement);
+router.delete('/:id', authentificate, deleteDepartement);
+router.get('/', authentificate, getDepartements);
+router.get('/search/by-name-or-code', authentificate, searchDepartementsByNameOrCode);
+router.get('/region/:regionId', authentificate, getDepartementsByRegion);
+router.get('/:id', authentificate, getDepartementById);
 
 export default router;

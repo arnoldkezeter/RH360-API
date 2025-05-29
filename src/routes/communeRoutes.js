@@ -9,16 +9,16 @@ import {
   getCommunesByDepartement
 } from '../controllers/communeController.js';
 import { validateFields } from '../middlewares/validateFields/validateCommune.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate, createCommune);
-router.put('/:id', validateFields, authenticate, updateCommune);
-router.delete('/:id', authenticate, deleteCommune);
-router.get('/', authenticate, getCommunes);
-router.get('/search/by-name-or-code', authenticate, searchCommunesByNameOrCode);
-router.get('/departement/:departementId', authenticate, getCommunesByDepartement);
-router.get('/:id', authenticate, getCommuneById);
+router.post('/', validateFields, authentificate, createCommune);
+router.put('/:id', validateFields, authentificate, updateCommune);
+router.delete('/:id', authentificate, deleteCommune);
+router.get('/', authentificate, getCommunes);
+router.get('/search/by-name-or-code', authentificate, searchCommunesByNameOrCode);
+router.get('/departement/:departementId', authentificate, getCommunesByDepartement);
+router.get('/:id', authentificate, getCommuneById);
 
 export default router;

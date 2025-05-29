@@ -69,6 +69,7 @@
     "taxe_existante_fr": "A tax with the same French nature already exists",  
     "taxe_existante_en": "A tax with the same English nature already exists",
     "nature_requise": "Nature is required",
+    "taux_nombre_requis": "Rate must be a number.",
 
     "region_non_trouvee": "Region not found",
     "region_existante_fr": "A region with the same name in French already exists",
@@ -85,6 +86,30 @@
 
     "budget_non_trouve": "Budget not found.",
     "section_non_trouvee": "Section not found.",
-    "depense_non_trouvee": "Expense not found."
-  }
+    "depense_non_trouvee": "Expense not found.",
+    "quantite_nombre_requis": "Quantity must be a number.",
+    "montant_ht_nombre_requis": "Amount (excl. tax) must be a number.",
+
+
+   
+    "champs_obligatoires": "Please fill in all required fields.",
+    "email_existant": "This email is already in use.",
+    "matricule_existant": "This matricule is already in use.",
+    "mot_de_passe_incorrect": "Incorrect current password.",
+    "mot_de_passe_modifie": "Password successfully changed.",
+
+    
+    "theme_non_trouve": "Theme not found.",
+    "objectif_theme_existante_fr": "An objective with this French name already exists for this theme.",
+    "objectif_theme_existante_en": "An objective with this English name already exists for this theme.",
+    "objectif_theme_non_trouve": "Objective not found.",
+    "theme_required": "Theme is required.",
+
+
+    "fichier_requis": "The file is required.",
+    "titre_fr_obligatoire": "The French title is required.",
+    "description_fr_obligatoire": "The French description is required.",
+    "support_non_trouve": "Training material not found.",
+    "fichier_introuvable": "File not found."
+}
   

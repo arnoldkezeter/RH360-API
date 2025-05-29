@@ -10,16 +10,16 @@ import {
   getPostesByFamilleMetier
 } from '../controllers/posteDeTravailController.js';
 import { validateFields } from '../middlewares/validateFields/validatePosteDeTravail.js';
-import { authenticate } from '../middlewares/auth.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate, createPosteDeTravail);
-router.put('/:id', validateFields, authenticate, updatePosteDeTravail);
-router.delete('/:id', authenticate, deletePosteDeTravail);
-router.get('/', authenticate, getPostesDeTravail);
-router.get('/search/by-name', authenticate, searchPostesDeTravailByName);
-router.get('/familleMetier/:familleMetierId', authenticate, getPostesByFamilleMetier);
-router.get('/:id', authenticate, getPosteDeTravailById);
+router.post('/', validateFields, authentificate, createPosteDeTravail);
+router.put('/:id', validateFields, authentificate, updatePosteDeTravail);
+router.delete('/:id', authentificate, deletePosteDeTravail);
+router.get('/', authentificate, getPostesDeTravail);
+router.get('/search/by-name', authentificate, searchPostesDeTravailByName);
+router.get('/familleMetier/:familleMetierId', authentificate, getPostesByFamilleMetier);
+router.get('/:id', authentificate, getPosteDeTravailById);
 
 export default router;

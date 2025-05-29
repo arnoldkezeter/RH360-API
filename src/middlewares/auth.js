@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { t } from '../utils/i18n.js';
 
-export const authenticate = (req, res, next) => {
+export const authentificate = (req, res, next) => {
   const lang = req.headers['accept-language'] || 'fr';
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer '))

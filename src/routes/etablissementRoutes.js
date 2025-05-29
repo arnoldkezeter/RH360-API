@@ -6,17 +6,17 @@ import { createEtablissement,
     getEtablissementsForDropdown, 
     searchEtablissementByName, 
     updateEtablissement } from "../controllers/etablissementController.js";
-import { authenticate } from "../middlewares/auth.js";
+import { authentificate } from "../middlewares/auth.js";
 import { validateFields } from "../middlewares/validateFields/validateEtablissement.js";
 
 const router = express.Router();
 
-router.post('/', validateFields, authenticate, createEtablissement);
-router.put('/:id', validateFields, authenticate, updateEtablissement);
-router.delete('/:id', authenticate, deleteEtablissement);
-router.get('/', authenticate, getEtablissements);
-router.get('/dropdown/all', authenticate, getEtablissementsForDropdown);
-router.get('/search/by-name', authenticate, searchEtablissementByName);
-router.get('/:id', authenticate, getEtablissementById);
+router.post('/', validateFields, authentificate, createEtablissement);
+router.put('/:id', validateFields, authentificate, updateEtablissement);
+router.delete('/:id', authentificate, deleteEtablissement);
+router.get('/', authentificate, getEtablissements);
+router.get('/dropdown/all', authentificate, getEtablissementsForDropdown);
+router.get('/search/by-name', authentificate, searchEtablissementByName);
+router.get('/:id', authentificate, getEtablissementById);
 
 export default router;

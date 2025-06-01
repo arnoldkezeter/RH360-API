@@ -21,6 +21,22 @@ export const createThemeFormation = async (req, res) => {
     try {
         const { titreFr, titreEn, dateDebut, dateFin, responsable, formation } = req.body;
 
+        const existsFr = await ThemeFormation.exists({ titreFr });
+        if (existsFr) {
+            return res.status(409).json({
+                success: false,
+                message: t('theme_existante_fr', lang),
+            });
+        }
+
+        const existsEn = await ThemeFormation.exists({ titreEn });
+        if (existsEn) {
+            return res.status(409).json({
+                success: false,
+                message: t('theme_existante_en', lang),
+            });
+        }
+
         const theme = await ThemeFormation.create({
             titreFr,
             titreEn,
@@ -35,9 +51,9 @@ export const createThemeFormation = async (req, res) => {
         });
 
         return res.status(201).json({
-        success: true,
-        message: t('ajouter_succes', lang),
-        data: theme,
+            success: true,
+            message: t('ajouter_succes', lang),
+            data: theme,
         });
     } catch (err) {
         return res.status(500).json({
@@ -75,6 +91,22 @@ export const updateThemeFormation = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: t('theme_non_trouve', lang),
+            });
+        }
+
+        const existsFr = await ThemeFormation.findOne({ titreFr, _id: { $ne: id } });
+        if (existsFr) {
+            return res.status(409).json({
+                success: false,
+                message: t('theme_existante_fr', lang),
+            });
+        }
+
+        const existsEn = await ThemeFormation.findOne({ titreEn, _id: { $ne: id } });
+        if (existsEn) {
+            return res.status(409).json({
+                success: false,
+                message: t('theme_existante_en', lang),
             });
         }
 
@@ -609,6 +641,8 @@ export const searchThemeFormationByTitre = async (req, res) => {
         });
     }
 };
+
+
 
 
 

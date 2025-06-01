@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import BudgetFormation from '../models/BudgetFormation';
+import BudgetFormation from '../models/BudgetFormation.js';
 
 /**
  * Calcule le coût total prévu d'un thème de formation donné.

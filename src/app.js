@@ -23,6 +23,8 @@ import budgetFormationRoutes from './routes/budgetFormationRoutes.js';
 import utilisateurRoutes from './routes/utilisateurRoutes.js';
 import objectifThemeRoutes from './routes/objectifThemeRoutes.js';
 import supportFormationRoutes from './routes/supportFormationRoutes.js';
+import themeFormationRoutes from './routes/themeFormationRoutes.js';
+import formationRoutes from './routes/formationRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -63,7 +65,8 @@ app.use('/api/v1/budget-formation', budgetFormationRoutes);
 app.use('/api/v1/utilisateur', utilisateurRoutes);
 app.use('/api/v1/objectif-theme', objectifThemeRoutes);
 app.use('/api/v1/support-formation', supportFormationRoutes);
-
+app.use('/api/v1/theme-formation', themeFormationRoutes);
+app.use('/api/v1/formation', formationRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

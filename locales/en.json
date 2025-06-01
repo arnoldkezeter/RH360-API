@@ -99,7 +99,7 @@
     "mot_de_passe_modifie": "Password successfully changed.",
 
     
-    "theme_non_trouve": "Theme not found.",
+    
     "objectif_theme_existante_fr": "An objective with this French name already exists for this theme.",
     "objectif_theme_existante_en": "An objective with this English name already exists for this theme.",
     "objectif_theme_non_trouve": "Objective not found.",
@@ -110,6 +110,36 @@
     "titre_fr_obligatoire": "The French title is required.",
     "description_fr_obligatoire": "The French description is required.",
     "support_non_trouve": "Training material not found.",
-    "fichier_introuvable": "File not found."
+    "fichier_introuvable": "File not found.",
+
+
+    "theme_non_trouve": "Theme not found.",
+    "theme_existante_fr": "A theme with this French name already exists.",
+    "theme_existante_en": "A theme with this English name already exists.",
+
+        
+    "formation_existante_fr": "Une formation avec ce titre (Français) existe déjà.",
+    "formation_existante_en": "Une formation avec ce titre (Anglais) existe déjà.",
+    "formation_non_trouvee": "Formation non trouvée.",
+    "titre_requis": "Le champ titre est requis.",
+    "depenses_par_theme": "Dépenses par thème récupérées avec succès.",
+    "depenses_totales_par_theme": "Totaux des dépenses par thème récupérés avec succès.",
+    "stats_par_sexe": "Statistics by gender",
+    "stats_par_service": "Statistics by service",
+    "stats_par_tranche_age": "Statistics by age range",
+    "stats_par_categorie_pro": "Statistics by professional category",
+    "nombre_total_formes": "Total number of people trained",
+    "nb_formateurs_par_type": "Number of trainers by type",
+    "homme": "Male",
+    "femme": "Female",
+    "tranche_18_25": "18 to 25 years",
+    "tranche_26_35": "26 to 35 years",
+    "tranche_36_45": "36 to 45 years",
+    "tranche_46_60": "46 to 60 years",
+    "tranche_60_plus": "Over 60 years",
+    "type_interne": "Internal trainer",
+    "type_externe": "External trainer"
+
+
 }
   

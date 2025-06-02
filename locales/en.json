@@ -138,8 +138,24 @@
     "tranche_46_60": "46 to 60 years",
     "tranche_60_plus": "Over 60 years",
     "type_interne": "Internal trainer",
-    "type_externe": "External trainer"
+    "type_externe": "External trainer",
 
+
+    "tache_fr_existant": "A task with this French title already exists.",
+    "tache_en_existant": "A task with this English title already exists.",
+    "tache_non_trouvee": "Task not found.",
+
+    "tache_ou_theme_introuvable": "Task or theme not found.",
+    "tache_deja_liee": "This task is already linked to this theme.",
+    "liaison_tache_theme_reussie": "Task successfully linked to theme.",
+    "liaison_introuvable": "Task-theme link not found.",
+    "theme_introuvable": "Theme not found.",
+    "methode_validation_invalide": "Invalid validation method.",
+    "tache_theme_non_trouvee": "Task linked to theme not found.",
+    "tache_deja_executee": "This task has already been executed.",
+    "donnees_validation_requises": "Validation data is required.",
+    "fichier_validation_requis": "Validation file is required.",
+    "tache_executee_succes": "Task successfully executed."
 
 }
   

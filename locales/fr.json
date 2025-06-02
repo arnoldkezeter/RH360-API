@@ -140,7 +140,25 @@
     "tranche_46_60": "46 à 60 ans",
     "tranche_60_plus": "Plus de 60 ans",
     "type_interne": "Formateur interne",
-    "type_externe": "Formateur externe"
+    "type_externe": "Formateur externe",
+
+
+    "tache_fr_existant": "Une tâche avec ce titre en français existe déjà.",
+    "tache_en_existant": "Une tâche avec ce titre en anglais existe déjà.",
+    "tache_non_trouvee": "Tâche introuvable.",
+
+    "tache_ou_theme_introuvable": "Tâche ou thème introuvable.",
+    "tache_deja_liee": "Cette tâche est déjà liée à ce thème.",
+    "liaison_tache_theme_reussie": "Tâche liée au thème avec succès.",
+    "liaison_introuvable": "Liaison tâche-thème introuvable.",
+    "theme_introuvable": "Thème introuvable.",
+    "methode_validation_invalide": "Méthode de validation invalide.",
+    "tache_theme_non_trouvee": "Tâche liée au thème non trouvée.",
+    "tache_deja_executee": "Cette tâche a déjà été exécutée.",
+    "donnees_validation_requises": "Les données de validation sont requises.",
+    "fichier_validation_requis": "Le fichier de validation est requis.",
+    "tache_executee_succes": "Tâche exécutée avec succès."
+  
     
 }
   

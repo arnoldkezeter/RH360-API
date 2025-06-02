@@ -1,5 +1,5 @@
-import BudgetFormation from "../models/BudgetFormation";
-import ThemeFormation from "../models/themeFormation";
+import BudgetFormation from "../models/BudgetFormation.js";
+import ThemeFormation from "../models/ThemeFormation.js";
 
 /**
  * Enrichit une liste de formations avec des données agrégées provenant des thèmes de formation associés.

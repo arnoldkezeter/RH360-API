@@ -1,4 +1,4 @@
-import ThemeFormation from '../models/themeFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 import SupportFormation from '../models/SupportFormation.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';

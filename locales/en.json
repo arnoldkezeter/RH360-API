@@ -155,7 +155,13 @@
     "tache_deja_executee": "This task has already been executed.",
     "donnees_validation_requises": "Validation data is required.",
     "fichier_validation_requis": "Validation file is required.",
-    "tache_executee_succes": "Task successfully executed."
+    "tache_executee_succes": "Task successfully executed.",
+      
+    
+    "programme_formation_existante": "A training program for this year already exists.",
+    "programme_formation_non_trouve": "Training program not found.",
+    "annee_obligatoire": "The year is required."
+
 
 }
   

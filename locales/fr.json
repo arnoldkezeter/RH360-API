@@ -157,7 +157,14 @@
     "tache_deja_executee": "Cette tâche a déjà été exécutée.",
     "donnees_validation_requises": "Les données de validation sont requises.",
     "fichier_validation_requis": "Le fichier de validation est requis.",
-    "tache_executee_succes": "Tâche exécutée avec succès."
+    "tache_executee_succes": "Tâche exécutée avec succès.",
+
+
+    
+    "programme_formation_existante": "Un programme de formation pour cette année existe déjà.",
+    "programme_formation_non_trouve": "Programme de formation non trouvé.",
+    "annee_obligatoire": "L'année est obligatoire."
+
   
     
 }

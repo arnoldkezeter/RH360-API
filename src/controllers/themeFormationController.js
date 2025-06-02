@@ -3,7 +3,7 @@ import PosteDeTravail from '../models/PosteDeTravail.js';
 import { validationResult } from 'express-validator';
 import mongoose from 'mongoose';
 import { t } from '../utils/i18n.js';
-import ThemeFormation from '../models/themeFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 import { calculerCoutTotalPrevu } from '../services/budgetFormationService.js';
 
 // Ajouter

@@ -27,6 +27,8 @@ import themeFormationRoutes from './routes/themeFormationRoutes.js';
 import formationRoutes from './routes/formationRoutes.js';
 import tacheGeneriqueRoutes from './routes/tacheGeneriqueRoutes.js';
 import tacheThemeFormationRoutes from './routes/tacheThemeFormationRoutes.js';
+import tableauDeBordRoutes from './routes/tableauDeBordRoutes.js';
+import programmeFormationRoutes from './routes/programmeFormationRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -71,6 +73,8 @@ app.use('/api/v1/theme-formation', themeFormationRoutes);
 app.use('/api/v1/formation', formationRoutes);
 app.use('/api/v1/tache-generique', tacheGeneriqueRoutes);
 app.use('/api/v1/tache-theme-formation', tacheThemeFormationRoutes);
+app.use('/api/v1/tableau-de-bord', tableauDeBordRoutes);
+app.use('/api/v1/programme-de-formation', programmeFormationRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

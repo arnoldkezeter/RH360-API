@@ -16,7 +16,12 @@ import {
   getStatsParCategoriePro,
   getNombreTotalFormes,
   getNbFormateursParType,
-  getDepensesParThemePourFormation,
+  getCoutsParThemePourFormation,
+  getTauxExecutionParThemePourFormation,
+  getThemesExecutionParProgramme,
+  getThemesExecutionParPeriode,
+  getThemesExecutionParAxeStrategique,
+  searchThemesExecutionParFormation,
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateFormation.js';
@@ -47,7 +52,12 @@ router.get('/statistiques/tranche-age/:id', authentificate, getStatsParTrancheAg
 router.get('/statistiques/categorie-professionnelle/:id', authentificate, getStatsParCategoriePro);
 router.get('/statistiques/total-formes/:id', authentificate, getNombreTotalFormes);
 router.get('/statistiques/formateurs-par-type/:id', authentificate, getNbFormateursParType);
-router.get('/statistiques/depense-par-theme/:id', authentificate, getDepensesParThemePourFormation);
+router.get('/statistiques/depense-par-theme/:id', authentificate, getCoutsParThemePourFormation);
+router.get('/statistiques/execution-par-theme/:id', authentificate, getTauxExecutionParThemePourFormation);
 
-
+//execution
+router.get('/programme/taux-execution/:programmeId/themes', authentificate, getThemesExecutionParProgramme);
+router.get('/periode/taux-execution/themes', authentificate, getThemesExecutionParPeriode);
+router.get('/axe-strategique/taux-execution/:axeId/themes', authentificate, getThemesExecutionParAxeStrategique);
+router.get('/recherche/taux-execution/themes', authentificate, searchThemesExecutionParFormation);
 export default router;

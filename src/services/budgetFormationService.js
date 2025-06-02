@@ -80,3 +80,35 @@ export const calculerCoutsThemeFormation = async (themeId) => {
     return { coutTotalPrevu, coutTotalReel, ecart };
 };
 
+
+
+/**
+ * Calcule les coûts prévus et réels d'un budget donné.
+ * @param {Object} budget - Le document budget, incluant les sections et lignes.
+ * @returns {{ coutPrevu: number, coutReel: number }} Les coûts totaux.
+ */
+export function calculerCoutsBudget(budget) {
+  if (!budget || !Array.isArray(budget.sections)) {
+    return { coutPrevu: 0, coutReel: 0 };
+  }
+
+  return budget.sections.reduce(
+    (acc, section) => {
+      if (!Array.isArray(section.lignes)) return acc;
+
+      for (const ligne of section.lignes) {
+        const quantite = ligne.quantite || 0;
+        const montantPrevu = ligne.montantUnitairePrevuHT || 0;
+        const montantReel = ligne.montantUnitaireReelHT || 0;
+
+        acc.coutPrevu += montantPrevu * quantite;
+        acc.coutReel += montantReel * quantite;
+      }
+
+      return acc;
+    },
+    { coutPrevu: 0, coutReel: 0 }
+  );
+}
+
+

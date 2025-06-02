@@ -1,9 +1,12 @@
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
-import ThemeFormation from '../models/themeFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 import { calculerAge } from '../utils/calculerAge.js';
 import Formation from '../models/Fomation.js';
+import BudgetFormation from '../models/BudgetFormation.js';
+import { calculerCoutsBudget } from '../services/budgetFormationService.js';
+import { enrichirFormations } from '../services/formationService.js';
 
 // Ajouter
 export const createFormation = async (req, res) => {
@@ -740,8 +743,75 @@ export const getNbFormateursParType = async (req, res) => {
 };
 
 
-//Dépenses par thème de formation
-export const getDepensesParThemePourFormation = async (req, res) => {
+//Coûts par thème pour une formation
+export const getCoutsParThemePourFormation = async (req, res) => {
+    const { id } = req.params;
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+        success: false,
+        message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        // Thèmes liés à la formation
+        const themes = await ThemeFormation.find({ formation: id })
+        .select('_id titreFr titreEn')
+        .lean();
+
+        if (themes.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_theme_trouve', lang),
+            });
+        }
+
+        const themeIds = themes.map(t => t._id);
+
+        // Budgets liés aux thèmes
+        const budgets = await BudgetFormation.find({ theme: { $in: themeIds } })
+        .select('theme sections')
+        .lean();
+
+        const coutsParTheme = {};
+
+        for (const budget of budgets) {
+            const themeIdStr = budget.theme.toString();
+            if (!coutsParTheme[themeIdStr]) {
+                coutsParTheme[themeIdStr] = { coutPrevu: 0, coutReel: 0 };
+            }
+
+            const coutsBudget = calculerCoutsBudget(budget);
+
+            coutsParTheme[themeIdStr].coutPrevu += coutsBudget.coutPrevu;
+            coutsParTheme[themeIdStr].coutReel += coutsBudget.coutReel;
+        }
+
+        const result = themes.map(t => {
+            const cout = coutsParTheme[t._id.toString()] || { coutPrevu: 0, coutReel: 0 };
+            return {
+                themeId: t._id,
+                titreFr: t.titreFr,
+                titreEn: t.titreEn,
+                coutPrevu: cout.coutPrevu,
+                coutReel: cout.coutReel,
+            };
+        });
+
+        return res.status(200).json({ success: true, data: result });
+    } catch (err) {
+            return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
+// Retourne le taux d'exécution des tâches pour chaque thème d'une formation.
+export const getTauxExecutionParThemePourFormation = async (req, res) => {
     const { id } = req.params;
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
 
@@ -753,50 +823,55 @@ export const getDepensesParThemePourFormation = async (req, res) => {
     }
 
     try {
-        // Récupère tous les thèmes de la formation
-        const themes = await ThemeFormation.find({ formation: id }).lean();
+        const themes = await ThemeFormation.find({ formation: id })
+        .select('titreFr titreEn nbTaches nbTachesExecutees')
+        .lean();
 
-        if (themes.length === 0) {
-            return res.status(200).json({
-                success: true,
-                data: [],
+        if (!themes || themes.length === 0) {
+            return res.status(404).json({
+                success: false,
                 message: t('aucun_theme_trouve', lang),
             });
         }
 
-        const themeIds = themes.map(t => t._id);
-        const budgets = await BudgetFormation.find({ theme: { $in: themeIds } }).lean();
+        let totalTaches = 0;
+        let totalExecutees = 0;
 
-        const depensesParTheme = {};
+        const themesExecution = themes.map(theme => {
+            const nbTaches = theme.nbTaches || 0;
+            const nbTachesExecutees = theme.nbTachesExecutees || 0;
 
-        for (const budget of budgets) {
-            const themeId = budget.theme.toString();
-            if (!depensesParTheme[themeId]) {
-                depensesParTheme[themeId] = {
-                    themeId,
-                    titreFr: themes.find(t => t._id.toString() === themeId)?.titreFr || '',
-                    titreEn: themes.find(t => t._id.toString() === themeId)?.titreEn || '',
-                    totalPrevu: 0,
-                    totalReel: 0,
-                };
-            }
+            totalTaches += nbTaches;
+            totalExecutees += nbTachesExecutees;
 
-            for (const ligne of budget.lignes) {
-                const prevu = ligne.montantUnitairePrevuHT || 0;
-                const reel = ligne.montantUnitaireReelHT || 0;
-                const quantite = ligne.quantite || 0;
+            const tauxExecution = nbTaches > 0
+                ? Math.round((nbTachesExecutees / nbTaches) * 100)
+                : 0;
 
-                depensesParTheme[themeId].totalPrevu += prevu * quantite;
-                depensesParTheme[themeId].totalReel += reel * quantite;
-            }
-        }
+            return {
+                themeId: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                nbTaches,
+                nbTachesExecutees,
+                tauxExecution, // en %
+            };
+        });
+
+        const tauxExecutionGlobal = totalTaches > 0
+        ? Math.round((totalExecutees / totalTaches) * 100)
+        : 0;
 
         return res.status(200).json({
             success: true,
-            data: Object.values(depensesParTheme),
+            data: {
+                tauxExecutionGlobal, // en %
+                themes: themesExecution,
+            },
         });
+
     } catch (err) {
-        console.error(err);
+        console.error('Erreur dans getTauxExecutionParThemePourFormation:', err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -804,5 +879,199 @@ export const getDepensesParThemePourFormation = async (req, res) => {
         });
     }
 };
+
+
+//Taux d'execution des formations par programme
+export const getThemesExecutionParProgramme = async (req, res) => {
+    const { programmeId } = req.params;
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    try {
+        const formations = await Formation.find({ programme: programmeId })
+        .populate('axeStrategique', 'nomFr nomEn')
+        .lean();
+
+        const results = await Promise.all(formations.map(async formation => {
+            const themes = await ThemeFormation.find({ formation: formation._id })
+                .select('titreFr titreEn dateDebut dateFin nbTaches nbTachesExecutees')
+                .lean();
+
+            const themesWithTaux = themes.map(theme => {
+                const total = theme.nbTaches || 0;
+                const exec = theme.nbTachesExecutees || 0;
+                const taux = total > 0 ? Math.round((exec / total) * 100) : 0;
+                return { ...theme, tauxExecution: taux };
+            });
+
+            return {
+                formationId: formation._id,
+                formationTitreFr: formation.titreFr,
+                formationTitreEn: formation.titreEn,
+                axeStrategique: formation.axeStrategique,
+                themes: themesWithTaux
+            };
+        }));
+
+        return res.status(200).json({ success: true, data: results });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+
+//Taux d'execution des formations par période
+export const getThemesExecutionParPeriode = async (req, res) => {
+    const { dateDebut, dateFin } = req.query;
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({ success: false, message: t('dates_requises', lang) });
+    }
+
+    try {
+        const themes = await ThemeFormation.find({
+            dateDebut: { $gte: new Date(dateDebut) },
+            dateFin: { $lte: new Date(dateFin) }
+        })
+        .populate({
+            path: 'formation',
+            select: 'titreFr titreEn axeStrategique',
+            populate: { path: 'axeStrategique', select: 'nomFr nomEn' }
+        })
+        .select('titreFr titreEn dateDebut dateFin nbTaches nbTachesExecutees formation')
+        .lean();
+
+        // Regrouper les thèmes par formation
+        const grouped = {};
+
+        for (const theme of themes) {
+            const formationId = theme.formation?._id?.toString();
+            if (!formationId) continue;
+
+            if (!grouped[formationId]) {
+                grouped[formationId] = {
+                formationId: theme.formation._id,
+                formationTitreFr: theme.formation.titreFr,
+                formationTitreEn: theme.formation.titreEn,
+                axeStrategique: theme.formation.axeStrategique,
+                themes: []
+                };
+            }
+
+            const total = theme.nbTaches || 0;
+            const exec = theme.nbTachesExecutees || 0;
+            const taux = total > 0 ? Math.round((exec / total) * 100) : 0;
+
+            grouped[formationId].themes.push({
+                themeId: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                dateDebut: theme.dateDebut,
+                dateFin: theme.dateFin,
+                tauxExecution: taux
+            });
+        }
+
+        return res.status(200).json({ success: true, data: Object.values(grouped) });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+
+//Taux d'execution des formations par axe stratégique
+export const getThemesExecutionParAxeStrategique = async (req, res) => {
+    const { axeId } = req.params;
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(axeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    try {
+        const formations = await Formation.find({ axeStrategique: axeId })
+        .lean();
+
+        const results = await Promise.all(formations.map(async formation => {
+            const themes = await ThemeFormation.find({ formation: formation._id })
+                .select('titreFr titreEn dateDebut dateFin nbTaches nbTachesExecutees')
+                .lean();
+
+            const themesWithTaux = themes.map(theme => {
+                const total = theme.nbTaches || 0;
+                const exec = theme.nbTachesExecutees || 0;
+                const taux = total > 0 ? Math.round((exec / total) * 100) : 0;
+                return { ...theme, tauxExecution: taux };
+            });
+
+            return {
+                formationId: formation._id,
+                formationTitreFr: formation.titreFr,
+                formationTitreEn: formation.titreEn,
+                axeStrategique: formation.axeStrategique, // ou compléter par une query si nécessaire
+                themes: themesWithTaux
+            };
+        }));
+
+        return res.status(200).json({ success: true, data: results });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+//Taux d'execution des formations à partir de la recherche d'une formation
+export const searchThemesExecutionParFormation = async (req, res) => {
+    const { keyword } = req.query;
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+
+    if (!keyword) {
+        return res.status(400).json({ success: false, message: t('mot_cle_requis', lang) });
+    }
+
+    try {
+        const formations = await Formation.find({
+        $or: [
+            { titreFr: { $regex: keyword, $options: 'i' } },
+            { titreEn: { $regex: keyword, $options: 'i' } }
+        ]
+        }).populate('axeStrategique', 'nomFr nomEn').lean();
+
+        const results = await Promise.all(formations.map(async formation => {
+            const themes = await ThemeFormation.find({ formation: formation._id })
+                .select('titreFr titreEn dateDebut dateFin nbTaches nbTachesExecutees')
+                .lean();
+
+            const themesWithTaux = themes.map(theme => {
+                const total = theme.nbTaches || 0;
+                const exec = theme.nbTachesExecutees || 0;
+                const taux = total > 0 ? Math.round((exec / total) * 100) : 0;
+                return { ...theme, tauxExecution: taux };
+            });
+
+            return {
+                formationId: formation._id,
+                formationTitreFr: formation.titreFr,
+                formationTitreEn: formation.titreEn,
+                axeStrategique: formation.axeStrategique,
+                themes: themesWithTaux
+            };
+        }));
+
+        return res.status(200).json({ success: true, data: results });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+
+
+
+
+
+
 
 

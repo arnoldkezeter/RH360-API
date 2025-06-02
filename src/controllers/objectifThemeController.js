@@ -1,5 +1,5 @@
 import ObjectifTheme from '../models/ObjectifTheme.js';
-import ThemeFormation from '../models/themeFormation.js'; // pour vérifier la validité du thème
+import ThemeFormation from '../models/ThemeFormation.js'; // pour vérifier la validité du thème
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';

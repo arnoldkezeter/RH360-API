@@ -175,7 +175,20 @@
     "utilisateur_requis": "L'utilisateur est requis.",
     "besoin_requis": "Le besoin est requis.",
     "commentaire_invalide": "Commentaire invalide.",
-    "priorite_invalide": "Priorité invalide."
+    "priorite_invalide": "Priorité invalide.",
+
+
+   
+  "evaluation_existe_fr": "Une évaluation avec ce titre français existe déjà.",
+  "evaluation_existe_en": "Une évaluation avec ce titre anglais existe déjà.",
+  "evaluation_non_trouvee": "Évaluation à chaud introuvable.",
+  "evaluation_non_trouvee_theme": "Aucune évaluation à chaud active trouvée pour ce thème.",
+  "rubrique_non_trouvee": "Rubrique non trouvée.",
+  "question_non_trouvee": "Question non trouvée.",
+  "sous_question_non_trouvee": "Sous-question non trouvée.",
+  "echelle_non_trouvee": "Echelle non trouvée.",
+  "evaluation_deja_repondu":"Vous avez déjà répondu à cette évaluation."
+
 
 }
   

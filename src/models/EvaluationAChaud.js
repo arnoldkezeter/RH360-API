@@ -1,18 +1,45 @@
-// models/EvaluationAChaud.js
 import mongoose from 'mongoose';
 
-const evaluationAChaudSchema = new mongoose.Schema({
-  titre: { type: String, required: true },
-  theme: { type: mongoose.Schema.Types.ObjectId, ref: 'ThemeFormation' },
-  rubriques: [{
-    titre,
-    questions: [{
-      type: { type: String, enum: ['qcm', 'vrai_faux', 'echelle', 'commentaire'] },
-      question: { type: String },
-      options: [String]
-    }]
-  }]
+const EchelleSchema = new mongoose.Schema({
+    valeurFr: { type: String, required: true }, // ex: "Très satisfait"
+    valeurEn: { type: String, required: true }, // ex: "Très satisfait"
+    ordre: { type: Number, required: true }   // ex: 1, 2, 3, 4, 5
+}, { _id: false });
+
+const SousQuestionSchema = new mongoose.Schema({
+    libelleFr: { type: String, required: true },
+    libelleEn: { type: String, required: true },
+    commentaireObligatoire: { type: Boolean, default: false },
+    ordre: { type: Number, required: true }
+}, { _id: true });
+
+const QuestionSchema = new mongoose.Schema({
+    libelleFr: { type: String, required: true },
+    libelleEn: { type: String, required: true },
+    echelle: [EchelleSchema],
+    sousQuestions: [SousQuestionSchema], // vide si question simple
+    commentaireGlobal: { type: Boolean, default: false }, // si true, champ commentaire à l’échelle de la question
+    ordre: { type: Number, required: true }
+}, { _id: true });
+
+const RubriqueSchema = new mongoose.Schema({
+    titreFr: { type: String, required: true },
+    titreEn: { type: String, required: true },
+    ordre: { type: Number, required: true },
+    questions: [QuestionSchema]
+}, { _id: true });
+
+const EvaluationChaudSchema = new mongoose.Schema({
+    titreFr: { type: String, required: true },
+    titreEn: { type: String, required: true },
+    theme: { type: mongoose.Schema.Types.ObjectId, ref: 'ThemeFormation', required: true },
+    descriptionFr: {type:String},
+    descriptionEn: {type:String},
+    rubriques: [RubriqueSchema],
+    actif: { type: Boolean, default: true },
 }, { timestamps: true });
 
-const EvaluationAChaud = mongoose.model('EvaluationAChaud', evaluationAChaudSchema);
-export default EvaluationAChaud;
+
+
+const EvaluationChaud = mongoose.model('EvaluationChaud', EvaluationChaudSchema);
+export default EvaluationChaud;

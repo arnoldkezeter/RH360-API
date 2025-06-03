@@ -172,7 +172,18 @@
     "utilisateur_requis": "User is required.",
     "besoin_requis": "Need is required.",
     "commentaire_invalide": "Invalid comment.",
-    "priorite_invalide": "Invalid priority."
+    "priorite_invalide": "Invalid priority.",
+
+
+    "evaluation_existe_fr": "An evaluation with this French title already exists.",
+    "evaluation_existe_en": "An evaluation with this English title already exists.",
+    "evaluation_non_trouvee": "Hot evaluation not found.",
+    "evaluation_non_trouvee_theme": "No active hot evaluation found for this theme.",
+    "rubrique_non_trouvee": "Section not found.",
+    "question_non_trouvee": "Question not found.",
+    "sous_question_non_trouvee": "Sub-question not found.",
+    "echelle_non_trouvee": "Scale  not found.",
+    "evaluation_deja_repondu":"You have already submitted this evaluation."
 
 
 }

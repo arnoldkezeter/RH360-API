@@ -31,6 +31,8 @@ import tableauDeBordRoutes from './routes/tableauDeBordRoutes.js';
 import programmeFormationRoutes from './routes/programmeFormationRoutes.js';
 import besoinFormationPredefiniRoutes from './routes/besoinFormationPredefiniRoutes.js';
 import besoinFormationExprimeRoutes from './routes/besoinFormationExprimeRoutes.js';
+import evaluationAChaudRoutes from './routes/evaluationAChaudRoutes.js';
+import evaluationAChaudReponseRoutes from './routes/evaluationAChaudReponseRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -79,6 +81,8 @@ app.use('/api/v1/tableau-de-bord', tableauDeBordRoutes);
 app.use('/api/v1/programme-de-formation', programmeFormationRoutes);
 app.use('/api/v1/besoin-formation-predefini', besoinFormationPredefiniRoutes);
 app.use('/api/v1/besoin-formation-exprime', besoinFormationExprimeRoutes);
+app.use('/api/v1/evaluation-a-chaud', evaluationAChaudRoutes);
+app.use('/api/v1/evaluation-a-chaud-reponse', evaluationAChaudReponseRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

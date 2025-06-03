@@ -163,9 +163,19 @@
     
     "programme_formation_existante": "Un programme de formation pour cette année existe déjà.",
     "programme_formation_non_trouve": "Programme de formation non trouvé.",
-    "annee_obligatoire": "L'année est obligatoire."
+    "annee_obligatoire": "L'année est obligatoire.",
 
-  
     
+    "besoin_non_trouve": "Besoin de formation introuvable.",
+    "besoin_existant_fr": "Un besoin avec le même titre en français existe déjà",
+    "besoin_existant_en": "Un besoin avec le même titre en anglais existe déjà",
+
+
+    "besoin_exprime_non_trouve": "Besoin exprimé non trouvé.",
+    "utilisateur_requis": "L'utilisateur est requis.",
+    "besoin_requis": "Le besoin est requis.",
+    "commentaire_invalide": "Commentaire invalide.",
+    "priorite_invalide": "Priorité invalide."
+
 }
   

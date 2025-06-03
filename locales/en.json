@@ -157,10 +157,22 @@
     "fichier_validation_requis": "Validation file is required.",
     "tache_executee_succes": "Task successfully executed.",
       
-    
+
     "programme_formation_existante": "A training program for this year already exists.",
     "programme_formation_non_trouve": "Training program not found.",
-    "annee_obligatoire": "The year is required."
+    "annee_obligatoire": "The year is required.",
+
+
+    "besoin_non_trouve": "Training need not found.",
+    "besoin_existant_fr": "A training with this French title already exists.",
+    "besoin_existant_en": "A training with this English title already exists.",
+
+
+    "besoin_exprime_non_trouve": "Expressed training need not found.",
+    "utilisateur_requis": "User is required.",
+    "besoin_requis": "Need is required.",
+    "commentaire_invalide": "Invalid comment.",
+    "priorite_invalide": "Invalid priority."
 
 
 }

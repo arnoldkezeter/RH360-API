@@ -10,16 +10,17 @@ const parcoursSchema = new mongoose.Schema({
 }, { _id: false });
 
 const stagiaireSchema = new mongoose.Schema({
-  nom: {type:String,required:true},
-  prenom: {type:String},
-  email: { type: String, required: true, unique: true },
-  motDePasse: { type: String, required: true },
-  genre: { type: String, enum: ['H', 'F'], required:true },
-  dateNaissance: {type:Date},
-  lieuNaissance:{type:String},
-  telephone:{type:Number, required:true},
-  parcours:[parcoursSchema],
-  actif: { type: Boolean, default: true },
+    nom: {type:String,required:true},
+    prenom: {type:String},
+    email: { type: String, required: true, unique: true },
+    motDePasse: { type: String, required: true },
+    genre: { type: String, enum: ['H', 'F'], required:true },
+    dateNaissance: {type:Date},
+    lieuNaissance:{type:String},
+    telephone:{type:Number, required:true},
+    parcours:[parcoursSchema],
+    actif: { type: Boolean, default: true },
+    stages:[{type: mongoose.Schema.Types.ObjectId, ref: 'Stage'}]
 }, { timestamps: true });
 
 const Stagiaire = mongoose.model('Stagiaire', stagiaireSchema);

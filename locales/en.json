@@ -183,8 +183,32 @@
     "question_non_trouvee": "Question not found.",
     "sous_question_non_trouvee": "Sub-question not found.",
     "echelle_non_trouvee": "Scale  not found.",
-    "evaluation_deja_repondu":"You have already submitted this evaluation."
+    "evaluation_deja_repondu":"You have already submitted this evaluation.",
 
+
+    "stagiaire_email_existe": "This email is already associated with an intern.",
+    "stagiaire_non_trouve": "Intern not found.",
+    "stagiaires_liste": "Interns list retrieved successfully.",
+    "parametres_requis": "The required parameters are missing.",
+    "stagiaires_non_trouves": "No interns found.",
+
+
+    "type_stage_invalide": "The type of stage is invalid.",
+    "liste_stagiaire_requis": "The trainee list is required.",
+    "nb_groupe_entier_positif": "The number of groups must be a positive integer.",
+    "donnee_imcomplete": "Some data is incomplete.",
+    "periode_entier_positif": "The period must be a positive integer.",
+    "date_debut_anterieur_date_fin": "The start date must be earlier than the end date.",
+    "ajuster_periode_durer": "Please adjust the period or duration to match the services.",
+    "stagiaires_deja_assignes": "All trainees are already assigned to groups.",
+    "stagiaires_non_assignes": "Some trainees are not yet assigned to groups.",
+    "groupe_non_trouve": "No group was found for this stage.",
+    "stage_non_trouve": "Stage not found",
+    "operation_stage_individuel": "This operation is reserved for individual internships",
+    "service_affecte_non_trouve": "Assigned service not found",
+    "liste_stagiaires_succes": "Trainees list retrieved successfully"
+    
+    
 
 }
   

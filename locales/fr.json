@@ -187,8 +187,34 @@
   "question_non_trouvee": "Question non trouvée.",
   "sous_question_non_trouvee": "Sous-question non trouvée.",
   "echelle_non_trouvee": "Echelle non trouvée.",
-  "evaluation_deja_repondu":"Vous avez déjà répondu à cette évaluation."
+  "evaluation_deja_repondu":"Vous avez déjà répondu à cette évaluation.",
 
+
+    "stagiaire_email_existe": "Cet email est déjà associé à un stagiaire.",
+    "stagiaire_non_trouve": "Stagiaire introuvable.",
+    "stagiaire_modifie_succes": "Le stagiaire a été modifié avec succès.",
+    "stagiaires_liste": "Liste des stagiaires récupérée avec succès.",
+    "parametres_requis": "Les paramètres requis sont manquants.",
+    "stagiaires_non_trouves": "Aucun stagiaire trouvé.",
+
+
+
+    "type_stage_invalide": "Le type de stage est invalide.",
+    "liste_stagiaire_requis": "La liste des stagiaires est requise.",
+    "nb_groupe_entier_positif": "Le nombre de groupes doit être un entier positif.",
+    "donnee_imcomplete": "Certaines données sont incomplètes.",
+    "periode_entier_positif": "La période doit être un entier positif.",
+    "date_debut_anterieur_date_fin": "La date de début doit être antérieure à la date de fin.",
+    "ajuster_periode_durer": "Veuillez ajuster la période ou la durée pour correspondre aux services.",
+    "stagiaires_deja_assignes": "Tous les stagiaires sont déjà assignés à des groupes.",
+    "stagiaires_non_assignes": "Certains stagiaires ne sont pas encore assignés à des groupes.",
+    "groupe_non_trouve": "Aucun groupe n'a été trouvé pour ce stage.",
+    "stage_non_trouve": "Stage non trouvé",
+    "operation_stage_individuel": "Cette opération est réservée aux stages individuels",
+    "service_affecte_non_trouve": "Service affecté non trouvé",
+    "liste_stagiaires_succes": "Liste des stagiaires récupérée avec succès"
+
+  
 
 }
   

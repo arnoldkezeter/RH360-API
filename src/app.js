@@ -37,6 +37,7 @@ import stagiaireRoutes from './routes/stagiaireRoutes.js';
 import stageRoutes from './routes/stageRoutes.js';
 import tacheStagiaireRoutes from './routes/tacheStagiaireRoutes.js';
 import chercheurRoutes from './routes/chercheurRoutes.js';
+import mandatRechercheRoutes from './routes/mandatRechercheRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -91,6 +92,7 @@ app.use('/api/v1/stagiaire', stagiaireRoutes);
 app.use('/api/v1/stage', stageRoutes);
 app.use('/api/v1/tache-stagiaire', tacheStagiaireRoutes);
 app.use('/api/v1/chercheur', chercheurRoutes);
+app.use('/api/v1/mandat-recherche', mandatRechercheRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

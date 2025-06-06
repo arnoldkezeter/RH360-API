@@ -220,7 +220,10 @@
 
 
     "chercheur_email_existe": "Un chercheur avec cet email existe déjà.",
-    "chercheur_non_trouve": "Chercheur non trouvé."
+    "chercheur_non_trouve": "Chercheur non trouvé.",
+
+    "mandat_non_trouve": "Le mandat spécifié est introuvable."
+    
     
 }
   

@@ -213,7 +213,9 @@
 
 
     "chercheur_email_existe": "A researcher with this email already exists.",
-    "chercheur_non_trouve": "Researcher not found."
+    "chercheur_non_trouve": "Researcher not found.",
+
+    "mandat_non_trouve": "The specified mandate could not be found."
     
 
 }

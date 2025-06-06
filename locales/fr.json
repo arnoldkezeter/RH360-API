@@ -212,9 +212,11 @@
     "stage_non_trouve": "Stage non trouvé",
     "operation_stage_individuel": "Cette opération est réservée aux stages individuels",
     "service_affecte_non_trouve": "Service affecté non trouvé",
-    "liste_stagiaires_succes": "Liste des stagiaires récupérée avec succès"
+    "liste_stagiaires_succes": "Liste des stagiaires récupérée avec succès",
 
-  
+
+    
+    "tache_verrouiller": "Cette tâche est verrouillée et ne peut pas être modifiée."
 
 }
   

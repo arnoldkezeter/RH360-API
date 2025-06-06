@@ -206,7 +206,10 @@
     "stage_non_trouve": "Stage not found",
     "operation_stage_individuel": "This operation is reserved for individual internships",
     "service_affecte_non_trouve": "Assigned service not found",
-    "liste_stagiaires_succes": "Trainees list retrieved successfully"
+    "liste_stagiaires_succes": "Trainees list retrieved successfully",
+
+      
+    "tache_verrouiller": "This task is locked and cannot be modified."
     
     
 

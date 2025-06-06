@@ -35,6 +35,8 @@ import evaluationAChaudRoutes from './routes/evaluationAChaudRoutes.js';
 import evaluationAChaudReponseRoutes from './routes/evaluationAChaudReponseRoutes.js';
 import stagiaireRoutes from './routes/stagiaireRoutes.js';
 import stageRoutes from './routes/stageRoutes.js';
+import tacheStagiaireRoutes from './routes/tacheStagiaireRoutes.js';
+import chercheurRoutes from './routes/chercheurRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -87,6 +89,8 @@ app.use('/api/v1/evaluation-a-chaud', evaluationAChaudRoutes);
 app.use('/api/v1/evaluation-a-chaud-reponse', evaluationAChaudReponseRoutes);
 app.use('/api/v1/stagiaire', stagiaireRoutes);
 app.use('/api/v1/stage', stageRoutes);
+app.use('/api/v1/tache-stagiaire', tacheStagiaireRoutes);
+app.use('/api/v1/chercheur', chercheurRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

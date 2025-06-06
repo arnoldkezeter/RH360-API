@@ -209,8 +209,11 @@
     "liste_stagiaires_succes": "Trainees list retrieved successfully",
 
       
-    "tache_verrouiller": "This task is locked and cannot be modified."
-    
+    "tache_verrouiller": "This task is locked and cannot be modified.",
+
+
+    "chercheur_email_existe": "A researcher with this email already exists.",
+    "chercheur_non_trouve": "Researcher not found."
     
 
 }

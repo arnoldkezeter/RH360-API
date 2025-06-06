@@ -216,7 +216,11 @@
 
 
     
-    "tache_verrouiller": "Cette tâche est verrouillée et ne peut pas être modifiée."
+    "tache_verrouiller": "Cette tâche est verrouillée et ne peut pas être modifiée.",
 
+
+    "chercheur_email_existe": "Un chercheur avec cet email existe déjà.",
+    "chercheur_non_trouve": "Chercheur non trouvé."
+    
 }
   

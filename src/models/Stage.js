@@ -1,7 +1,7 @@
 // models/Stage.js
 import mongoose from 'mongoose';
 
-const stageSchema = new mongoose.Schema({
+const StageSchema = new mongoose.Schema({
         typeStage: { type: String, enum: ['INDIVIDUEL', 'GROUPE'], required: true },
         stagiaires: [
             {
@@ -30,7 +30,7 @@ const stageSchema = new mongoose.Schema({
 );
 
 // Index pertinent pour les recherches fréquentes
-stageSchema.index({ typeStage: 1, statut: 1 });
+StageSchema.index({ typeStage: 1, statut: 1 });
 
-const Stage = mongoose.model('Stage', stageSchema);
+const Stage = mongoose.model('Stage', StageSchema);
 export default Stage;

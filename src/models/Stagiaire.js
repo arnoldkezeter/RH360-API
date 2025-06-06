@@ -1,5 +1,6 @@
 // models/Stagiaire.js
 import mongoose from 'mongoose';
+import BaseUtilisateur from './BaseUtilisateur.js';
 
 const parcoursSchema = new mongoose.Schema({
   annee: { type: Number, required: true },
@@ -9,19 +10,11 @@ const parcoursSchema = new mongoose.Schema({
   niveau: { type: String }
 }, { _id: false });
 
-const stagiaireSchema = new mongoose.Schema({
-    nom: {type:String,required:true},
-    prenom: {type:String},
-    email: { type: String, required: true, unique: true },
-    motDePasse: { type: String, required: true },
-    genre: { type: String, enum: ['H', 'F'], required:true },
-    dateNaissance: {type:Date},
-    lieuNaissance:{type:String},
-    telephone:{type:Number, required:true},
+const StagiaireSchema = new mongoose.Schema({
     parcours:[parcoursSchema],
     actif: { type: Boolean, default: true },
     stages:[{type: mongoose.Schema.Types.ObjectId, ref: 'Stage'}]
-}, { timestamps: true });
+});
 
-const Stagiaire = mongoose.model('Stagiaire', stagiaireSchema);
+const Stagiaire = BaseUtilisateur.discriminator('Stagiaire', StagiaireSchema);
 export default Stagiaire;

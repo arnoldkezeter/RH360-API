@@ -1,5 +1,5 @@
-import TacheStagiaire from "../models/tacheStagiaire";
-import { t } from "../utils/i18n";
+import TacheStagiaire from "../models/tacheStagiaire.js";
+import { t } from "../utils/i18n.js";
 import { validationResult } from 'express-validator';
 import mongoose from 'mongoose';
 

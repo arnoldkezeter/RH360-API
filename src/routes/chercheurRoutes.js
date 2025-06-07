@@ -6,10 +6,10 @@ import {
     deleteChercheur, 
     updatePassword, 
     getChercheurs 
-} from '../controllers/chercheurController';
+} from '../controllers/chercheurController.js';
 import { validateFields } from '../middlewares/validateFields/validateChercheur.js';
 import { authentificate } from '../middlewares/auth.js';
-import { validateFieldsPassword } from '../middlewares/validateFields/validateMotDePasse';
+import { validateFieldsPassword } from '../middlewares/validateFields/validateMotDePasse.js';
 
 const router = express.Router();
 

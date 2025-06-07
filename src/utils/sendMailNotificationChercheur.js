@@ -8,8 +8,6 @@ import nodemailer from 'nodemailer';
  * @param {string} prenom - Prénom du chercheur.
  */
 export const sendMandatNotificationEmail = async (to, lang, nom, prenom) => {
-    const { nom, prenom, email } = chercheur;
-    const { superviseur, structure, dateDebut, dateFin } = mandatDetails;
     const transporter = nodemailer.createTransport({
         service: 'gmail', // Utilisez votre service SMTP préféré
         auth: {

@@ -1,10 +1,9 @@
 import { validationResult } from 'express-validator';
 import bcrypt from 'bcrypt';
-import { Chercheur } from '../models/Chercheur';
-import { Groupe } from '../models/Groupe';
-import { t } from '../utils/translation';
-import { generateRandomPassword } from '../utils/password';
-import { sendAccountEmail } from '../utils/email';
+import Chercheur from '../models/Chercheur.js';
+import { t } from '../utils/i18n.js';
+import { generateRandomPassword } from '../utils/generatePassword.js';
+import { sendAccountEmail } from '../utils/sendMail.js';
 
 // Créer un chercheur
 export const createChercheur = async (req, res) => {

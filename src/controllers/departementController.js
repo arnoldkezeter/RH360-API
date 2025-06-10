@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 
 // Créer un département
 export const createDepartement = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -62,7 +62,7 @@ export const createDepartement = async (req, res) => {
 
 // Modifier un département
 export const updateDepartement = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { code, nomFr, nomEn, region } = req.body;
 
@@ -139,7 +139,7 @@ export const updateDepartement = async (req, res) => {
 // Supprimer un département
 export const deleteDepartement = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -163,27 +163,32 @@ export const deleteDepartement = async (req, res) => {
 export const getDepartements = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
         const total = await Departement.countDocuments();
 
         const departements = await Departement.find()
-        .populate('region', lang === 'en' ? 'nomEn' : 'nomFr')
+        .populate({
+            path: 'region',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
         .skip((page - 1) * limit)
         .limit(limit)
         .sort({ [sortField]: 1 })
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: departements,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        }
+            success: true,
+            data: {
+                departements,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -193,17 +198,23 @@ export const getDepartements = async (req, res) => {
 // Récupérer un département par id
 export const getDepartementById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
-        const departement = await Departement.findById(id).populate('region').lean();
+        const departement = await Departement.findById(id)
+        .populate({
+            path: 'region',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .lean();
 
         if (!departement) {
-        return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
+            return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
         }
 
         return res.status(200).json({ success: true, data: departement });
@@ -215,7 +226,7 @@ export const getDepartementById = async (req, res) => {
 // Recherche par nomFr, nomEn ou code
 export const searchDepartementsByNameOrCode = async (req, res) => {
     const { term } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!term) {
         return res.status(400).json({ success: false, message: t('terme_requis', lang) });
@@ -229,9 +240,24 @@ export const searchDepartementsByNameOrCode = async (req, res) => {
             { nomEn: regex },
             { code: regex }
         ]
-        }).populate('region').lean();
+        }).populate({
+            path: 'region',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .lean();
 
-        return res.status(200).json({ success: true, data: results });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                departements:results,
+                totalItems:results.length,
+                currentPage:1,
+                totalPages:1,
+                pageSize:limit 
+
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
@@ -240,7 +266,10 @@ export const searchDepartementsByNameOrCode = async (req, res) => {
 // Liste des départements par région
 export const getDepartementsByRegion = async (req, res) => {
     const { regionId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(regionId)) {
         return res.status(400).json({ success: false, message: t('region_invalide', lang) });
@@ -249,14 +278,31 @@ export const getDepartementsByRegion = async (req, res) => {
     try {
         const region = await Region.findById(regionId);
         if (!region) {
-        return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
+            return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
         }
 
+        const total = await Departement.countDocuments();
+
         const departements = await Departement.find({ region: regionId })
-        .populate('region', lang === 'en' ? 'nomEn' : 'nomFr')
+        .populate({
+            path: 'region',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .skip((page - 1) * limit)
+        .limit(limit)
         .lean();
 
-        return res.status(200).json({ success: true, data: departements });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                departements,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }

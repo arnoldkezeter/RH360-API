@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 
 // Ajouter
 export const createFamilleMetier = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -57,7 +57,7 @@ export const createFamilleMetier = async (req, res) => {
 
 // Modifier
 export const updateFamilleMetier = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { id } = req.params;
   const { nomFr, nomEn, descriptionFr, descriptionEn } = req.body;
 
@@ -124,7 +124,7 @@ export const updateFamilleMetier = async (req, res) => {
 
 // Supprimer
 export const deleteFamilleMetier = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -162,7 +162,7 @@ export const deleteFamilleMetier = async (req, res) => {
 export const getFamillesMetier = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
   try {
@@ -175,12 +175,14 @@ export const getFamillesMetier = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: familles,
-      pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-      },
+      data: {
+        familles,
+        totalItems:total,
+        currentPage:page,
+        totalPages: Math.ceil(total / limit),
+        pageSize:limit 
+      }
+      
     });
   } catch (err) {
     return res.status(500).json({
@@ -194,7 +196,7 @@ export const getFamillesMetier = async (req, res) => {
 // Par ID
 export const getFamilleMetierById = async (req, res) => {
   const { id } = req.params;
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({
@@ -227,7 +229,7 @@ export const getFamilleMetierById = async (req, res) => {
 
 // Dropdown
 export const getFamillesMetierForDropdown = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
   try {
@@ -237,7 +239,14 @@ export const getFamillesMetierForDropdown = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: familles,
+      data: {
+        familles,
+        totalItems:familles.length,
+        currentPage:1,
+        totalPages: 1,
+        pageSize:familles.length 
+      
+      },
     });
   } catch (err) {
     return res.status(500).json({
@@ -250,33 +259,39 @@ export const getFamillesMetierForDropdown = async (req, res) => {
 
 // Recherche
 export const searchFamilleMetierByName = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-  const { nom } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { nom } = req.query;
 
-  if (!nom) {
-    return res.status(400).json({
-      success: false,
-      message: t('nom_requis', lang),
-    });
-  }
+    if (!nom) {
+        return res.status(400).json({
+          success: false,
+          message: t('nom_requis', lang),
+        });
+    }
 
-  try {
-    const field = lang === 'en' ? 'nomEn' : 'nomFr';
-    const familles = await FamilleMetier.find({
-      [field]: { $regex: new RegExp(nom, 'i') },
-    })
-      .sort({ [field]: 1 })
-      .lean();
+    try {
+        const field = lang === 'en' ? 'nomEn' : 'nomFr';
+        const familles = await FamilleMetier.find({
+          [field]: { $regex: new RegExp(nom, 'i') },
+        })
+          .sort({ [field]: 1 })
+          .lean();
 
-    return res.status(200).json({
-      success: true,
-      data: familles,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: t('erreur_serveur', lang),
-      error: err.message,
-    });
-  }
+        return res.status(200).json({
+          success: true,
+          data: {
+            familles,
+            totalItems:familles.length,
+            currentPage:1,
+            totalPages: 1,
+            pageSize:familles.length 
+          },
+        });
+    } catch (err) {
+        return res.status(500).json({
+          success: false,
+          message: t('erreur_serveur', lang),
+          error: err.message,
+        });
+    }
 };

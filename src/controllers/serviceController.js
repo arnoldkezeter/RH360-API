@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 
 // Créer un service
 export const createService = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -97,7 +97,7 @@ export const createService = async (req, res) => {
 
 // Modifier un service
 export const updateService = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn, chefService, structure, nbPlaceStage } = req.body;
 
@@ -202,7 +202,7 @@ export const updateService = async (req, res) => {
 // Supprimer un service
 export const deleteService = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -240,7 +240,7 @@ export const deleteService = async (req, res) => {
 export const getServices = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -258,12 +258,13 @@ export const getServices = async (req, res) => {
 
         return res.status(200).json({
         success: true,
-        data: services,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        },
+        data: {
+            services,
+            totalItems:total,
+            currentPage:page,
+            totalPages: Math.ceil(total / limit),
+            pageSize:limit
+        }
         });
 
     } catch (err) {
@@ -278,7 +279,7 @@ export const getServices = async (req, res) => {
 // Récupérer un service par id
 export const getServiceById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -303,8 +304,14 @@ export const getServiceById = async (req, res) => {
         }
 
         return res.status(200).json({
-        success: true,
-        data: service,
+            success: true,
+            data:{ 
+                services:[service],
+                totalItems:1,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:1
+            },
         });
 
     } catch (err) {
@@ -319,7 +326,7 @@ export const getServiceById = async (req, res) => {
 // Recherche par nomFr ou nomEn selon la langue
 export const searchServicesByName = async (req, res) => {
     const { nom } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!nom) {
         return res.status(400).json({
@@ -341,8 +348,14 @@ export const searchServicesByName = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: services,
+            success: true,
+            data: {
+                services,
+                totalItems:services.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:services.length
+            },
         });
 
     } catch (err) {
@@ -357,7 +370,9 @@ export const searchServicesByName = async (req, res) => {
 // Liste des services par structure
 export const getServicesByStructure = async (req, res) => {
     const { structureId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(structureId)) {
         return res.status(400).json({
@@ -367,7 +382,11 @@ export const getServicesByStructure = async (req, res) => {
     }
 
     try {
+        const total = await Service.countDocuments();
+        
         const services = await Service.find({ structure: structureId })
+        .skip((page - 1) * limit)
+        .limit(limit)
         .populate([
             { path: 'chefService', select: 'nom' },
             { path: 'structure', select: 'nomFr nomEn' }
@@ -375,8 +394,14 @@ export const getServicesByStructure = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: services,
+            success: true,
+            data: {
+                services,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            }
         });
 
     } catch (err) {

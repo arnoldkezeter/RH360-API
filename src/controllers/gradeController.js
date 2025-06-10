@@ -6,7 +6,7 @@ import { t } from '../utils/i18n.js';
 
 // Créer un grade
 export const createGrade = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -58,7 +58,7 @@ export const createGrade = async (req, res) => {
 
 // Modifier un grade
 export const updateGrade = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn } = req.body;
 
@@ -125,7 +125,7 @@ export const updateGrade = async (req, res) => {
 
 // Supprimer un grade
 export const deleteGrade = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -163,7 +163,7 @@ export const deleteGrade = async (req, res) => {
 export const getGrades = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -175,13 +175,14 @@ export const getGrades = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: grades,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        },
+            success: true,
+            data: {
+                grades,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
         });
     } catch (err) {
         return res.status(500).json({
@@ -195,7 +196,7 @@ export const getGrades = async (req, res) => {
 // Détail par ID
 export const getGradeById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -228,7 +229,7 @@ export const getGradeById = async (req, res) => {
 
 // Dropdown
 export const getGradesForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -238,7 +239,13 @@ export const getGradesForDropdown = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: grades,
+            data: {
+                grades,
+                totalItems:grades.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:grades.length 
+            },
         });
     } catch (err) {
         return res.status(500).json({
@@ -251,7 +258,7 @@ export const getGradesForDropdown = async (req, res) => {
 
 // Recherche
 export const searchGradesByName = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { nom } = req.query;
 
     if (!nom) {
@@ -271,7 +278,13 @@ export const searchGradesByName = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: grades,
+            data: {
+                grades,
+                totalItems:grades.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:grades.length 
+            },
         });
     } catch (err) {
         return res.status(500).json({

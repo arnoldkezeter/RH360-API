@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 
 // Créer une commune
 export const createCommune = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -61,7 +61,7 @@ export const createCommune = async (req, res) => {
 
 // Modifier une commune
 export const updateCommune = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { code, nomFr, nomEn, departement } = req.body;
 
@@ -138,7 +138,7 @@ export const updateCommune = async (req, res) => {
 // Supprimer une commune
 export const deleteCommune = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -162,7 +162,7 @@ export const deleteCommune = async (req, res) => {
 export const getCommunes = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -177,12 +177,14 @@ export const getCommunes = async (req, res) => {
 
     return res.status(200).json({
         success: true,
-        data: communes,
-        pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-        }
+        data: {
+            communes,
+            totalItems:total,
+            currentPage:page,
+            totalPages: Math.ceil(total / limit),
+            pageSize:limit
+        },
+        
     });
     } catch (err) {
     return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -192,7 +194,7 @@ export const getCommunes = async (req, res) => {
 // Récupérer une commune par id
 export const getCommuneById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -214,7 +216,7 @@ export const getCommuneById = async (req, res) => {
 // Recherche par nomFr, nomEn ou code
 export const searchCommunesByNameOrCode = async (req, res) => {
     const { term } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!term) {
         return res.status(400).json({ success: false, message: t('terme_requis', lang) });
@@ -233,7 +235,16 @@ export const searchCommunesByNameOrCode = async (req, res) => {
         .limit(20)
         .lean();
 
-        return res.status(200).json({ success: true, data: results });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                communes:results,
+                totalItems:results.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:results.length 
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
@@ -242,7 +253,9 @@ export const searchCommunesByNameOrCode = async (req, res) => {
 // Liste des communes par département
 export const getCommunesByDepartement = async (req, res) => {
     const { departementId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(departementId)) {
         return res.status(400).json({ success: false, message: t('departement_invalide', lang) });
@@ -253,10 +266,28 @@ export const getCommunesByDepartement = async (req, res) => {
         if (!departementExists) {
         return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
         }
+        const total = await Commune.countDocuments();
+        const communes = await Commune.find({ departement: departementId })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .sort(lang === 'en' ? 'nomEn' : 'nomFr')
+        .populate({
+            path: 'departement',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .lean();
 
-        const communes = await Commune.find({ departement: departementId }).sort(lang === 'en' ? 'nomEn' : 'nomFr').lean();
-
-        return res.status(200).json({ success: true, data: communes });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                communes,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }

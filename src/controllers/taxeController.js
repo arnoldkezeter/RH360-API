@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 
 // Créer une taxe
 export const createTaxe = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -43,7 +43,7 @@ export const createTaxe = async (req, res) => {
 
 // Modifier une taxe
 export const updateTaxe = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { natureFr, natureEn, taux } = req.body;
 
@@ -100,7 +100,7 @@ export const updateTaxe = async (req, res) => {
 // Supprimer une taxe
 export const deleteTaxe = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -124,7 +124,7 @@ export const deleteTaxe = async (req, res) => {
 export const getTaxes = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'natureEn' : 'natureFr';
 
     try {
@@ -137,13 +137,14 @@ export const getTaxes = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: taxes,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        }
+            success: true,
+            data: {
+                taxes,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            }
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -153,7 +154,7 @@ export const getTaxes = async (req, res) => {
 // Récupérer une taxe par id
 export const getTaxeById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -166,7 +167,16 @@ export const getTaxeById = async (req, res) => {
         return res.status(404).json({ success: false, message: t('taxe_non_trouvee', lang) });
         }
 
-        return res.status(200).json({ success: true, data: taxe });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                taxes:[taxe],
+                totalItems:1,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:1 
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
@@ -175,7 +185,7 @@ export const getTaxeById = async (req, res) => {
 // Recherche par nature (natureFr ou natureEn selon la langue)
 export const searchTaxesByNature = async (req, res) => {
     const { nature } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!nature) {
         return res.status(400).json({ success: false, message: t('nature_requise', lang) });
@@ -188,7 +198,16 @@ export const searchTaxesByNature = async (req, res) => {
         [queryField]: { $regex: nature, $options: 'i' }
         }).lean();
 
-        return res.status(200).json({ success: true, data: taxes });
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                taxes,
+                totalItems:taxes.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:taxes.length
+            } 
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }

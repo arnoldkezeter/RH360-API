@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 
 // Ajouter un poste de travail
 export const createPosteDeTravail = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -77,7 +77,7 @@ export const createPosteDeTravail = async (req, res) => {
 
 // Modifier un poste de travail
 export const updatePosteDeTravail = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn, familleMetier } = req.body;
 
@@ -164,7 +164,7 @@ export const updatePosteDeTravail = async (req, res) => {
 // Supprimer un poste de travail
 export const deletePosteDeTravail = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -202,7 +202,7 @@ export const deletePosteDeTravail = async (req, res) => {
 export const getPostesDeTravail = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -220,13 +220,14 @@ export const getPostesDeTravail = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: postes,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        },
+            success: true,
+            data: {
+                postes,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
         });
 
     } catch (err) {
@@ -240,7 +241,7 @@ export const getPostesDeTravail = async (req, res) => {
 
 // Récupérer un poste par id
 export const getPosteDeTravailById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -282,7 +283,7 @@ export const getPosteDeTravailById = async (req, res) => {
 
 // Recherche par nomFr ou nomEn selon lang
 export const searchPostesDeTravailByName = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { nom } = req.query;
 
     if (!nom) {
@@ -306,8 +307,14 @@ export const searchPostesDeTravailByName = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: postes,
+            success: true,
+            data: {
+                postes,
+                totalItems:postes.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:postes.length 
+            },
         });
 
     } catch (err) {
@@ -322,7 +329,9 @@ export const searchPostesDeTravailByName = async (req, res) => {
 // Liste des postes par familleMetier
 export const getPostesByFamilleMetier = async (req, res) => {
     const { familleMetierId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(familleMetierId)) {
         return res.status(400).json({
@@ -332,7 +341,12 @@ export const getPostesByFamilleMetier = async (req, res) => {
     }
 
     try {
+        
+        const total = await PosteDeTravail.countDocuments();
+
         const postes = await PosteDeTravail.find({ familleMetier: familleMetierId })
+        .skip((page - 1) * limit)
+        .limit(limit)
         .populate({
             path: 'familleMetier',
             select: 'nomFr nomEn',
@@ -341,8 +355,14 @@ export const getPostesByFamilleMetier = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: postes,
+            success: true,
+            data: {
+                postes,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            },
         });
     } catch (err) {
         return res.status(500).json({

@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 
 // Ajouter
 export const createAxeStrategique = async (req, res) => {
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Validation des champs obligatoires
     const errors = validationResult(req);
@@ -67,7 +67,7 @@ export const createAxeStrategique = async (req, res) => {
 
 // Modifier
 export const updateAxeStrategique = async (req, res) => {
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn } = req.body;
 
@@ -143,7 +143,7 @@ export const updateAxeStrategique = async (req, res) => {
 // Supprimer
 export const deleteAxeStrategique = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Vérification de la validité de l'identifiant
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -182,13 +182,13 @@ export const deleteAxeStrategique = async (req, res) => {
 export const getAxesStrategique = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
   
     try {
         const total = await AxeStrategique.countDocuments();
     
-        const axestrategiques = await AxeStrategique.find()
+        const axeStrategiques = await AxeStrategique.find()
             .skip((page - 1) * limit)
             .limit(limit)
             .sort({ [sortField]: 1 })
@@ -196,12 +196,13 @@ export const getAxesStrategique = async (req, res) => {
     
         return res.status(200).json({
             success: true,
-            data: axestrategiques,
-            pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-            },
+            data: {
+                axeStrategiques,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            }
         });
     } catch (err) {
         return res.status(500).json({
@@ -215,7 +216,7 @@ export const getAxesStrategique = async (req, res) => {
 
 //Strucuture par Id
 export const getAxeStrategiqueById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase()?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     
   
@@ -228,10 +229,10 @@ export const getAxeStrategiqueById = async (req, res) => {
             });
         }
   
-        const axestrategique = await AxeStrategique.findById(id)
+        const axeStrategique = await AxeStrategique.findById(id)
             .lean();
     
-        if (!axestrategique) {
+        if (!axeStrategique) {
             return res.status(404).json({
             success: false,
             message: t('axe_strategique_non_trouvee', lang),
@@ -240,7 +241,13 @@ export const getAxeStrategiqueById = async (req, res) => {
     
         return res.status(200).json({
             success: true,
-            data: axestrategique,
+            data: {
+                axeStrategiques:axeStrategique,
+                totalItems:1,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:1
+            },
         });
     
     } catch (error) {
@@ -256,7 +263,7 @@ export const getAxeStrategiqueById = async (req, res) => {
 
 //Recherher par nom
 export const searchAxeStrategiqueByName = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { nom } = req.query;
   
     if (!nom) {
@@ -269,7 +276,7 @@ export const searchAxeStrategiqueByName = async (req, res) => {
     try {
         const queryField = lang === 'en' ? 'nomEn' : 'nomFr';
     
-        const axestrategiques = await AxeStrategique.find({
+        const axeStrategiques = await AxeStrategique.find({
             [queryField]: { $regex: new RegExp(nom, 'i') }, // Recherche insensible à la casse
         })
             .sort({ [queryField]: 1 }) // Tri alphabétique par langue
@@ -277,7 +284,13 @@ export const searchAxeStrategiqueByName = async (req, res) => {
     
         return res.status(200).json({
             success: true,
-            data: axestrategiques,
+            data: {
+                axeStrategiques,
+                totalItems:axeStrategiques.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:axeStrategiques.length
+            },
         });
     } catch (error) {
         console.error('Erreur recherche axe strategique par nom:', error);
@@ -292,25 +305,31 @@ export const searchAxeStrategiqueByName = async (req, res) => {
 
 //Charger pour les menu deroulant
 export const getAxesStrategiqueForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
   
     try {
-      const axestrategiques = await AxeStrategique.find({}, '_id nomFr nomEn')
+      const axeStrategiques = await AxeStrategique.find({}, '_id nomFr nomEn')
         .sort({ [sortField]: 1 })
         .lean();
   
-      return res.status(200).json({
-        success: true,
-        data: axestrategiques,
-      });
+        return res.status(200).json({
+            success: true,
+            data: {
+                axeStrategiques,
+                totalItems:axeStrategiques.length,
+                currentPage:1,
+                totalPages: axeStrategiques.length,
+                pageSize:1
+            },
+        });
     } catch (err) {
-      console.error('Erreur getAxesStrategiqueForDropdown:', err);
-      return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: err.message,
-      });
+        console.error('Erreur getAxesStrategiqueForDropdown:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
     }
 };
 

@@ -13,8 +13,8 @@ import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authentificate,createRegion);
-router.put('/:id', validateFields, authentificate, updateRegion);
+router.post('/', authentificate, validateFields, createRegion);
+router.put('/:id', authentificate, validateFields, updateRegion);
 router.delete('/:id', authentificate, deleteRegion);
 router.get('/', authentificate, getRegions);
 router.get('/search/by-name-or-code', authentificate, searchRegionsByNameOrCode);

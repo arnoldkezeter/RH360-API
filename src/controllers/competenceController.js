@@ -6,7 +6,7 @@ import { t } from '../utils/i18n.js';
 
 // Ajouter une compétence
 export const createCompetence = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const errors = validationResult(req);
 
   if (!errors.isEmpty()) {
@@ -56,7 +56,7 @@ export const createCompetence = async (req, res) => {
 
 // Modifier une compétence
 export const updateCompetence = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -127,7 +127,7 @@ export const updateCompetence = async (req, res) => {
 
 // Supprimer une compétence
 export const deleteCompetence = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -152,7 +152,7 @@ export const deleteCompetence = async (req, res) => {
 export const getCompetences = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
   try {
@@ -166,12 +166,13 @@ export const getCompetences = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: competences,
-      pagination: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-      },
+      data: {
+        competences,
+        totalItems:total,
+        currentPage:page,
+        totalPages: Math.ceil(total / limit),
+        pageSize:limit 
+      }
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -180,7 +181,7 @@ export const getCompetences = async (req, res) => {
 
 // Par ID
 export const getCompetenceById = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -204,7 +205,7 @@ export const getCompetenceById = async (req, res) => {
 
 // Dropdown
 export const getCompetencesForDropdown = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
   try {
@@ -212,7 +213,16 @@ export const getCompetencesForDropdown = async (req, res) => {
       .sort({ [sortField]: 1 })
       .lean();
 
-    return res.status(200).json({ success: true, data: competences });
+    return res.status(200).json({ 
+      success: true, 
+      data: {
+        competences,
+        totalItems:competences.length,
+        currentPage:1,
+        totalPages: 1,
+        pageSize:competences.length 
+      } 
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
   }
@@ -221,7 +231,7 @@ export const getCompetencesForDropdown = async (req, res) => {
 // Rechercher des compétences par nom
 export const searchCompetenceByName = async (req, res) => {
     const { query } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const searchField = lang === 'en' ? 'nomEn' : 'nomFr';
   
     if (!query || query.trim() === '') {
@@ -239,13 +249,68 @@ export const searchCompetenceByName = async (req, res) => {
             .limit(10)
             .lean();
     
-        res.status(200).json({ success: true, data: results });
+        res.status(200).json({ 
+          success: true,
+          data: {
+            results,
+            totalItems:results.length,
+            currentPage:1,
+            totalPages:1,
+            pageSize:results.length 
+          } 
+        });
     } catch (err) {
       res.status(500).json({
         success: false,
         message: t('erreur_serveur', lang),
         error: err.message
       });
+    }
+};
+
+
+// Liste des départements par région
+export const getCompetenceByFamille = async (req, res) => {
+    const { familleId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const lang = req.headers['accept-language'] || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(familleId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    try {
+        const famille = await FamilleMetier.findById(familleId);
+        if (!famille) {
+            return res.status(404).json({ success: false, message: t('famille_metier_non_trouvee', lang) });
+        }
+
+        const total = await Competence.countDocuments();
+
+        const competences = await Competence.find({ familleMetier: familleId })
+        .populate({
+            path: 'familleMetier',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+        return res.status(200).json({ 
+            success: true, 
+            data: {
+                competences,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit 
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
   

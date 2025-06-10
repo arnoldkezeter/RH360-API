@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 
 // Créer une catégorie professionnelle
 export const createCategorieProfessionnelle = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -60,7 +60,7 @@ export const createCategorieProfessionnelle = async (req, res) => {
 
 // Modifier une catégorie professionnelle
 export const updateCategorieProfessionnelle = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn, grade } = req.body;
 
@@ -126,7 +126,7 @@ export const updateCategorieProfessionnelle = async (req, res) => {
 // Supprimer une catégorie professionnelle
 export const deleteCategorieProfessionnelle = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -150,7 +150,7 @@ export const deleteCategorieProfessionnelle = async (req, res) => {
 export const getCategoriesProfessionnelles = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
 
     try {
@@ -164,13 +164,14 @@ export const getCategoriesProfessionnelles = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: categories,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        }
+            success: true,
+            data: {
+                categories,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            }
         });
 
     } catch (err) {
@@ -181,7 +182,7 @@ export const getCategoriesProfessionnelles = async (req, res) => {
 // Récupérer une catégorie professionnelle par id
 export const getCategorieProfessionnelleById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -193,10 +194,16 @@ export const getCategorieProfessionnelleById = async (req, res) => {
         .lean();
 
         if (!categorie) {
-        return res.status(404).json({ success: false, message: t('categorie_professionnelle_non_trouvee', lang) });
+            return res.status(404).json({ 
+                success: false, 
+                message: t('categorie_professionnelle_non_trouvee', lang) 
+            });
         }
 
-        return res.status(200).json({ success: true, data: categorie });
+        return res.status(200).json({ 
+            success: true, 
+            data: categorie
+         });
 
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -206,7 +213,7 @@ export const getCategorieProfessionnelleById = async (req, res) => {
 // Recherche par nom (nomFr ou nomEn selon la langue)
 export const searchCategoriesProfessionnellesByName = async (req, res) => {
     const { nom } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!nom) {
         return res.status(400).json({ success: false, message: t('nom_requis', lang) });
@@ -219,7 +226,16 @@ export const searchCategoriesProfessionnellesByName = async (req, res) => {
         [queryField]: { $regex: nom, $options: 'i' }
         }).populate('grade', 'nomFr nomEn').lean();
 
-        return res.status(200).json({ success: true, data: categories });
+        return res.status(200).json({
+            success: true, 
+            data: {
+                categories, 
+                totalItems:categories.length,
+                currentPage:1,
+                totalPages:1,
+                pageSize:categories.length
+            }
+        });
 
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -229,8 +245,10 @@ export const searchCategoriesProfessionnellesByName = async (req, res) => {
 
 // Liste des categories par grade
 export const getCategoriesByGrade = async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const { gradeId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(gradeId)) {
         return res.status(400).json({
@@ -240,7 +258,11 @@ export const getCategoriesByGrade = async (req, res) => {
     }
 
     try {
+         const total = await CategorieProfessionnelle.countDocuments();
+        
         const categories = await CategorieProfessionnelle.find({ grade: gradeId })
+        .skip((page - 1) * limit)
+        .limit(limit)
         .populate({
             path: 'grade',
             select: 'nomFr nomEn',
@@ -249,8 +271,14 @@ export const getCategoriesByGrade = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: categories,
+            success: true,
+            data: {
+                categories,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            },
         });
     } catch (err) {
         return res.status(500).json({

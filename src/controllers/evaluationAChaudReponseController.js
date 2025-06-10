@@ -2,7 +2,7 @@ import EvaluationAChaudReponse from '../models/EvaluationAChaudReponse.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
-import Formation from '../models/Fomation.js';
+import Formation from '../models/Formation.js';
 import { getStatsGroupedByField } from '../services/evaluationAChaudReponseService.js';
 
 // Soumettre une réponse à une évaluation

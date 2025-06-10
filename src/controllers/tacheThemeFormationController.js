@@ -3,7 +3,7 @@ import { t } from '../utils/i18n.js';
 import TacheThemeFormation from '../models/TacheThemeFormation.js';
 import ThemeFormation from '../models/ThemeFormation.js';
 import TacheGenerique from '../models/TacheGenerique.js';
-import Formation from '../models/Fomation.js';
+import Formation from '../models/Formation.js';
 
 
 //Lier une tache à un thème

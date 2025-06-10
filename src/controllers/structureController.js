@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 
 // Ajouter
 export const createStructure = async (req, res) => {
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Validation des champs obligatoires
     const errors = validationResult(req);
@@ -92,7 +92,7 @@ export const createStructure = async (req, res) => {
 
 // Modifier
 export const updateStructure = async (req, res) => {
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { nomFr, nomEn, descriptionFr, descriptionEn, chefStructure } = req.body;
 
@@ -188,7 +188,7 @@ export const updateStructure = async (req, res) => {
 // Supprimer
 export const deleteStructure = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Vérification de la validité de l'identifiant
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -227,7 +227,7 @@ export const deleteStructure = async (req, res) => {
 export const getStructures = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
   
     try {
@@ -246,14 +246,16 @@ export const getStructures = async (req, res) => {
     
         return res.status(200).json({
             success: true,
-            data: structures,
-            pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
+            data: {
+                structures,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
             },
         });
     } catch (err) {
+        console.log(err.message)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -265,9 +267,8 @@ export const getStructures = async (req, res) => {
 
 //Strucuture par Id
 export const getStructureById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase()?.tolowercase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
-    
   
     try {
         // Vérifie que l'ID est un ObjectId MongoDB valide
@@ -295,7 +296,13 @@ export const getStructureById = async (req, res) => {
     
         return res.status(200).json({
             success: true,
-            data: structure,
+            data: {
+                structure,
+                totalItems:1,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:1,
+            },
         });
     
     } catch (error) {
@@ -311,48 +318,54 @@ export const getStructureById = async (req, res) => {
 
 //Recherher par nom
 export const searchStructureByName = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { nom } = req.query;
   
     if (!nom) {
-      return res.status(400).json({
-        success: false,
-        message: t('nom_requis', lang), // Assure-toi que cette clé existe bien dans les traductions
-      });
+        return res.status(400).json({
+            success: false,
+            message: t('nom_requis', lang), // Assure-toi que cette clé existe bien dans les traductions
+        });
     }
   
     try {
-      const queryField = lang === 'en' ? 'nomEn' : 'nomFr';
-  
-      const structures = await Structure.find({
-        [queryField]: { $regex: new RegExp(nom, 'i') }, // Recherche insensible à la casse
-      })
-        .populate({
-          path: 'chefStructure',
-          select: 'nom prenom',
-          options: { strictPopulate: false },
+        const queryField = lang === 'en' ? 'nomEn' : 'nomFr';
+    
+        const structures = await Structure.find({
+            [queryField]: { $regex: new RegExp(nom, 'i') }, // Recherche insensible à la casse
         })
-        .sort({ [queryField]: 1 }) // Tri alphabétique par langue
-        .lean();
-  
-      return res.status(200).json({
-        success: true,
-        data: structures,
-      });
+            .populate({
+            path: 'chefStructure',
+            select: 'nom prenom',
+            options: { strictPopulate: false },
+            })
+            .sort({ [queryField]: 1 }) // Tri alphabétique par langue
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                structures,
+                totalItems:structures.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:structures.lenght
+            },
+        });
     } catch (error) {
-      console.error('Erreur recherche structure par nom:', error);
-      return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: error.message,
-      });
+        console.error('Erreur recherche structure par nom:', error);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: error.message,
+        });
     }
   };
 
 
 //Charger pour les menu deroulant
 export const getStructuresForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
   
     try {

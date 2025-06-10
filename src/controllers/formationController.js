@@ -3,7 +3,7 @@ import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
 import ThemeFormation from '../models/ThemeFormation.js';
 import { calculerAge } from '../utils/calculerAge.js';
-import Formation from '../models/Fomation.js';
+import Formation from '../models/Formation.js';
 import BudgetFormation from '../models/BudgetFormation.js';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 import { enrichirFormations } from '../services/formationService.js';

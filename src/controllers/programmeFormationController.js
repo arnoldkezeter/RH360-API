@@ -2,7 +2,7 @@ import ProgrammeFormation from '../models/ProgrammeFormation.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import Utilisateur from '../models/Utilisateur.js';
-import Formation from '../models/Fomation.js';
+import Formation from '../models/Formation.js';
 import mongoose from 'mongoose';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 

@@ -60,7 +60,7 @@ connectDB();
 //Route d'autentification
 app.use('/api/v1/auth', authRoutes);
 
-app.use('/api/v1/structure', structureRoutes);
+app.use('/api/v1/structures', structureRoutes);
 app.use('/api/v1/axe-strategique', axeStrategiqueRoutes);
 app.use('/api/v1/cohorte', cohorteRoutes);
 app.use('/api/v1/competence', competenceRoutes);

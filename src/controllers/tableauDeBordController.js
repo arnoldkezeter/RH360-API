@@ -2,7 +2,7 @@
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
 import ThemeFormation from '../models/ThemeFormation.js';
-import Formation from '../models/Fomation.js';
+import Formation from '../models/Formation.js';
 import BudgetFormation from '../models/BudgetFormation.js';
 
 

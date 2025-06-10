@@ -35,8 +35,8 @@ export const login = async (req, res) => {
     const utilisateur = await Utilisateur.findOne({ email });
     if (!utilisateur) {
       return res.status(404).json({
-        success:false,
-         error: t('utilisateur_non_trouve', lang) 
+          success:false,
+          message: t('utilisateur_non_trouve', lang) 
         });
     }
 

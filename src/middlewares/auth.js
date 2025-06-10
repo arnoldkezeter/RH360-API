@@ -10,10 +10,10 @@ export const authentificate = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+      next();
   } catch {
-    return res.status(403).json({ error: t('token_invalide', lang) });
+     return res.status(403).json({ error: t('token_invalide', lang) });
   }
 };

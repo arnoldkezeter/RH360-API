@@ -6,7 +6,7 @@ const besoinFormationPredefiniSchema = new mongoose.Schema({
   titreEn: { type: String, required: true },
   descriptionFr: { type: String },
   descriptionEn: { type: String },
-  posteDeTravail: { type: mongoose.Schema.Types.ObjectId, ref: 'PosteDeTravail', required: true }, // au lieu de familleMetier
+  posteDeTravail: { type: mongoose.Schema.Types.ObjectId, ref: 'PosteDeTravail', required: false }, // au lieu de familleMetier
   actif: { type: Boolean, default: true }
 }, { timestamps: true });
 

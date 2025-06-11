@@ -84,7 +84,7 @@ app.use('/api/v1/tache-generique', tacheGeneriqueRoutes);
 app.use('/api/v1/tache-theme-formation', tacheThemeFormationRoutes);
 app.use('/api/v1/tableau-de-bord', tableauDeBordRoutes);
 app.use('/api/v1/programme-de-formation', programmeFormationRoutes);
-app.use('/api/v1/besoin-formation-predefini', besoinFormationPredefiniRoutes);
+app.use('/api/v1/besoins-formation-predefinis', besoinFormationPredefiniRoutes);
 app.use('/api/v1/besoin-formation-exprime', besoinFormationExprimeRoutes);
 app.use('/api/v1/evaluation-a-chaud', evaluationAChaudRoutes);
 app.use('/api/v1/evaluation-a-chaud-reponse', evaluationAChaudReponseRoutes);

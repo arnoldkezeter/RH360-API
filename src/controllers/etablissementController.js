@@ -166,13 +166,15 @@ export const getEtablissements = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: etablissements,
-        pagination: {
-            total,
-            page,
-            pages: Math.ceil(total / limit),
-        },
+            success: true,
+            data: {
+                etablissements,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            },
+        
         });
 
     } catch (err) {
@@ -228,8 +230,15 @@ export const getEtablissementsForDropdown = async (req, res) => {
         .lean();
 
         return res.status(200).json({
-        success: true,
-        data: etablissements,
+            success: true,
+            data:{ 
+                etablissements,
+                totalItems:etablissements.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:etablissements.length
+            
+            },
         });
 
     } catch (err) {
@@ -243,7 +252,7 @@ export const getEtablissementsForDropdown = async (req, res) => {
 
 export const searchEtablissementByName = async (req, res) => {
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { nom } = req.query;
+    const { nom, limit } = req.query;
 
     if (!nom) {
         return res.status(400).json({
@@ -253,15 +262,27 @@ export const searchEtablissementByName = async (req, res) => {
     }
 
     try {
-        // const field = lang === 'en' ? 'nomEn' : 'nomFr';
-        const field = 'nomFr';
-        const etablissements = await Etablissement.find({
-        [field]: { $regex: new RegExp(nom, 'i') },
-        }).sort({ [field]: 1 }).lean();
+        const field = lang === 'en' ? 'nomEn' : 'nomFr';
+       const query = {
+            [field]: { $regex: new RegExp(nom, 'i') },
+        };
+
+        let etablissementsQuery = Etablissement.find(query).sort({ [field]: 1 }).lean();
+        if (limit && !isNaN(limit)) {
+            etablissementsQuery = etablissementsQuery.limit(Number(limit));
+        }
+
+        const etablissements = await etablissementsQuery;
 
         return res.status(200).json({
-        success: true,
-        data: etablissements,
+            success: true,
+            data: {
+                etablissements,
+                totalItems:etablissements.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:etablissements.length
+            },
         });
 
     } catch (err) {

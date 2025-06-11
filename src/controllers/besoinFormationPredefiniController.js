@@ -20,22 +20,38 @@ export const createBesoinFormationPredefini = async (req, res) => {
     try {
         const { titreFr, titreEn, descriptionFr, descriptionEn, posteDeTravail } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(posteDeTravail)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
+        // if (!mongoose.Types.ObjectId.isValid(posteDeTravail)) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: t('identifiant_invalide', lang),
+        //     });
+        // }
 
-        const poste = await PosteDeTravail.findById(posteDeTravail);
-        if (!poste) {
-            return res.status(404).json({
-                success: false,
-                message: t('poste_de_travail_non_trouve', lang),
-            });
-        }
+        // const poste = await PosteDeTravail.findById(posteDeTravail);
+        // if (!poste) {
+        //     return res.status(404).json({
+        //         success: false,
+        //         message: t('poste_de_travail_non_trouve', lang),
+        //     });
+        // }
 
-        const existsFr = await BesoinFormationPredefini.findOne({ titreFr, posteDeTravail });
+        // const existsFr = await BesoinFormationPredefini.findOne({ titreFr, posteDeTravail });
+        // if (existsFr) {
+        //     return res.status(409).json({
+        //         success: false,
+        //         message: t('besoin_existant_fr', lang),
+        //     });
+        // }
+
+        // const existsEn = await BesoinFormationPredefini.findOne({ titreEn, posteDeTravail });
+        // if (existsEn) {
+        //     return res.status(409).json({
+        //         success: false,
+        //         message: t('besoin_existant_en', lang),
+        //     });
+        // }
+
+        const existsFr = await BesoinFormationPredefini.findOne({ titreFr });
         if (existsFr) {
             return res.status(409).json({
                 success: false,
@@ -43,7 +59,7 @@ export const createBesoinFormationPredefini = async (req, res) => {
             });
         }
 
-        const existsEn = await BesoinFormationPredefini.findOne({ titreEn, posteDeTravail });
+        const existsEn = await BesoinFormationPredefini.findOne({ titreEn });
         if (existsEn) {
             return res.status(409).json({
                 success: false,
@@ -56,7 +72,6 @@ export const createBesoinFormationPredefini = async (req, res) => {
             titreEn,
             descriptionFr,
             descriptionEn,
-            posteDeTravail,
         });
 
         return res.status(201).json({
@@ -104,26 +119,53 @@ export const updateBesoinFormationPredefini = async (req, res) => {
             });
         }
 
-        if (posteDeTravail && !mongoose.Types.ObjectId.isValid(posteDeTravail)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
+        // if (posteDeTravail && !mongoose.Types.ObjectId.isValid(posteDeTravail)) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: t('identifiant_invalide', lang),
+        //     });
+        // }
 
-        const poste = await PosteDeTravail.findById(posteDeTravail);
-        if (!poste) {
-            return res.status(404).json({
-                success: false,
-                message: t('poste_de_travail_non_trouve', lang),
-            });
-        }
+        // const poste = await PosteDeTravail.findById(posteDeTravail);
+        // if (!poste) {
+        //     return res.status(404).json({
+        //         success: false,
+        //         message: t('poste_de_travail_non_trouve', lang),
+        //     });
+        // }
 
-        if (titreFr && posteDeTravail) {
+        // if (titreFr && posteDeTravail) {
+        //     const duplicate = await BesoinFormationPredefini.findOne({
+        //         _id: { $ne: id },
+        //         titreFr,
+        //         posteDeTravail,
+        //     });
+        //     if (duplicate) {
+        //         return res.status(409).json({
+        //             success: false,
+        //             message: t('besoin_existant_fr', lang),
+        //         });
+        //     }
+        // }
+
+        // if (titreEn && posteDeTravail) {
+        //     const duplicate = await BesoinFormationPredefini.findOne({
+        //         _id: { $ne: id },
+        //         titreEn,
+        //         posteDeTravail,
+        //     });
+        //     if (duplicate) {
+        //         return res.status(409).json({
+        //             success: false,
+        //             message: t('besoin_existant_en', lang),
+        //         });
+        //     }
+        // }
+
+         if (titreFr) {
             const duplicate = await BesoinFormationPredefini.findOne({
                 _id: { $ne: id },
                 titreFr,
-                posteDeTravail,
             });
             if (duplicate) {
                 return res.status(409).json({
@@ -133,11 +175,10 @@ export const updateBesoinFormationPredefini = async (req, res) => {
             }
         }
 
-        if (titreEn && posteDeTravail) {
+        if (titreEn) {
             const duplicate = await BesoinFormationPredefini.findOne({
                 _id: { $ne: id },
                 titreEn,
-                posteDeTravail,
             });
             if (duplicate) {
                 return res.status(409).json({
@@ -151,7 +192,7 @@ export const updateBesoinFormationPredefini = async (req, res) => {
         if (titreEn) besoin.titreEn = titreEn;
         if (descriptionFr !== undefined) besoin.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) besoin.descriptionEn = descriptionEn;
-        if (posteDeTravail) besoin.posteDeTravail = posteDeTravail;
+        // if (posteDeTravail) besoin.posteDeTravail = posteDeTravail;
 
         await besoin.save();
 
@@ -230,12 +271,13 @@ export const getBesoinsFormationPredefinis = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: besoins,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
-            },
+            data: {
+                besoinFormationPredefinis:besoins,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
+            }
         });
 
     } catch (err) {
@@ -316,7 +358,13 @@ export const searchBesoinFormationPredefiniByTitre = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: besoins,
+            data: {
+                besoinFormationPredefinis:besoins,
+                totalItems:besoins.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:besoins.length
+            },
         });
 
     } catch (err) {
@@ -340,7 +388,13 @@ export const getBesoinsFormationPredefinisForDropdown = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: besoins,
+            data: {
+                besoinFormationPredefinis:besoins,
+                totalItems:besoins.length,
+                currentPage:1,
+                totalPages:1,
+                pageSize:besoins.length
+            },
         });
 
     } catch (err) {
@@ -384,11 +438,12 @@ export const getBesoinsParPosteDeTravail = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: besoins,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
+            data: {
+                getBesoinsFormationPredefinis:besoins,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
             },
         });
     } catch (err) {
@@ -440,11 +495,12 @@ export const getBesoinsParFamilleMetier = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: besoins,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
+            data: {
+                besoinFormationPredefinis:besoins,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
             },
         });
 

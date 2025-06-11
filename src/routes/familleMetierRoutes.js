@@ -13,8 +13,8 @@ import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authentificate,createFamilleMetier);
-router.put('/:id', validateFields, authentificate, updateFamilleMetier);
+router.post('/', authentificate, validateFields ,createFamilleMetier);
+router.put('/:id', authentificate, validateFields, updateFamilleMetier);
 router.delete('/:id', authentificate, deleteFamilleMetier);
 router.get('/', authentificate, getFamillesMetier);
 router.get('/dropdown/all', authentificate, getFamillesMetierForDropdown);

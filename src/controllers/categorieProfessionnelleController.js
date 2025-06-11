@@ -22,35 +22,32 @@ export const createCategorieProfessionnelle = async (req, res) => {
 
         // Vérifier unicité nomFr et nomEn
         if (await CategorieProfessionnelle.exists({ nomFr })) {
-        return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_fr', lang) });
+            return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_fr', lang) });
         }
         if (await CategorieProfessionnelle.exists({ nomEn })) {
-        return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_en', lang) });
+            return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_en', lang) });
         }
 
         // Vérifier que le grade existe si fourni
         if (grade) {
-        if (!mongoose.Types.ObjectId.isValid(grade)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const gradeFound = await Grade.findById(grade);
-        if (!gradeFound) {
-            return res.status(404).json({ success: false, message: t('grade_non_trouve', lang) });
-        }
+            if (!mongoose.Types.ObjectId.isValid(grade._id)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            
         }
 
         const categorie = await CategorieProfessionnelle.create({
-        nomFr,
-        nomEn,
-        descriptionFr,
-        descriptionEn,
-        grade
+            nomFr,
+            nomEn,
+            descriptionFr,
+            descriptionEn,
+            grade
         });
 
         return res.status(201).json({
-        success: true,
-        message: t('ajouter_succes', lang),
-        data: categorie
+            success: true,
+            message: t('ajouter_succes', lang),
+            data: categorie
         });
 
     } catch (err) {
@@ -80,34 +77,30 @@ export const updateCategorieProfessionnelle = async (req, res) => {
     try {
         const categorie = await CategorieProfessionnelle.findById(id);
         if (!categorie) {
-        return res.status(404).json({ success: false, message: t('categorie_professionnelle_non_trouvee', lang) });
+            return res.status(404).json({ success: false, message: t('categorie_professionnelle_non_trouvee', lang) });
         }
 
         // Vérifier unicité nomFr et nomEn sauf cet enregistrement
         if (nomFr) {
-        const existsFr = await CategorieProfessionnelle.findOne({ nomFr, _id: { $ne: id } });
-        if (existsFr) return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_fr', lang) });
-        categorie.nomFr = nomFr;
+            const existsFr = await CategorieProfessionnelle.findOne({ nomFr, _id: { $ne: id } });
+            if (existsFr) return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_fr', lang) });
+            categorie.nomFr = nomFr;
         }
 
         if (nomEn) {
-        const existsEn = await CategorieProfessionnelle.findOne({ nomEn, _id: { $ne: id } });
-        if (existsEn) return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_en', lang) });
-        categorie.nomEn = nomEn;
+            const existsEn = await CategorieProfessionnelle.findOne({ nomEn, _id: { $ne: id } });
+            if (existsEn) return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_en', lang) });
+            categorie.nomEn = nomEn;
         }
 
         if (descriptionFr !== undefined) categorie.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) categorie.descriptionEn = descriptionEn;
 
         if (grade) {
-        if (!mongoose.Types.ObjectId.isValid(grade)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const gradeFound = await Grade.findById(grade);
-        if (!gradeFound) {
-            return res.status(404).json({ success: false, message: t('grade_non_trouve', lang) });
-        }
-        categorie.grade = grade;
+            if (!mongoose.Types.ObjectId.isValid(grade._id)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            categorie.grade = grade;
         }
 
         await categorie.save();
@@ -229,7 +222,7 @@ export const searchCategoriesProfessionnellesByName = async (req, res) => {
         return res.status(200).json({
             success: true, 
             data: {
-                categories, 
+                categorieProfessionnelles:categories,
                 totalItems:categories.length,
                 currentPage:1,
                 totalPages:1,
@@ -273,7 +266,7 @@ export const getCategoriesByGrade = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                categories,
+                categorieProfessionnelles:categories,
                 totalItems:total,
                 currentPage:page,
                 totalPages: Math.ceil(total / limit),

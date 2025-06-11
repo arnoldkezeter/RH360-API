@@ -38,26 +38,20 @@ export const createPosteDeTravail = async (req, res) => {
         }
 
         // Valider familleMetier ObjectId et existence
-        if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+        if (!mongoose.Types.ObjectId.isValid(familleMetier._id)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
         });
         }
-        const famille = await FamilleMetier.findById(familleMetier);
-        if (!famille) {
-        return res.status(404).json({
-            success: false,
-            message: t('famille_metier_non_trouvee', lang),
-        });
-        }
+        
 
         const poste = await PosteDeTravail.create({
-        nomFr,
-        nomEn,
-        descriptionFr,
-        descriptionEn,
-        familleMetier,
+            nomFr,
+            nomEn,
+            descriptionFr,
+            descriptionEn,
+            familleMetier,
         });
 
         return res.status(201).json({
@@ -123,20 +117,13 @@ export const updatePosteDeTravail = async (req, res) => {
         }
 
         if (familleMetier) {
-        if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
-            return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-            });
-        }
-        const famille = await FamilleMetier.findById(familleMetier);
-        if (!famille) {
-            return res.status(404).json({
-            success: false,
-            message: t('famille_metier_non_trouvee', lang),
-            });
-        }
-        poste.familleMetier = familleMetier;
+            if (!mongoose.Types.ObjectId.isValid(familleMetier._id)) {
+                return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+                });
+            }
+            poste.familleMetier = familleMetier;
         }
 
         if (nomFr) poste.nomFr = nomFr;
@@ -222,7 +209,7 @@ export const getPostesDeTravail = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                postes,
+                posteDeTravails : postes,
                 totalItems:total,
                 currentPage:page,
                 totalPages: Math.ceil(total / limit),
@@ -309,7 +296,7 @@ export const searchPostesDeTravailByName = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                postes,
+                posteDeTravails : postes,
                 totalItems:postes.length,
                 currentPage:1,
                 totalPages: 1,
@@ -357,7 +344,7 @@ export const getPostesByFamilleMetier = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                postes,
+                posteDeTravails : postes,
                 totalItems:total,
                 currentPage:page,
                 totalPages: Math.ceil(total / limit),

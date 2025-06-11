@@ -19,8 +19,8 @@ router.post('/',validateFields, authentificate,createGrade);
 router.put('/:id',validateFields, authentificate, updateGrade);
 router.delete('/:id', authentificate, deleteGrade);
 router.get('/', authentificate, getGrades);
-router.get('/dropdown', authentificate, getGradesForDropdown);
-router.get('/search', authentificate, searchGradesByName);
+router.get('/dropdown/all', authentificate, getGradesForDropdown);
+router.get('/search/by-name', authentificate, searchGradesByName);
 router.get('/:id', authentificate, getGradeById);
 
 export default router;

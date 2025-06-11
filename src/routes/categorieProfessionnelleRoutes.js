@@ -14,8 +14,8 @@ import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authentificate, createCategorieProfessionnelle);
-router.put('/:id', validateFields, authentificate, updateCategorieProfessionnelle);
+router.post('/', authentificate, validateFields, createCategorieProfessionnelle);
+router.put('/:id',  authentificate, validateFields, updateCategorieProfessionnelle);
 router.delete('/:id', authentificate, deleteCategorieProfessionnelle);
 router.get('/', authentificate, getCategoriesProfessionnelles);
 router.get('/search/by-name', authentificate, searchCategoriesProfessionnellesByName);

@@ -18,9 +18,9 @@ export const createTaxe = async (req, res) => {
 
     try {
         const { natureFr, natureEn, taux } = req.body;
-        if(typeof taux === 'number' && !isNaN(taux)){
-            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
-        }
+        // if(typeof taux === 'number' && !isNaN(taux)){
+        //     return res.status(400).json({ message: t('taux_nombre_requis', lang) });
+        // }
         // Vérifier unicité natureFr et natureEn
         if (await Taxe.exists({ natureFr })) {
             return res.status(409).json({ success: false, message: t('taxe_existante_fr', lang) });
@@ -61,9 +61,9 @@ export const updateTaxe = async (req, res) => {
     }
 
     try {
-        if(typeof taux === 'number' && !isNaN(taux)){
-            return res.status(400).json({ message: t('montant_ht_nombre_requis', lang) });
-        }
+        // if(typeof taux === 'number' && !isNaN(taux)){
+        //     return res.status(400).json({ message: t('taux_nombre_requis', lang) });
+        // }
 
         const taxe = await Taxe.findById(id);
         if (!taxe) {

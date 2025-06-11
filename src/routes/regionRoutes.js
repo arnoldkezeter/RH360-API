@@ -6,7 +6,8 @@ import {
   deleteRegion,
   getRegions,
   getRegionById,
-  searchRegionsByNameOrCode
+  searchRegionsByNameOrCode,
+  getRegionsForDropdown
 } from '../controllers/regionController.js';
 import { validateFields } from '../middlewares/validateFields/validateRegion.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -19,5 +20,6 @@ router.delete('/:id', authentificate, deleteRegion);
 router.get('/', authentificate, getRegions);
 router.get('/search/by-name-or-code', authentificate, searchRegionsByNameOrCode);
 router.get('/:id', authentificate, getRegionById);
+router.get('/dropdown/all', authentificate, getRegionsForDropdown);
 
 export default router;

@@ -176,7 +176,7 @@ export const getFamillesMetier = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        familles,
+        familleMetiers:familles,
         totalItems:total,
         currentPage:page,
         totalPages: Math.ceil(total / limit),
@@ -240,7 +240,7 @@ export const getFamillesMetierForDropdown = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        familles,
+        familleMetiers:familles,
         totalItems:familles.length,
         currentPage:1,
         totalPages: 1,
@@ -280,7 +280,7 @@ export const searchFamilleMetierByName = async (req, res) => {
         return res.status(200).json({
           success: true,
           data: {
-            familles,
+            familleMetiers:familles,
             totalItems:familles.length,
             currentPage:1,
             totalPages: 1,

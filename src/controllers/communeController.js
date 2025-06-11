@@ -20,39 +20,39 @@ export const createCommune = async (req, res) => {
     try {
         const { code, nomFr, nomEn, departement } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(departement)) {
-        return res.status(400).json({ success: false, message: t('departement_invalide', lang) });
+        if (!mongoose.Types.ObjectId.isValid(departement._id)) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
         }
 
-        const departementExists = await Departement.findById(departement);
+        const departementExists = await Departement.findById(departement._id);
         if (!departementExists) {
-        return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
+            return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
         }
 
         // Optionnel : vérifier unicité du code si fourni
         if (code) {
-        const codeExists = await Commune.findOne({ code });
-        if (codeExists) {
-            return res.status(409).json({ success: false, message: t('commune_code_existante', lang) });
-        }
+            const codeExists = await Commune.findOne({ code });
+            if (codeExists) {
+                return res.status(409).json({ success: false, message: t('commune_code_existante', lang) });
+            }
         }
 
         // Vérifier unicité nomFr et nomEn dans le même département
-        const nomFrExists = await Commune.findOne({ nomFr, departement });
+        const nomFrExists = await Commune.findOne({ nomFr, departement:departement._id });
         if (nomFrExists) {
-        return res.status(409).json({ success: false, message: t('commune_nom_fr_existante', lang) });
+            return res.status(409).json({ success: false, message: t('commune_nom_fr_existante', lang) });
         }
-        const nomEnExists = await Commune.findOne({ nomEn, departement });
+        const nomEnExists = await Commune.findOne({ nomEn, departement:departement._id });
         if (nomEnExists) {
-        return res.status(409).json({ success: false, message: t('commune_nom_en_existante', lang) });
+            return res.status(409).json({ success: false, message: t('commune_nom_en_existante', lang) });
         }
 
         const commune = await Commune.create({ code, nomFr, nomEn, departement });
 
         return res.status(201).json({
-        success: true,
-        message: t('ajouter_succes', lang),
-        data: commune,
+            success: true,
+            message: t('ajouter_succes', lang),
+            data: commune,
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -81,54 +81,56 @@ export const updateCommune = async (req, res) => {
     try {
         const commune = await Commune.findById(id);
         if (!commune) {
-        return res.status(404).json({ success: false, message: t('commune_non_trouve', lang) });
+            return res.status(404).json({ success: false, message: t('commune_non_trouve', lang) });
         }
 
         // Si département modifié, vérifier validité
         if (departement) {
-        if (!mongoose.Types.ObjectId.isValid(departement)) {
-            return res.status(400).json({ success: false, message: t('departement_invalide', lang) });
-        }
-        const departementExists = await Departement.findById(departement);
-        if (!departementExists) {
-            return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
-        }
-        commune.departement = departement;
+            if (!mongoose.Types.ObjectId.isValid(departement._id)) {
+                return res.status(400).json({ success: false, message: t('departement_invalide', lang) });
+            }
+            const departementExists = await Departement.findById(departement._id);
+            if (!departementExists) {
+                return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
+            }
+            commune.departement = departement._id;
         }
 
         // Vérifier unicité code (sauf si modif même commune)
         if (code) {
-        const codeExists = await Commune.findOne({ code, _id: { $ne: id } });
-        if (codeExists) {
-            return res.status(409).json({ success: false, message: t('commune_code_existante', lang) });
-        }
-        commune.code = code;
+            const codeExists = await Commune.findOne({ code, _id: { $ne: id } });
+            if (codeExists) {
+                return res.status(409).json({ success: false, message: t('commune_code_existante', lang) });
+            }
+            commune.code = code;
+        }else{
+            commune.code = code;
         }
 
         // Vérifier unicité nomFr dans le département
         if (nomFr) {
-        const nomFrExists = await Commune.findOne({ nomFr, departement: commune.departement, _id: { $ne: id } });
-        if (nomFrExists) {
-            return res.status(409).json({ success: false, message: t('commune_nom_fr_existante', lang) });
-        }
-        commune.nomFr = nomFr;
+            const nomFrExists = await Commune.findOne({ nomFr, departement: commune.departement, _id: { $ne: id } });
+            if (nomFrExists) {
+                return res.status(409).json({ success: false, message: t('commune_nom_fr_existante', lang) });
+            }
+            commune.nomFr = nomFr;
         }
 
         // Vérifier unicité nomEn dans le département
         if (nomEn) {
-        const nomEnExists = await Commune.findOne({ nomEn, departement: commune.departement, _id: { $ne: id } });
-        if (nomEnExists) {
-            return res.status(409).json({ success: false, message: t('commune_nom_en_existante', lang) });
-        }
-        commune.nomEn = nomEn;
+            const nomEnExists = await Commune.findOne({ nomEn, departement: commune.departement, _id: { $ne: id } });
+            if (nomEnExists) {
+                return res.status(409).json({ success: false, message: t('commune_nom_en_existante', lang) });
+            }
+            commune.nomEn = nomEn;
         }
 
         await commune.save();
 
         return res.status(200).json({
-        success: true,
-        message: t('modifier_succes', lang),
-        data: commune,
+            success: true,
+            message: t('modifier_succes', lang),
+            data: commune,
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -258,13 +260,13 @@ export const getCommunesByDepartement = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(departementId)) {
-        return res.status(400).json({ success: false, message: t('departement_invalide', lang) });
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
         const departementExists = await Departement.findById(departementId);
         if (!departementExists) {
-        return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
+            return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
         }
         const total = await Commune.countDocuments();
         const communes = await Commune.find({ departement: departementId })
@@ -273,7 +275,11 @@ export const getCommunesByDepartement = async (req, res) => {
         .sort(lang === 'en' ? 'nomEn' : 'nomFr')
         .populate({
             path: 'departement',
-            select: 'nomFr nomEn',
+            select: 'nomFr nomEn region', // Inclure les champs nécessaires
+            populate: {
+                path: 'region', // Peupler également la région
+                select: 'nomFr nomEn', // Inclure les champs souhaités de la région
+            },
             options: { strictPopulate: false },
         })
         .lean();
@@ -291,4 +297,43 @@ export const getCommunesByDepartement = async (req, res) => {
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
+};
+
+export const getCommunesForDropdown = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  const { departementId } = req.params;
+
+  try {
+    const communes = await Commune.find({ departement: departementId }, '_id nomFr nomEn region')
+       .populate({
+            path: 'departement',
+            select: 'nomFr nomEn region', // Inclure les champs nécessaires
+            populate: {
+                path: 'region', // Peupler également la région
+                select: 'nomFr nomEn', // Inclure les champs souhaités de la région
+            },
+            options: { strictPopulate: false },
+        })
+        .sort({ [sortField]: 1 })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        communes,
+        totalItems:communes.length,
+        currentPage:1,
+        totalPages: 1,
+        pageSize:communes.length 
+      
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
 };

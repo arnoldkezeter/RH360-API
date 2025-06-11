@@ -217,3 +217,33 @@ export const searchRegionsByNameOrCode = async (req, res) => {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
+
+export const getRegionsForDropdown = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+
+  try {
+    const regions = await Region.find({}, '_id nomFr nomEn')
+      .sort({ [sortField]: 1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        regions,
+        totalItems:regions.length,
+        currentPage:1,
+        totalPages: 1,
+        pageSize:regions.length 
+      
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
+};

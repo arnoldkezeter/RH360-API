@@ -15,8 +15,8 @@ import { validateFields } from '../middlewares/validateFields/validateAxeStrateg
 
 const router = express.Router();
 
-router.post('/',validateFields,authentificate,createAxeStrategique);
-router.put('/:id',validateFields,authentificate,updateAxeStrategique);
+router.post('/',authentificate,validateFields,createAxeStrategique);
+router.put('/:id',authentificate,validateFields,updateAxeStrategique);
 router.delete('/:id',authentificate,deleteAxeStrategique);
 router.get('/',authentificate,getAxesStrategique);
 router.get('/:id',authentificate,getAxeStrategiqueById);

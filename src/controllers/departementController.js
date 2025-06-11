@@ -21,34 +21,34 @@ export const createDepartement = async (req, res) => {
         const { code, nomFr, nomEn, region } = req.body;
 
         // Vérifier existence région
-        if (!mongoose.Types.ObjectId.isValid(region)) {
-        return res.status(400).json({ success: false, message: t('region_invalide', lang) });
+        if (!mongoose.Types.ObjectId.isValid(region._id)) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
         }
 
-        const regionExists = await Region.findById(region);
-        if (!regionExists) {
-        return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
-        }
+        // const regionExists = await Region.findById(region);
+        // if (!regionExists) {
+        //     return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
+        // }
 
         // Optionnel: vérifier unicité du code (si code fourni)
         if (code) {
-        const codeExists = await Departement.findOne({ code });
-        if (codeExists) {
-            return res.status(409).json({ success: false, message: t('departement_code_existante', lang) });
-        }
+            const codeExists = await Departement.findOne({ code });
+            if (codeExists) {
+                return res.status(409).json({ success: false, message: t('departement_code_existante', lang) });
+            }
         }
 
         // Vérifier unicité nomFr et nomEn dans la même région
-        const nomFrExists = await Departement.findOne({ nomFr, region });
+        const nomFrExists = await Departement.findOne({ nomFr, region:region._id });
         if (nomFrExists) {
         return res.status(409).json({ success: false, message: t('departement_nom_fr_existante', lang) });
         }
-        const nomEnExists = await Departement.findOne({ nomEn, region });
+        const nomEnExists = await Departement.findOne({ nomEn, region:region._id });
         if (nomEnExists) {
         return res.status(409).json({ success: false, message: t('departement_nom_en_existante', lang) });
         }
 
-        const departement = await Departement.create({ code, nomFr, nomEn, region });
+        const departement = await Departement.create({ code, nomFr, nomEn, region:region._id });
 
         return res.status(201).json({
         success: true,
@@ -87,41 +87,40 @@ export const updateDepartement = async (req, res) => {
 
         // Si région modifiée, vérifier validité
         if (region) {
-        if (!mongoose.Types.ObjectId.isValid(region)) {
-            return res.status(400).json({ success: false, message: t('region_invalide', lang) });
-        }
-        const regionExists = await Region.findById(region);
-        if (!regionExists) {
-            return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
-        }
-        departement.region = region;
+            if (!mongoose.Types.ObjectId.isValid(region._id)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+           
+            departement.region = region;
         }
 
         // Vérifier unicité code (sauf si modif du même enregistrement)
         if (code) {
-        const codeExists = await Departement.findOne({ code, _id: { $ne: id } });
-        if (codeExists) {
-            return res.status(409).json({ success: false, message: t('departement_code_existante', lang) });
-        }
-        departement.code = code;
+            const codeExists = await Departement.findOne({ code, _id: { $ne: id } });
+            if (codeExists) {
+                return res.status(409).json({ success: false, message: t('departement_code_existante', lang) });
+            }
+            departement.code = code;
+        }else{
+            departement.code = code;
         }
 
         // Vérifier unicité nomFr dans la région
         if (nomFr) {
-        const nomFrExists = await Departement.findOne({ nomFr, region: departement.region, _id: { $ne: id } });
-        if (nomFrExists) {
-            return res.status(409).json({ success: false, message: t('departement_nom_fr_existante', lang) });
-        }
-        departement.nomFr = nomFr;
+            const nomFrExists = await Departement.findOne({ nomFr, region: departement.region, _id: { $ne: id } });
+            if (nomFrExists) {
+                return res.status(409).json({ success: false, message: t('departement_nom_fr_existante', lang) });
+            }
+            departement.nomFr = nomFr;
         }
 
         // Vérifier unicité nomEn dans la région
         if (nomEn) {
-        const nomEnExists = await Departement.findOne({ nomEn, region: departement.region, _id: { $ne: id } });
-        if (nomEnExists) {
-            return res.status(409).json({ success: false, message: t('departement_nom_en_existante', lang) });
-        }
-        departement.nomEn = nomEn;
+            const nomEnExists = await Departement.findOne({ nomEn, region: departement.region, _id: { $ne: id } });
+            if (nomEnExists) {
+                return res.status(409).json({ success: false, message: t('departement_nom_en_existante', lang) });
+            }
+            departement.nomEn = nomEn;
         }
 
         await departement.save();
@@ -254,7 +253,7 @@ export const searchDepartementsByNameOrCode = async (req, res) => {
                 totalItems:results.length,
                 currentPage:1,
                 totalPages:1,
-                pageSize:limit 
+                pageSize:results.length 
 
             }
         });
@@ -272,7 +271,7 @@ export const getDepartementsByRegion = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(regionId)) {
-        return res.status(400).json({ success: false, message: t('region_invalide', lang) });
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
@@ -306,4 +305,39 @@ export const getDepartementsByRegion = async (req, res) => {
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
+};
+
+export const getDepartementsForDropdown = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  const { regionId } = req.params;
+
+  try {
+    const departements = await Departement.find({ region: regionId }, '_id nomFr nomEn region')
+        .populate({
+            path: 'region',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .sort({ [sortField]: 1 })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        departements,
+        totalItems:departements.length,
+        currentPage:1,
+        totalPages: 1,
+        pageSize:departements.length 
+      
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
 };

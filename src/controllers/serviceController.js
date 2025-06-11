@@ -20,7 +20,6 @@ export const createService = async (req, res) => {
 
     try {
         const { nomFr, nomEn, descriptionFr, descriptionEn, chefService, structure, nbPlaceStage } = req.body;
-
         // Vérifier unicité nomFr et nomEn
         const existsFr = await Service.exists({ nomFr });
         if (existsFr) {
@@ -38,46 +37,30 @@ export const createService = async (req, res) => {
         }
 
         // Validation chefService et structure s'ils sont fournis
-        if (chefService && !mongoose.Types.ObjectId.isValid(chefService)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-        }
-        if (chefService) {
-        const chef = await Utilisateur.findById(chefService);
-        if (!chef) {
-            return res.status(404).json({
-            success: false,
-            message: t('utilisateur_non_trouve', lang),
+        if (chefService && !mongoose.Types.ObjectId.isValid(chefService._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
             });
         }
-        }
+       
 
-        if (structure && !mongoose.Types.ObjectId.isValid(structure)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-        }
-        if (structure) {
-        const struct = await Structure.findById(structure);
-        if (!struct) {
-            return res.status(404).json({
-            success: false,
-            message: t('structure_non_trouvee', lang),
+        if (structure && !mongoose.Types.ObjectId.isValid(structure._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
             });
         }
-        }
+        
 
         const service = await Service.create({
-        nomFr,
-        nomEn,
-        descriptionFr,
-        descriptionEn,
-        chefService,
-        structure,
-        nbPlaceStage,
+            nomFr,
+            nomEn,
+            descriptionFr,
+            descriptionEn,
+            chefService,
+            structure,
+            nbPlaceStage,
         });
 
         return res.status(201).json({
@@ -143,37 +126,25 @@ export const updateService = async (req, res) => {
         }
 
         if (chefService) {
-        if (!mongoose.Types.ObjectId.isValid(chefService)) {
-            return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-            });
-        }
-        const chef = await Utilisateur.findById(chefService);
-        if (!chef) {
-            return res.status(404).json({
-            success: false,
-            message: t('utilisateur_non_trouve', lang),
-            });
-        }
-        service.chefService = chefService;
+            if (!mongoose.Types.ObjectId.isValid(chefService._id)) {
+                return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+                });
+            }
+        
+            service.chefService = chefService;
         }
 
         if (structure) {
-        if (!mongoose.Types.ObjectId.isValid(structure)) {
-            return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-            });
-        }
-        const struct = await Structure.findById(structure);
-        if (!struct) {
-            return res.status(404).json({
-            success: false,
-            message: t('structure_non_trouvee', lang),
-            });
-        }
-        service.structure = structure;
+            if (!mongoose.Types.ObjectId.isValid(structure._id)) {
+                return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+                });
+            }
+            
+            service.structure = structure;
         }
 
         if (nomFr) service.nomFr = nomFr;

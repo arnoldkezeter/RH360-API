@@ -375,7 +375,13 @@ export const getStructuresForDropdown = async (req, res) => {
   
       return res.status(200).json({
         success: true,
-        data: structures,
+        data: {
+                structures,
+                totalItems:structures.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:structures.lenght
+            },
       });
     } catch (err) {
       console.error('Erreur getStructuresForDropdown:', err);

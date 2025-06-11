@@ -30,13 +30,8 @@ export const createCompetence = async (req, res) => {
       return res.status(409).json({ success: false, message: t('competence_existante_en', lang) });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+    if (!mongoose.Types.ObjectId.isValid(familleMetier._id)) {
       return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    const famille = await FamilleMetier.findById(familleMetier);
-    if (!famille) {
-      return res.status(404).json({ success: false, message: t('famille_metier_non_trouvee', lang) });
     }
 
     const competence = await Competence.create({
@@ -91,14 +86,10 @@ export const updateCompetence = async (req, res) => {
     }
 
     if (familleMetier) {
-      if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+      if (!mongoose.Types.ObjectId.isValid(familleMetier._id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
       }
 
-      const famille = await FamilleMetier.findById(familleMetier);
-      if (!famille) {
-        return res.status(404).json({ success: false, message: t('famille_metier_non_trouvee', lang) });
-      }
 
       competence.familleMetier = familleMetier;
     }
@@ -230,11 +221,11 @@ export const getCompetencesForDropdown = async (req, res) => {
 
 // Rechercher des compétences par nom
 export const searchCompetenceByName = async (req, res) => {
-    const { query } = req.query;
+    const { nom } = req.query;
     const lang = req.headers['accept-language'] || 'fr';
     const searchField = lang === 'en' ? 'nomEn' : 'nomFr';
   
-    if (!query || query.trim() === '') {
+    if (!nom || nom.trim() === '') {
         return res.status(400).json({
             success: false,
             message: t('nom_requis', lang)
@@ -242,7 +233,7 @@ export const searchCompetenceByName = async (req, res) => {
     }
   
     try {
-        const regex = new RegExp(query, 'i'); // insensible à la casse
+        const regex = new RegExp(nom, 'i'); // insensible à la casse
     
         const results = await Competence.find({ [searchField]: { $regex: regex } })
             .select('nomFr nomEn code').populate('familleMetier', 'nomFr nomEn')
@@ -252,7 +243,7 @@ export const searchCompetenceByName = async (req, res) => {
         res.status(200).json({ 
           success: true,
           data: {
-            results,
+            competences:results,
             totalItems:results.length,
             currentPage:1,
             totalPages:1,

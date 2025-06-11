@@ -14,12 +14,12 @@ import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.post('/', validateFields, authentificate, createPosteDeTravail);
-router.put('/:id', validateFields, authentificate, updatePosteDeTravail);
+router.post('/', authentificate, validateFields, createPosteDeTravail);
+router.put('/:id',  authentificate, validateFields, updatePosteDeTravail);
 router.delete('/:id', authentificate, deletePosteDeTravail);
 router.get('/', authentificate, getPostesDeTravail);
 router.get('/search/by-name', authentificate, searchPostesDeTravailByName);
-router.get('/familleMetier/:familleMetierId', authentificate, getPostesByFamilleMetier);
+router.get('/famille-metier/:familleMetierId', authentificate, getPostesByFamilleMetier);
 router.get('/:id', authentificate, getPosteDeTravailById);
 
 export default router;

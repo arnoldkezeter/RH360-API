@@ -7,7 +7,8 @@ import {
   getCategoriesProfessionnelles,
   getCategorieProfessionnelleById,
   searchCategoriesProfessionnellesByName,
-  getCategoriesByGrade
+  getCategoriesByGrade,
+  getCategorieProfessionnellesForDropdownByGrade
 } from '../controllers/categorieProfessionnelleController.js';
 import { validateFields } from '../middlewares/validateFields/validateCategorieProfessionnelle.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -21,5 +22,6 @@ router.get('/', authentificate, getCategoriesProfessionnelles);
 router.get('/search/by-name', authentificate, searchCategoriesProfessionnellesByName);
 router.get('/:id', authentificate, getCategorieProfessionnelleById);
 router.get('/grade/:gradeId', authentificate, getCategoriesByGrade);
+router.get('/dropdown/grade/:gradeId', authentificate, getCategorieProfessionnellesForDropdownByGrade);
 
 export default router;

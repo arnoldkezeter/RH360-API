@@ -341,3 +341,43 @@ export const getDepartementsForDropdown = async (req, res) => {
     });
   }
 };
+
+//Liste des départements par région pour le dropdown
+export const getDepatementsForDropdownByRegion = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {regionId} = req.params;
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+        if (!mongoose.Types.ObjectId.isValid(regionId)) {
+            return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+            });
+        }
+        const depatements = await Depatement.find({region:regionId}, "_id nomFr nomEn")
+            .populate([
+                { path: 'region', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+            ])
+            .sort({ [sortField]: 1 })
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                depatements,
+                totalItems:depatements.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:depatements.lenght
+            },
+        });
+    } catch (err) {
+      console.error('Erreur getDepatementsForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};

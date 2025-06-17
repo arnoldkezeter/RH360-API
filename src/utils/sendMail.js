@@ -3,14 +3,17 @@ import nodemailer from 'nodemailer';
 export const sendAccountEmail = async (to, email, password) => {
   const transporter = nodemailer.createTransport({
     service: 'gmail', // ou autre
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
+      user:  process.env.EMAIL_USER,
+      pass:  process.env.EMAIL_APP_PASS
     }
   });
 
   const message = {
-    from: process.env.EMAIL_USER,
+    from:  process.env.EMAIL_USER,
     to,
     subject: 'Création de votre compte RH360 / RH360 Account Creation',
     html: `

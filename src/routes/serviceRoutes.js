@@ -7,7 +7,9 @@ import {
   getServices,
   getServiceById,
   searchServicesByName,
-  getServicesByStructure
+  getServicesByStructure,
+  getServicesForDropdown,
+  getServicesForDropdownByStructure
 } from '../controllers/serviceController.js';
 import { validateFields } from '../middlewares/validateFields/validateService.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -21,5 +23,7 @@ router.get('/', authentificate, getServices); //Liste des services avec paginati
 router.get('/search/by-name', authentificate, searchServicesByName); // Rechercher un service par son nom
 router.get('/structure/:structureId', authentificate, getServicesByStructure); //Récupéré la liste des service par structure
 router.get('/:id', authentificate, getServiceById); //Récupéré un service via son id
+router.get('/dropdown/all', authentificate, getServicesForDropdown); //Récupéré les services pour le dropdown
+router.get('/dropdown/structure/:structureId', authentificate, getServicesForDropdownByStructure); //Récupéré les services pour le dropdown par structure
 
 export default router;

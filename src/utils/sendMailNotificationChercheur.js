@@ -12,7 +12,7 @@ export const sendMandatNotificationEmail = async (to, lang, nom, prenom) => {
         service: 'gmail', // Utilisez votre service SMTP préféré
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
+            pass: process.env.EMAIL_APP_PASS,
         },
     });
 

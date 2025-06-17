@@ -75,7 +75,7 @@ app.use('/api/v1/regions', regionRoutes);
 app.use('/api/v1/departements', departementRoutes);
 app.use('/api/v1/communes', communeRoutes);
 app.use('/api/v1/budget-formation', budgetFormationRoutes);
-app.use('/api/v1/utilisateur', utilisateurRoutes);
+app.use('/api/v1/utilisateurs', utilisateurRoutes);
 app.use('/api/v1/objectif-theme', objectifThemeRoutes);
 app.use('/api/v1/support-formation', supportFormationRoutes);
 app.use('/api/v1/theme-formation', themeFormationRoutes);

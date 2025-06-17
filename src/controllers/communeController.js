@@ -337,3 +337,42 @@ export const getCommunesForDropdown = async (req, res) => {
     });
   }
 };
+
+export const getCommunesForDropdownByDepartement = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {departementId} = req.params;
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+        if (!mongoose.Types.ObjectId.isValid(departementId)) {
+            return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+            });
+        }
+        const communes = await Commune.find({departement:departementId}, "_id nomFr nomEn")
+            .populate([
+                { path: 'departement', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+            ])
+            .sort({ [sortField]: 1 })
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                communes,
+                totalItems:communes.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:communes.lenght
+            },
+        });
+    } catch (err) {
+      console.error('Erreur getCommunesForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};

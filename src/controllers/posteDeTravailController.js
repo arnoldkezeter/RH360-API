@@ -359,3 +359,44 @@ export const getPostesByFamilleMetier = async (req, res) => {
         });
     }
 };
+
+
+//Liste des poste de travail par famille pour dropdown
+export const getPosteDeTravailsForDropdownByFamilleMetier = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {familleMetierId} = req.params;
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+        if (!mongoose.Types.ObjectId.isValid(familleMetierId)) {
+            return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+            });
+        }
+        const posteDeTravails = await PosteDeTravail.find({familleMetier:familleMetierId}, "_id nomFr nomEn")
+            .populate([
+                { path: 'familleMetier', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+            ])
+            .sort({ [sortField]: 1 })
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                posteDeTravails,
+                totalItems:posteDeTravails.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:posteDeTravails.lenght
+            },
+        });
+    } catch (err) {
+      console.error('Erreur getPosteDeTravailsForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};

@@ -12,7 +12,7 @@ import { sendAccountEmail } from '../utils/sendMail.js';
 
 // Créer un utilisateur
 export const createUtilisateur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -26,7 +26,7 @@ export const createUtilisateur = async (req, res) => {
     try {
         const {
             matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,
-            role, dateEntreeEnService, service, categorieProfessionnelle, postesDeTravail, actif
+            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
         const exists = await Utilisateur.exists({ email });
@@ -48,7 +48,7 @@ export const createUtilisateur = async (req, res) => {
         const password = generateRandomPassword();
         const utilisateur = new Utilisateur({
             matricule, nom, prenom, email, motDePasse : password, genre, dateNaissance, lieuNaissance, telephone,
-            role, dateEntreeEnService, service, categorieProfessionnelle, postesDeTravail, actif
+            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         });
 
         await utilisateur.save();
@@ -63,6 +63,7 @@ export const createUtilisateur = async (req, res) => {
             data: utilisateur,
         });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -73,7 +74,7 @@ export const createUtilisateur = async (req, res) => {
 
 // Modifier un utilisateur
 export const updateUtilisateur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -102,8 +103,8 @@ export const updateUtilisateur = async (req, res) => {
         }
 
         const {
-            matricule, nom, prenom, email, motDePasse, genre, dateNaissance, lieuNaissance, telephone,
-            role, dateEntreeEnService, service, categorieProfessionnelle, postesDeTravail, actif
+            matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,
+            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
         if (email && email !== utilisateur.email) {
@@ -139,8 +140,9 @@ export const updateUtilisateur = async (req, res) => {
         utilisateur.dateEntreeEnService = dateEntreeEnService ?? utilisateur.dateEntreeEnService;
         utilisateur.service = service ?? utilisateur.service;
         utilisateur.categorieProfessionnelle = categorieProfessionnelle ?? utilisateur.categorieProfessionnelle;
-        utilisateur.postesDeTravail = postesDeTravail ?? utilisateur.postesDeTravail;
+        utilisateur.posteDeTravail = posteDeTravail ?? utilisateur.posteDeTravail;
         utilisateur.actif = actif ?? utilisateur.actif;
+        utilisateur.commune = commune ?? utilisateur.commune;
 
         await utilisateur.save();
 
@@ -161,7 +163,7 @@ export const updateUtilisateur = async (req, res) => {
 
 // Supprimer un utilisateur
 export const deleteUtilisateur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -198,7 +200,7 @@ export const deleteUtilisateur = async (req, res) => {
 
 //Modification du mot de passe
 export const updatePassword = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { ancienMotDePasse, nouveauMotDePasse } = req.body;
 
@@ -250,7 +252,7 @@ export const updatePassword = async (req, res) => {
 export const getUtilisateurs = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     try {
         const total = await Utilisateur.countDocuments();
@@ -268,12 +270,15 @@ export const getUtilisateurs = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: utilisateurs,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
+            data: {
+                utilisateurs,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
             },
+            
+           
         });
 
     } catch (err) {
@@ -287,26 +292,14 @@ export const getUtilisateurs = async (req, res) => {
 
 // Liste des utilisateur avec filtre, paginé
 export const getUtilisateursFiltres = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { page = 1, limit = 10, role, service, actif, posteDeTravail, familleMetier } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { page = 1, limit = 10, role, service } = req.query;
 
     const query = {};
 
     if (role) query.role = role;
     if (service && mongoose.Types.ObjectId.isValid(service)) query.service = service;
-    if (actif !== undefined) query.actif = actif === 'true';
 
-    if (posteDeTravail || familleMetier) {
-        query['postesDeTravail'] = {
-            $elemMatch: {}
-        };
-        if (posteDeTravail && mongoose.Types.ObjectId.isValid(posteDeTravail)) {
-            query['postesDeTravail'].$elemMatch.posteDeTravail = posteDeTravail;
-        }
-        if (familleMetier && mongoose.Types.ObjectId.isValid(familleMetier)) {
-            query['postesDeTravail'].$elemMatch.familleMetier = familleMetier;
-        }
-    }
     
     try {
         const total = await Utilisateur.countDocuments(query);
@@ -316,23 +309,53 @@ export const getUtilisateursFiltres = async (req, res) => {
             .limit(parseInt(limit))
             .sort({ nom: 1, prenom : 1 })
             .populate([
-                { path: 'service', select: 'nomFr nomEn' },
-                { path: 'categorieProfessionnelle', select: 'nomFr nomEn' },
-                { path: 'postesDeTravail.posteDeTravail', select: 'nomFr nomEn' },
+                { 
+                    path: 'service', 
+                    select: 'nomFr nomEn structure', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'structure',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'categorieProfessionnelle', 
+                    select: 'nomFr nomEn grade', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'grade',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'posteDeTravail', 
+                    select: 'nomFr nomEn familleMetier', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'familleMetier',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
             ])
             .lean();
 
         return res.status(200).json({
             success: true,
-            data: utilisateurs,
-            pagination: {
-                total,
-                page: parseInt(page),
-                pages: Math.ceil(total / limit),
+            data: {
+                utilisateurs,
+                totalItems:total,
+                currentPage:page,
+                totalPages: Math.ceil(total / limit),
+                pageSize:limit
             },
+           
         });
 
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -345,7 +368,7 @@ export const getUtilisateursFiltres = async (req, res) => {
 // Recherche par nom ou prénom
 export const searchUtilisateurs = async (req, res) => {
     const { nom } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!nom) {
         return res.status(400).json({
@@ -362,14 +385,63 @@ export const searchUtilisateurs = async (req, res) => {
             ]
         }).sort({nom : 1, prenom : 1})
         .populate([
-            { path: 'service', select: 'nomFr nomEn' },
-            { path: 'categorieProfessionnelle', select: 'nomFr nomEn' },
-            { path: 'postesDeTravail.posteDeTravail', select: 'nomFr nomEn' }
-        ]);
+                { 
+                    path: 'service', 
+                    select: 'nomFr nomEn structure', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'structure',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'categorieProfessionnelle', 
+                    select: 'nomFr nomEn grade', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'grade',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'posteDeTravail', 
+                    select: 'nomFr nomEn familleMetier', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'familleMetier',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'commune', 
+                    select: 'nomFr nomEn departement', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'departement',
+                        select: 'nomFr nomEn region',
+                        options: { strictPopulate: false },
+                        populate: {
+                            path: 'region',
+                            select: 'nomFr nomEn',
+                            options: { strictPopulate: false }
+                        }
+                    }
+                },
+        ])
+        .lean();
 
         return res.status(200).json({
             success: true,
-            data: utilisateurs,
+            data:{
+                utilisateurs,
+                totalItems:utilisateurs.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:utilisateurs.length
+            },
         });
 
     } catch (err) {
@@ -377,6 +449,41 @@ export const searchUtilisateurs = async (req, res) => {
             success: false,
             message: t('erreur_serveur', lang),
             error: err.message,
+        });
+    }
+};
+
+export const getCurrentUserData = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { userId } = req.params;
+
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalid', lang)
+        });
+    }
+
+    try {
+        const user = await Utilisateur.findById(userId).lean();
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang)
+            });
+        }
+
+        return res.statuts(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        console.error("Erreur lors de la récupération de l'utilisateur :", error);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang)
         });
     }
 };

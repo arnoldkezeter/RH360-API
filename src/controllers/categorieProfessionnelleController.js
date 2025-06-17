@@ -281,3 +281,42 @@ export const getCategoriesByGrade = async (req, res) => {
         });
     }
 };
+
+export const getCategorieProfessionnellesForDropdownByGrade = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {gradeId} = req.params;
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+        if (!mongoose.Types.ObjectId.isValid(gradeId)) {
+            return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+            });
+        }
+        const categorieProfessionnelles = await CategorieProfessionnelle.find({grade:gradeId}, "_id nomFr nomEn")
+            .populate([
+                { path: 'grade', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+            ])
+            .sort({ [sortField]: 1 })
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                categorieProfessionnelles,
+                totalItems:categorieProfessionnelles.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:categorieProfessionnelles.lenght
+            },
+        });
+    } catch (err) {
+      console.error('Erreur getCategorieProfessionnellesForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};

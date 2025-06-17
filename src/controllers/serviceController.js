@@ -383,3 +383,73 @@ export const getServicesByStructure = async (req, res) => {
         });
     }
 };
+
+//Charger pour les menu deroulant
+export const getServicesForDropdown = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+      const services = await Service.find({}, '_id nomFr nomEn')
+        .sort({ [sortField]: 1 })
+        .lean();
+  
+      return res.status(200).json({
+        success: true,
+        data: {
+                services,
+                totalItems:services.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:services.lenght
+            },
+      });
+    } catch (err) {
+      console.error('Erreur getServicesForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};
+
+export const getServicesForDropdownByStructure = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {structureId} = req.params;
+    const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  
+    try {
+        if (!mongoose.Types.ObjectId.isValid(structureId)) {
+            return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+            });
+        }
+        const services = await Service.find({structure:structureId}, "_id nomFr nomEn")
+            .populate([
+                { path: 'chefService', select: 'nom prenom', options:{strictPopulate:false}},
+                { path: 'structure', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+            ])
+            .sort({ [sortField]: 1 })
+            .lean();
+    
+        return res.status(200).json({
+            success: true,
+            data: {
+                services,
+                totalItems:services.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:services.lenght
+            },
+        });
+    } catch (err) {
+      console.error('Erreur getServicesForDropdown:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+      });
+    }
+};

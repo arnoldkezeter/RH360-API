@@ -8,6 +8,7 @@ import {
     getUtilisateurs,
     getUtilisateursFiltres,
     searchUtilisateurs,
+    getCurrentUserData,
 } from '../controllers/utilisateurController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateUtilisateur.js';
@@ -21,6 +22,7 @@ router.delete('/:id', authentificate, deleteUtilisateur);
 router.put('/:id/password', validateFieldsPassword, authentificate, updatePassword);
 router.get('/', authentificate, getUtilisateurs);
 router.get('/filtre', authentificate, getUtilisateursFiltres);
-router.get('/search', authentificate, searchUtilisateurs);
+router.get('/search/by-name', authentificate, searchUtilisateurs);
+router.get('/:id',getCurrentUserData)
 
 export default router;

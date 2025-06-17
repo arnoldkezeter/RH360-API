@@ -339,6 +339,21 @@ export const getUtilisateursFiltres = async (req, res) => {
                         options: { strictPopulate: false }
                     }
                 },
+                { 
+                    path: 'commune', 
+                    select: 'nomFr nomEn departement', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'departement',
+                        select: 'nomFr nomEn region',
+                        options: { strictPopulate: false },
+                        populate: {
+                            path: 'region',
+                            select: 'nomFr nomEn',
+                            options: { strictPopulate: false }
+                        }
+                    }
+                },
             ])
             .lean();
 

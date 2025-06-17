@@ -4,10 +4,10 @@ import { t } from '../utils/i18n.js';
 import { generateRandomPassword } from '../utils/generatePassword.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
 import { Groupe } from '../models/Groupe.js';
+import Etablissement from '../models/Etablissement.js';
 
-// Ajouter un stagiaire et enregistrer une demande de stage
 export const createStagiaire = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Validation des champs
     const errors = validationResult(req);
@@ -20,8 +20,7 @@ export const createStagiaire = async (req, res) => {
     }
 
     try {
-        
-        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, parcours } = req.body;
+        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, commune, parcours } = req.body;
 
         // Vérifier si l'email existe déjà
         const exists = await Stagiaire.exists({ email });
@@ -32,30 +31,60 @@ export const createStagiaire = async (req, res) => {
             });
         }
 
+        // Vérification du parcours
+        if (!parcours || parcours.length !== 1 || !parcours[0].etablissement) {
+            return res.status(400).json({
+                success: false,
+                message: t('parcours_invalide', lang),
+            });
+        }
+
+        const etablissement  = parcours[0].etablissement;
+        
+        // Vérifier si l'établissement existe
+        let etablissementRecord = await Etablissement.findOne({
+            $or: [
+                { nomFr: etablissement.nomFr },
+                { nomEn: etablissement.nomEn },
+            ],
+        });
+
+        // Si l'établissement n'existe pas, le créer
+        if (!etablissementRecord) {
+            etablissementRecord = await Etablissement.create({
+                nomFr: etablissement.nomFr,
+                nomEn: etablissement.nomEn,
+            });
+        }
+
         const password = generateRandomPassword();
+        parcours[0].etablissement = etablissementRecord._id;
         // Créer un stagiaire
         const stagiaire = await Stagiaire.create({
             nom,
             prenom,
             email,
-            motDePasse : password,
+            motDePasse: password,
             genre,
             dateNaissance,
             lieuNaissance,
             telephone,
-            parcours
+            commune,
+            parcours: parcours
         });
+        const stagiairePopulate = await stagiaire.populate('parcours.etablissement');
 
-        
+        // Envoi de l'email de création de compte
         await sendAccountEmail(email, email, password);
-
         return res.status(201).json({
             success: true,
             message: t('ajouter_succes', lang),
-            stagiaire,
+            data:stagiairePopulate,
         });
     } catch (err) {
+        console.log(err);
         return res.status(500).json({
+            
             success: false,
             message: t('erreur_serveur', lang),
             error: err.message,
@@ -65,7 +94,7 @@ export const createStagiaire = async (req, res) => {
 
 
 export const updateStagiaire = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -78,10 +107,10 @@ export const updateStagiaire = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const stagiaireData = req.body;
+        const { parcours, ...otherData } = req.body;
 
-        const stagiaire = await Stagiaire.findByIdAndUpdate(id, stagiaireData, { new: true });
-
+        // Trouver le stagiaire
+        const stagiaire = await Stagiaire.findById(id);
         if (!stagiaire) {
             return res.status(404).json({
                 success: false,
@@ -89,10 +118,52 @@ export const updateStagiaire = async (req, res) => {
             });
         }
 
+        // Traiter les parcours
+        if (parcours && Array.isArray(parcours)) {
+            for (const newParcours of parcours) {
+                // Vérifier l'existence de l'établissement
+                let etablissement = await Etablissement.findOne({
+                    $or: [
+                        { nomFr: newParcours.etablissement.nomFr },
+                        { nomEn: newParcours.etablissement.nomEn },
+                    ],
+                });
+
+                if (!etablissement) {
+                    // Créer l'établissement si inexistant
+                    etablissement = await Etablissement.create(newParcours.etablissement);
+                }
+
+                // Vérifier si le parcours existe pour l'année donnée
+                const existingIndex = stagiaire.parcours.findIndex(p => p.annee === newParcours.annee);
+
+                if (existingIndex !== -1) {
+                    // Mettre à jour le parcours existant
+                    stagiaire.parcours[existingIndex] = {
+                        ...stagiaire.parcours[existingIndex],
+                        ...newParcours,
+                        etablissement: etablissement._id,
+                    };
+                } else {
+                    // Ajouter un nouveau parcours
+                    stagiaire.parcours.push({
+                        ...newParcours,
+                        etablissement: etablissement._id,
+                    });
+                }
+            }
+        }
+
+        // Mettre à jour les autres données du stagiaire
+        Object.assign(stagiaire, otherData);
+
+        // Sauvegarder les modifications
+        await stagiaire.save();
+        const stagiairePopulate = await stagiaire.populate('parcours.etablissement');
         return res.status(200).json({
             success: true,
             message: t('modifier_succes', lang),
-            stagiaire,
+            data:stagiairePopulate,
         });
     } catch (err) {
         return res.status(500).json({
@@ -104,8 +175,9 @@ export const updateStagiaire = async (req, res) => {
 };
 
 
+
 export const deleteStagiaire = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     try {
         const { id } = req.params;
@@ -133,7 +205,7 @@ export const deleteStagiaire = async (req, res) => {
 };
 
 export const updatePassword = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { ancienMotDePasse, nouveauMotDePasse } = req.body;
 
@@ -183,7 +255,7 @@ export const updatePassword = async (req, res) => {
 
 
 export const getStagiaires = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { page = 1, limit = 10, dateDebut, dateFin, serviceId, etablissement, statut, search } = req.query;
 
     try {
@@ -228,7 +300,25 @@ export const getStagiaires = async (req, res) => {
                 path: 'stages',
                 match: stageFilters,
                 select: 'typeStage statut stagiaires dateDebut dateFin',
-            });
+            }).populate({
+                path: 'parcours.etablissement',
+                select: 'nomFr nomEn',
+                options: { strictPopulate: false },
+            }).populate({
+                path: 'commune', 
+                select: 'nomFr nomEn departement', 
+                options: { strictPopulate: false },
+                populate: {
+                    path: 'departement',
+                    select: 'nomFr nomEn region',
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'region',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                }
+            }).lean();
 
         // Fetch group stages separately
         const groupStages = await Groupe.find({
@@ -259,10 +349,22 @@ export const getStagiaires = async (req, res) => {
                 (a, b) => new Date(b.dateDebut) - new Date(a.dateDebut)
             )[0] || {};
 
+            // Get the most recent parcours
+            const dernierParcours = (stagiaire.parcours || [])
+                .sort((a, b) => b.annee - a.annee)[0] || null;
+
             return {
                 _id: stagiaire._id,
                 nom: stagiaire.nom,
                 prenom: stagiaire.prenom,
+                email: stagiaire.email, 
+                genre: stagiaire.genre, 
+                dateNaissance: stagiaire.dateNaissance, 
+                lieuNaissance: stagiaire.lieuNaissance, 
+                telephone: stagiaire.telephone,
+                commune: stagiaire.commune,
+                parcours: [dernierParcours], // Only the most recent parcours
+
                 statut: dernierStage.statut || 'EN_ATTENTE',
                 periode: dernierStage.dateDebut && dernierStage.dateFin
                     ? { dateDebut: dernierStage.dateDebut, dateFin: dernierStage.dateFin }
@@ -277,9 +379,10 @@ export const getStagiaires = async (req, res) => {
             success: true,
             data: {
                 stagiaires: result,
-                total,
-                page: parseInt(page),
-                limit: parseInt(limit),
+                totalItems: total,
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                pageSize: limit,
             },
         });
     } catch (error) {
@@ -290,6 +393,7 @@ export const getStagiaires = async (req, res) => {
         });
     }
 };
+
 
 
 

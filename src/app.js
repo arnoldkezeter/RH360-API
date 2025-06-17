@@ -88,11 +88,11 @@ app.use('/api/v1/besoins-formation-predefinis', besoinFormationPredefiniRoutes);
 app.use('/api/v1/besoin-formation-exprime', besoinFormationExprimeRoutes);
 app.use('/api/v1/evaluation-a-chaud', evaluationAChaudRoutes);
 app.use('/api/v1/evaluation-a-chaud-reponse', evaluationAChaudReponseRoutes);
-app.use('/api/v1/stagiaire', stagiaireRoutes);
-app.use('/api/v1/stage', stageRoutes);
-app.use('/api/v1/tache-stagiaire', tacheStagiaireRoutes);
-app.use('/api/v1/chercheur', chercheurRoutes);
-app.use('/api/v1/mandat-recherche', mandatRechercheRoutes);
+app.use('/api/v1/stagiaires', stagiaireRoutes);
+app.use('/api/v1/stages', stageRoutes);
+app.use('/api/v1/taches-stagiaire', tacheStagiaireRoutes);
+app.use('/api/v1/chercheurs', chercheurRoutes);
+app.use('/api/v1/mandats-recherche', mandatRechercheRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

@@ -9,6 +9,6 @@ export const validateFields = [
     
     body('telephone').notEmpty().withMessage('Le numéro de téléphone est obligatoire'),
 
-    body('domaine').notEmpty().withMessage('Le numéro de téléphone est obligatoire'),
+    body('domaineRecherche').notEmpty().withMessage('Le numéro de téléphone est obligatoire'),
 
 ];

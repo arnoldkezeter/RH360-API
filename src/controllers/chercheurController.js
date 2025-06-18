@@ -4,10 +4,12 @@ import Chercheur from '../models/Chercheur.js';
 import { t } from '../utils/i18n.js';
 import { generateRandomPassword } from '../utils/generatePassword.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
+import Etablissement from '../models/Etablissement.js';
+import BaseUtilisateur from '../models/BaseUtilisateur.js';
 
 // Créer un chercheur
 export const createChercheur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     // Validation des champs
     const errors = validationResult(req);
@@ -20,10 +22,10 @@ export const createChercheur = async (req, res) => {
     }
 
     try {
-        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, domaine } = req.body;
+        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, etablissement, domaineRecherche, commune } = req.body;
 
         // Vérifier si l'email existe déjà
-        const exists = await Chercheur.exists({ email });
+        const exists = await BaseUtilisateur.exists({ email });
         if (exists) {
             return res.status(409).json({
                 success: false,
@@ -31,7 +33,24 @@ export const createChercheur = async (req, res) => {
             });
         }
 
+        // Vérifier si l'établissement existe
+        let etablissementRecord = await Etablissement.findOne({
+            $or: [
+                { nomFr: etablissement.nomFr },
+                { nomEn: etablissement.nomEn },
+            ],
+        });
+
+        // Si l'établissement n'existe pas, le créer
+        if (!etablissementRecord) {
+            etablissementRecord = await Etablissement.create({
+                nomFr: etablissement.nomFr,
+                nomEn: etablissement.nomEn,
+            });
+        }
+
         const password = generateRandomPassword();
+
         // Créer un chercheur
         const chercheur = await Chercheur.create({
             nom,
@@ -42,15 +61,17 @@ export const createChercheur = async (req, res) => {
             dateNaissance,
             lieuNaissance,
             telephone,
-            domaineRecherche:domaine,
+            etablissement : etablissementRecord._id,
+            domaineRecherche,
+            commune
         });
 
         await sendAccountEmail(email, email, password);
-
+        const chercheurPopulate = await chercheur.populate('etablissement');
         return res.status(201).json({
             success: true,
             message: t('ajouter_succes', lang),
-            chercheur,
+            data: chercheurPopulate,
         });
     } catch (err) {
         return res.status(500).json({
@@ -63,7 +84,7 @@ export const createChercheur = async (req, res) => {
 
 // Mettre à jour un chercheur
 export const updateChercheur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -76,9 +97,50 @@ export const updateChercheur = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const chercheurData = req.body;
+        const {
+            nom,
+            prenom,
+            email,
+            genre,
+            dateNaissance,
+            lieuNaissance,
+            telephone,
+            etablissement,
+            domaineRecherche,
+            commune,
+        } = req.body;
 
-        const chercheur = await Chercheur.findByIdAndUpdate(id, chercheurData, { new: true });
+        if (email) {
+            const emailExists = await BaseUtilisateur.findOne({
+                email,
+                _id: { $ne: id }, // Exclure le chercheur actuel
+            });
+
+            if (emailExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('email_deja_utilise', lang),
+                });
+            }
+        }
+
+        // Vérifier ou créer l'établissement
+        let etablissementRecord = await Etablissement.findOne({
+            $or: [
+                { nomFr: etablissement.nomFr },
+                { nomEn: etablissement.nomEn },
+            ],
+        });
+
+        if (!etablissementRecord) {
+            etablissementRecord = await Etablissement.create({
+                nomFr: etablissement.nomFr,
+                nomEn: etablissement.nomEn,
+            });
+        }
+
+        // Récupérer le chercheur existant
+        const chercheur = await Chercheur.findById(id);
 
         if (!chercheur) {
             return res.status(404).json({
@@ -87,10 +149,25 @@ export const updateChercheur = async (req, res) => {
             });
         }
 
+        // Mise à jour des champs
+        if (nom) chercheur.nom = nom;
+        if (prenom) chercheur.prenom = prenom;
+        if (email) chercheur.email = email;
+        if (genre) chercheur.genre = genre;
+        if (dateNaissance) chercheur.dateNaissance = dateNaissance;
+        if (lieuNaissance) chercheur.lieuNaissance = lieuNaissance;
+        if (telephone) chercheur.telephone = telephone;
+        if (etablissementRecord._id) chercheur.etablissement = etablissementRecord._id;
+        if (domaineRecherche) chercheur.domaineRecherche = domaineRecherche;
+        if (commune) chercheur.commune = commune;
+
+        // Enregistrer les modifications
+        await chercheur.save();
+        const chercheurPopulate = await chercheur.populate('etablissement');
         return res.status(200).json({
             success: true,
             message: t('modifier_succes', lang),
-            chercheur,
+            data:chercheurPopulate,
         });
     } catch (err) {
         return res.status(500).json({
@@ -101,9 +178,10 @@ export const updateChercheur = async (req, res) => {
     }
 };
 
+
 // Supprimer un chercheur
 export const deleteChercheur = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     try {
         const { id } = req.params;
@@ -132,7 +210,7 @@ export const deleteChercheur = async (req, res) => {
 
 // Mettre à jour le mot de passe d'un chercheur
 export const updatePassword = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { ancienMotDePasse, nouveauMotDePasse } = req.body;
 
@@ -182,16 +260,17 @@ export const updatePassword = async (req, res) => {
 
 // Récupérer tous les chercheurs
 export const getChercheurs = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { page = 1, limit = 10, domaine, search } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { etablissement, statut, page = 1, limit = 10, search } = req.query;
 
     try {
         const skip = (page - 1) * limit;
 
         // Base filters for Chercheur
         const chercheurFilters = {};
+        const mandatFilters = {};
 
-        // Add search filter
+        // Ajouter un filtre de recherche
         if (search) {
             chercheurFilters.$or = [
                 { nom: { $regex: search, $options: 'i' } },
@@ -199,32 +278,80 @@ export const getChercheurs = async (req, res) => {
             ];
         }
 
-        // Filter by domaine
-        if (domaine) {
-            chercheurFilters.domaineRecherche = domaine;
+        // Filtrer par établissement
+        if (etablissement) {
+            chercheurFilters.etablissement = etablissement;
         }
 
-        // Fetch chercheurs
+        // Filtrer par statut de mandat
+        if (statut) {
+            mandatFilters.statut = statut;
+        }
+
+        // Rechercher les chercheurs en fonction des filtres
         const chercheurs = await Chercheur.find(chercheurFilters)
             .skip(skip)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .populate({
+                path: 'etablissement',
+                select: 'nomFr nomEn',
+            })
+            .populate({
+                path: 'mandat',
+                match: mandatFilters,
+                select: 'statut dateDebut dateFin',
+            })
+            .populate({
+                path: 'commune',
+                select: 'nomFr nomEn departement',
+                options: { strictPopulate: false },
+                populate: {
+                    path: 'departement',
+                    select: 'nomFr nomEn region',
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'region',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false },
+                    },
+                },
+            })
+            .lean();
+
+        // Ajouter un mandat par défaut pour les chercheurs sans mandat
+        const chercheursAvecStatut = chercheurs.map((chercheur) => {
+            if (!chercheur.mandat) {
+                chercheur.mandat = {
+                    statut: 'EN_ATTENTE',
+                };
+            }
+            return chercheur;
+        });
+
+        // Exclure les chercheurs si le statut ne correspond pas
+        const chercheursFiltres = chercheursAvecStatut.filter((chercheur) =>
+            statut ? chercheur.mandat.statut === statut : true
+        );
 
         const total = await Chercheur.countDocuments(chercheurFilters);
 
         return res.status(200).json({
             success: true,
             data: {
-                chercheurs,
+                chercheurs: chercheursFiltres,
                 total,
-                page: parseInt(page),
-                limit: parseInt(limit),
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                pageSize: parseInt(limit),
             },
         });
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: t('erreur_serveur', lang),
+            message: `Une erreur est survenue lors de la récupération des chercheurs (${lang})`,
             error: error.message,
         });
     }
 };
+
+

@@ -5,6 +5,7 @@ import { generateRandomPassword } from '../utils/generatePassword.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
 import { Groupe } from '../models/Groupe.js';
 import Etablissement from '../models/Etablissement.js';
+import BaseUtilisateur from '../models/BaseUtilisateur.js';
 
 export const createStagiaire = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -23,7 +24,7 @@ export const createStagiaire = async (req, res) => {
         const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, commune, parcours } = req.body;
 
         // Vérifier si l'email existe déjà
-        const exists = await Stagiaire.exists({ email });
+        const exists = await BaseUtilisateur.exists({ email });
         if (exists) {
             return res.status(409).json({
                 success: false,
@@ -92,7 +93,6 @@ export const createStagiaire = async (req, res) => {
     }
 };
 
-
 export const updateStagiaire = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
 
@@ -116,6 +116,20 @@ export const updateStagiaire = async (req, res) => {
                 success: false,
                 message: t('stagiaire_non_trouve', lang),
             });
+        }
+        const email = otherData.email
+        if (email) {
+            const emailExists = await BaseUtilisateur.findOne({
+                email,
+                _id: { $ne: id }, // Exclure le chercheur actuel
+            });
+
+            if (emailExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('email_deja_utilise', lang),
+                });
+            }
         }
 
         // Traiter les parcours
@@ -173,7 +187,6 @@ export const updateStagiaire = async (req, res) => {
         });
     }
 };
-
 
 
 export const deleteStagiaire = async (req, res) => {

@@ -222,7 +222,12 @@
     "chercheur_email_existe": "Un chercheur avec cet email existe déjà.",
     "chercheur_non_trouve": "Chercheur non trouvé.",
 
-    "mandat_non_trouve": "Le mandat spécifié est introuvable."
+    "mandat_non_trouve": "Le mandat spécifié est introuvable.",
+
+    "etat_non_entame":"Non entamé",
+    "etat_termine":"Terminé",
+    "etat_en_cours":"En cours"
+            
     
     
 }

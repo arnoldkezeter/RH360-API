@@ -48,7 +48,7 @@ export const login = async (req, res) => {
 
     // Génération du token JWT
     const token = jwt.sign(
-      { id: utilisateur._id, role: utilisateur.role }, // Payload
+      { _id: utilisateur._id, role: utilisateur.role, nom:utilisateur.nom, prenom:utilisateur.prenom, email:utilisateur.email, genre:utilisateur.genre, actif:utilisateur.actif, photoDeProfil:utilisateur.photoDeProfil }, // Payload
       process.env.JWT_SECRET, // Secret key
       { expiresIn: '8h' } // Durée de validité
     );
@@ -58,7 +58,7 @@ export const login = async (req, res) => {
       success : true,
       token,
       utilisateur: {
-        id: utilisateur._id,
+        _id: utilisateur._id,
         nom: utilisateur.nom,
         prenom: utilisateur.prenom,
         email: utilisateur.email,

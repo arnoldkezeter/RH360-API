@@ -8,7 +8,7 @@ import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 
 // Ajouter un programme de formation
 export const createProgrammeFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -33,23 +33,14 @@ export const createProgrammeFormation = async (req, res) => {
 
 
         // Vérification ObjectId pour creePar
-        let creeParId;
-        if (creePar) {
-            if (!mongoose.Types.ObjectId.isValid(creePar)) {
+        if (creePar && creePar._id) {
+            if (!mongoose.Types.ObjectId.isValid(creePar._id)) {
                 return res.status(400).json({
                     success: false,
                     message: t('identifiant_invalide', lang),
                     error: 'Invalid creePar ObjectId',
                 });
             }
-            const user = await Utilisateur.findById(creePar);
-            if (!user) {
-                return res.status(404).json({
-                    success: false,
-                    message: t('utilisateur_non_trouve', lang),
-                });
-            }
-            creeParId = user._id;
         }
 
         
@@ -58,7 +49,7 @@ export const createProgrammeFormation = async (req, res) => {
             titreFr,
             titreEn,
             annee,
-            creePar: creeParId,
+            creePar: creePar._id,
         });
 
         return res.status(201).json({
@@ -78,7 +69,7 @@ export const createProgrammeFormation = async (req, res) => {
 
 // Modifier un programme de formation
 export const updateProgrammeFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { titreFr, titreEn, annee, creePar } = req.body;
 
@@ -122,24 +113,16 @@ export const updateProgrammeFormation = async (req, res) => {
         }
 
         // Validation creePar
-        if (creePar) {
-            if (!mongoose.Types.ObjectId.isValid(creePar)) {
+        if (creePar && creePar._id) {
+            if (!mongoose.Types.ObjectId.isValid(creePar._id)) {
                 return res.status(400).json({
                     success: false,
                     message: t('identifiant_invalide', lang),
                 });
             }
-            const user = await Utilisateur.findById(creePar);
-            if (!user) {
-                return res.status(404).json({
-                    success: false,
-                    message: t('utilisateur_non_trouve', lang),
-                });
-            }
-            programme.creePar = creePar;
-        } else {
-            programme.creePar = undefined;
-        }
+            
+            programme.creePar = creePar._id;
+        } 
 
         if (titreFr !== undefined) programme.titreFr = titreFr;
         if (titreEn !== undefined) programme.titreEn = titreEn;
@@ -165,7 +148,7 @@ export const updateProgrammeFormation = async (req, res) => {
 // Supprimer un programme de formation
 export const deleteProgrammeFormation = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -203,7 +186,7 @@ export const deleteProgrammeFormation = async (req, res) => {
 export const getProgrammesFormation = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const sortField = 'annee';
 
@@ -242,7 +225,7 @@ export const getProgrammesFormation = async (req, res) => {
 
 // Récupérer un programme de formation par ID
 export const getProgrammeFormationById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -284,7 +267,7 @@ export const getProgrammeFormationById = async (req, res) => {
 
 // Recherche par titre (Fr ou En selon langue)
 export const searchProgrammeFormationByTitle = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { titre } = req.query;
 
     if (!titre) {
@@ -324,7 +307,7 @@ export const searchProgrammeFormationByTitle = async (req, res) => {
 
 // Charger programmes pour dropdown
 export const getProgrammesForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = 'annee';
 
     try {
@@ -348,7 +331,7 @@ export const getProgrammesForDropdown = async (req, res) => {
 
 //Liste des programmes de formation avec stats
 export const getStatistiquesProgrammesFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -357,16 +340,31 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
     try {
         const totalProgrammes = await ProgrammeFormation.countDocuments();
 
+        // Récupérer les programmes avec pagination
         const programmes = await ProgrammeFormation.find()
-            .select('annee')
+            .select('annee titreFr titreEn')
             .sort({ annee: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        const programmeIds = programmes.map(p => p._id);
+        // Si aucun programme n'existe, retourner une réponse vide
+        if (!programmes || programmes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    programmeFormations: [],
+                    totalItems: 0,
+                    currentPage: page,
+                    totalPages: 0,
+                    pageSize: limit
+                }
+            });
+        }
 
-        // Regrouper toutes les formations en une seule requête
+        const programmeIds = programmes.map((p) => p._id);
+        console.log(programmeIds)
+        // Rechercher toutes les formations associées aux programmes retournés
         const formations = await Formation.find({ programme: { $in: programmeIds } })
             .select('programme nbTachesTotal nbTachesExecutees')
             .lean();
@@ -381,7 +379,8 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
             formationsParProgramme[pid].push(formation);
         }
 
-        const results = programmes.map(programme => {
+        // Construire les résultats
+        const results = programmes.map((programme) => {
             const pid = programme._id.toString();
             const formations = formationsParProgramme[pid] || [];
 
@@ -404,23 +403,28 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
             }
 
             return {
-                programmeId: programme._id,
+                _id: programme._id,
                 annee: programme.annee,
+                titreFr:programme.titreFr,
+                titreEn:programme.titreEn,
                 nombreFormationPrevue,
                 nombreFormationExecutee,
                 etat
             };
         });
-
+        console.log(results)
         return res.status(200).json({
             success: true,
-            currentPage: page,
-            totalPages: Math.ceil(totalProgrammes / limit),
-            totalProgrammes,
-            data: results
+            data: {
+                programmeFormations: results,
+                totalItems: totalProgrammes,
+                currentPage: page,
+                totalPages: Math.ceil(totalProgrammes / limit),
+                pageSize: limit
+            }
         });
-
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -428,6 +432,7 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
         });
     }
 };
+
 
 
 //Statistiques
@@ -466,7 +471,7 @@ export const getNombreProgrammesActifs = async (req, res) => {
             }
         }
 
-        return res.status(200).json({ success: true, totalActifs: nombreActifs });
+        return res.status(200).json({ success: true, data: nombreActifs });
     } catch (err) {
         return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
     }
@@ -493,7 +498,7 @@ export const getPourcentageExecutionProgrammes = async (req, res) => {
             ? 0
             : Math.round((totalExecutees / totalFormations) * 100);
 
-        return res.status(200).json({ success: true, pourcentage });
+        return res.status(200).json({ success: true, data:pourcentage });
     } catch (err) {
         return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
     }
@@ -549,7 +554,7 @@ export const getRepartitionFormationsParProgramme = async (req, res) => {
 //Taux d'execution d'une foramtion par axe stratégique
 export const getTauxExecutionParAxeStrategique = async (req, res) => {
     const { programmeId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(programmeId)) {
         return res.status(400).json({
@@ -627,7 +632,7 @@ export const getTauxExecutionParAxeStrategique = async (req, res) => {
 //Coûts par formation pour un programme
 export const getCoutsParFormationPourProgramme = async (req, res) => {
     const { programmeId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(programmeId)) {
         return res.status(400).json({

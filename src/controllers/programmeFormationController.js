@@ -308,16 +308,21 @@ export const searchProgrammeFormationByTitle = async (req, res) => {
 // Charger programmes pour dropdown
 export const getProgrammesForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-    const sortField = 'annee';
 
     try {
-        const programmes = await ProgrammeFormation.find({}, '_id titreFr titreEn')
-            .sort({ [sortField]: 1 })
+        const programmes = await ProgrammeFormation.find({}, '_id annee titreFr titreEn')
+            .sort({ 'annee': 1 })
             .lean();
 
         return res.status(200).json({
             success: true,
-            data: programmes,
+            data: {
+                programmeFormations:programmes,
+                totalItems: programmes.length,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize: programmes.length,
+            },
         });
     } catch (err) {
         return res.status(500).json({
@@ -363,7 +368,6 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
         }
 
         const programmeIds = programmes.map((p) => p._id);
-        console.log(programmeIds)
         // Rechercher toutes les formations associées aux programmes retournés
         const formations = await Formation.find({ programme: { $in: programmeIds } })
             .select('programme nbTachesTotal nbTachesExecutees')
@@ -412,7 +416,6 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
                 etat
             };
         });
-        console.log(results)
         return res.status(200).json({
             success: true,
             data: {

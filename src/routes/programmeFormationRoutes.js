@@ -26,7 +26,7 @@ router.delete('/:id', authentificate, deleteProgrammeFormation);
 router.get('/', authentificate, getProgrammesFormation);
 router.get('/:id', authentificate, getProgrammeFormationById);
 router.get('/recherche/titre', authentificate, searchProgrammeFormationByTitle);
-router.get('/dropdown/list', authentificate, getProgrammesForDropdown);
+router.get('/dropdown/all', authentificate, getProgrammesForDropdown);
 router.get('/programmes/stats', authentificate, getStatistiquesProgrammesFormation);
 router.get('/programmes/actifs/total', authentificate, getNombreProgrammesActifs);
 router.get('/programmes/pourcentage-execution-global', authentificate, getPourcentageExecutionProgrammes);

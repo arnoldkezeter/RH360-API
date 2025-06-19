@@ -10,7 +10,7 @@ import { enrichirFormations } from '../services/formationService.js';
 
 // Ajouter
 export const createFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -23,6 +23,19 @@ export const createFormation = async (req, res) => {
 
     try {
         const { titreFr, titreEn, descriptionFr, descriptionEn, axeStrategique, programmeFormation } = req.body;
+        if (!mongoose.Types.ObjectId.isValid(axeStrategique._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(programmeFormation._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
 
         const existsFr = await Formation.exists({ titreFr });
         if (existsFr) {
@@ -45,18 +58,31 @@ export const createFormation = async (req, res) => {
             titreEn,
             descriptionFr,
             descriptionEn,
-            familleMetier:[],
-            axeStrategique,
-            programmeFormation
+            familleMetier: [],
+            axeStrategique: axeStrategique._id,
+            programmeFormation: programmeFormation._id,
         });
+
+        // Peupler les champs axeStrategique et programmeFormation
+        const populatedFormation = await Formation.findById(formation._id)
+        .populate({
+            path: 'axeStrategique',
+            select: 'nomFr nomEn', // Sélectionner uniquement nomFr et nomEn
+        })
+        .populate({
+            path: 'programmeFormation',
+            select: 'annee', // Sélectionner uniquement annee
+        });
+
 
         return res.status(201).json({
             success: true,
             message: t('ajouter_succes', lang),
-            data: formation,
+            data: populatedFormation,
         });
 
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -67,10 +93,9 @@ export const createFormation = async (req, res) => {
 
 // Modifier
 export const updateFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { titreFr, titreEn, descriptionFr, descriptionEn, axeStrategique, programmeFormation } = req.body;
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
             success: false,
@@ -88,6 +113,19 @@ export const updateFormation = async (req, res) => {
     }
 
     try {
+        if (!mongoose.Types.ObjectId.isValid(axeStrategique._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(programmeFormation._id)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
         const formation = await Formation.findById(id);
         if (!formation) {
             return res.status(404).json({
@@ -116,18 +154,30 @@ export const updateFormation = async (req, res) => {
         if (titreEn) formation.titreEn = titreEn;
         if (descriptionFr !== undefined) formation.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) formation.descriptionEn = descriptionEn;
-        if (axeStrategique !== undefined) formation.axeStrategique = axeStrategique;
-        if (programmeFormation !== undefined) formation.programmeFormation = programmeFormation;
+        if (axeStrategique !== undefined) formation.axeStrategique = axeStrategique._id;
+        if (programmeFormation !== undefined) formation.programmeFormation = programmeFormation._id;
 
         await formation.save();
+        // Peupler les champs axeStrategique et programmeFormation
+        const populatedFormation = await Formation.findById(formation._id)
+        .populate({
+            path: 'axeStrategique',
+            select: 'nomFr nomEn', // Sélectionner uniquement nomFr et nomEn
+        })
+        .populate({
+            path: 'programmeFormation',
+            select: 'annee', // Sélectionner uniquement annee
+        });
+
 
         return res.status(200).json({
             success: true,
             message: t('modifier_succes', lang),
-            data: formation,
+            data: populatedFormation,
         });
 
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -139,7 +189,7 @@ export const updateFormation = async (req, res) => {
 // Supprimer
 export const deleteFormation = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -176,7 +226,7 @@ export const deleteFormation = async (req, res) => {
 //Ajouter une famille metier
 export const ajouterFamilleMetierAFormation = async (req, res) => {
     const { idFormation, idFamilleMetier } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(idFormation) || !mongoose.Types.ObjectId.isValid(idFamilleMetier)) {
         return res.status(400).json({
@@ -216,7 +266,7 @@ export const ajouterFamilleMetierAFormation = async (req, res) => {
 //Supprimer une famille metier
 export const supprimerFamilleMetierDeFormation = async (req, res) => {
     const { idFormation, idFamilleMetier } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(idFormation) || !mongoose.Types.ObjectId.isValid(idFamilleMetier)) {
         return res.status(400).json({
@@ -253,7 +303,7 @@ export const supprimerFamilleMetierDeFormation = async (req, res) => {
 
 // Pour les menus déroulants
 export const getFormationsForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
 
     try {
@@ -278,7 +328,7 @@ export const getFormationsForDropdown = async (req, res) => {
 export const getFormations = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
 
     try {
@@ -310,10 +360,225 @@ export const getFormations = async (req, res) => {
     }
 };
 
+//Liste des formations avec filtres
+export const getFilteredFormations = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {
+        axeStrategique,
+        familleMetier,
+        titre,
+        debut,
+        fin,
+        page = 1,
+        limit = 10,
+    } = req.query;
+
+    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+    const filters = {};
+
+    // Validation des ObjectIds en parallèle
+    const validationPromises = [];
+    if (axeStrategique) {
+        if (!mongoose.Types.ObjectId.isValid(axeStrategique)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        filters.axeStrategique = axeStrategique;
+    }
+
+    if (familleMetier) {
+        if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        filters.familleMetier = familleMetier;
+    }
+
+    if (titre) {
+        const field = lang === 'en' ? 'titreEn' : 'titreFr';
+        filters[field] = { $regex: new RegExp(titre, 'i') };
+    }
+
+    // Gestion optimisée du filtrage par période
+    if (debut && fin) {
+        const matchThemes = {
+            dateDebut: { $gte: new Date(debut) },
+            dateFin: { $lte: new Date(fin) }
+        };
+        
+        // Récupération optimisée des IDs uniquement
+        const themes = await ThemeFormation.find(matchThemes)
+            .select('formation')
+            .lean();
+        
+        const formationIds = [...new Set(themes.map(t => t.formation.toString()))];
+        
+        if (formationIds.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    formations: [],
+                    totalItems: 0,
+                    currentPage: parseInt(page),
+                    totalPages: 0,
+                    pageSize: parseInt(limit),
+                },
+                message: t('aucune_formation_periode', lang)
+            });
+        }
+        
+        filters._id = { $in: formationIds };
+    }
+
+    try {
+        // Exécution en parallèle du count et de la requête principale
+        const [total, formations] = await Promise.all([
+            Formation.countDocuments(filters),
+            Formation.find(filters)
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit))
+                .sort({ [sortField]: 1 })
+                .populate('familleMetier axeStrategique programmeFormation')
+                .lean()
+        ]);
+
+        // Optimisation : récupération groupée de toutes les données nécessaires
+        const formationIds = formations.map(f => f._id);
+        
+        // Récupération de tous les thèmes en une seule requête
+        const allThemes = await ThemeFormation.find({
+            formation: { $in: formationIds }
+        })
+        .populate('publicCible')
+        .lean();
+
+        // Récupération de tous les budgets en une seule requête
+        const themeIds = allThemes.map(t => t._id);
+        const allBudgets = await BudgetFormation.find({
+            theme: { $in: themeIds }
+        })
+        .populate('sections.lignes.natureTaxe')
+        .lean();
+
+        // Groupement des données par formation et thème pour éviter les requêtes répétées
+        const themesByFormation = allThemes.reduce((acc, theme) => {
+            const formationId = theme.formation.toString();
+            if (!acc[formationId]) acc[formationId] = [];
+            acc[formationId].push(theme);
+            return acc;
+        }, {});
+
+        const budgetsByTheme = allBudgets.reduce((acc, budget) => {
+            const themeId = budget.theme.toString();
+            if (!acc[themeId]) acc[themeId] = [];
+            acc[themeId].push(budget);
+            return acc;
+        }, {});
+
+        // Fonction optimisée pour calculer les budgets
+        const calculateBudgets = (themeBudgets) => {
+            return themeBudgets.reduce((totals, budget) => {
+                const sectionTotals = budget.sections.reduce((sectionAcc, section) => {
+                    const ligneTotals = section.lignes.reduce((ligneAcc, ligne) => {
+                        const taxeRate = ligne.natureTaxe?.taux || 0;
+                        const taxMultiplier = (1 + taxeRate / 100);
+
+                        const montantTTCPrevu = ligne.montantUnitairePrevuHT * ligne.quantite * taxMultiplier;
+                        const montantTTCReel = ligne.montantUnitaireReelHT * ligne.quantite * taxMultiplier;
+
+                        return {
+                            estimatif: ligneAcc.estimatif + montantTTCPrevu,
+                            reel: ligneAcc.reel + montantTTCReel,
+                        };
+                    }, { estimatif: 0, reel: 0 });
+
+                    return {
+                        estimatif: sectionAcc.estimatif + ligneTotals.estimatif,
+                        reel: sectionAcc.reel + ligneTotals.reel,
+                    };
+                }, { estimatif: 0, reel: 0 });
+
+                return {
+                    estimatif: totals.estimatif + sectionTotals.estimatif,
+                    reel: totals.reel + sectionTotals.reel,
+                };
+            }, { estimatif: 0, reel: 0 });
+        };
+
+        // Enrichissement optimisé des formations
+        const enrichedFormations = formations.map(formation => {
+            const formationId = formation._id.toString();
+            const themes = themesByFormation[formationId] || [];
+            const nbTheme = themes.length;
+
+            // Calcul optimisé de la période
+            let periode = null;
+            if (nbTheme > 0) {
+                const dates = themes.map(t => new Date(t.dateDebut).getTime());
+                const dateFins = themes.map(t => new Date(t.dateFin).getTime());
+                
+                periode = {
+                    debut: new Date(Math.min(...dates)),
+                    fin: new Date(Math.max(...dateFins))
+                };
+            }
+
+            // Calcul optimisé du public cible
+            const totalPublicCible = themes.reduce(
+                (total, theme) => total + (theme.publicCible?.length || 0),
+                0
+            );
+
+            // Calcul optimisé des budgets
+            let totalBudgetEstimatif = 0;
+            let totalBudgetReel = 0;
+
+            themes.forEach(theme => {
+                const themeBudgets = budgetsByTheme[theme._id.toString()] || [];
+                const { estimatif, reel } = calculateBudgets(themeBudgets);
+                totalBudgetEstimatif += estimatif;
+                totalBudgetReel += reel;
+            });
+
+            return {
+                ...formation,
+                nbTheme,
+                periode,
+                totalPublicCible,
+                budgetEstimatif: Math.round(totalBudgetEstimatif * 100) / 100, // Arrondi à 2 décimales
+                budgetReel: Math.round(totalBudgetReel * 100) / 100,
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                formations: enrichedFormations,
+                totalItems: total,
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                pageSize: parseInt(limit),
+            },
+        });
+    } catch (err) {
+        console.error('Erreur dans getFilteredFormations:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : 'Erreur interne'
+        });
+    }
+};
+
+
 
 // Formation par ID
 export const getFormationById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -352,7 +617,7 @@ export const getFormationById = async (req, res) => {
 
 // Recherche par titre
 export const searchFormationByTitre = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { titre } = req.query;
 
     if (!titre) {
@@ -390,7 +655,7 @@ export const searchFormationByTitre = async (req, res) => {
 
 //Filtrer les formations par famille metier
 export const getFormationsByFamilleMetier = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -436,7 +701,7 @@ export const getFormationsByFamilleMetier = async (req, res) => {
 
 //Filtrer les formations par axeStrategique
 export const getFormationsByAxeStrategique = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -482,7 +747,7 @@ export const getFormationsByAxeStrategique = async (req, res) => {
 
 //Filtrer les formations par periode
 export const getFormationsByPeriode = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { debut, fin } = req.query;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -539,7 +804,7 @@ export const getFormationsByPeriode = async (req, res) => {
 //Stat par sexe
 export const getStatsParSexe = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -572,7 +837,7 @@ export const getStatsParSexe = async (req, res) => {
 // Stats par service
 export const getStatsParService = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -606,7 +871,7 @@ export const getStatsParService = async (req, res) => {
 //Stats par tranche d'âge
 export const getStatsParTrancheAge = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -649,7 +914,7 @@ export const getStatsParTrancheAge = async (req, res) => {
 //Stats par catégorie
 export const getStatsParCategoriePro = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -683,7 +948,7 @@ export const getStatsParCategoriePro = async (req, res) => {
 //Nombre total de personne formé
 export const getNombreTotalFormes = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -715,7 +980,7 @@ export const getNombreTotalFormes = async (req, res) => {
 //Formateur par type
 export const getNbFormateursParType = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -746,7 +1011,7 @@ export const getNbFormateursParType = async (req, res) => {
 //Coûts par thème pour une formation
 export const getCoutsParThemePourFormation = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -813,7 +1078,7 @@ export const getCoutsParThemePourFormation = async (req, res) => {
 // Retourne le taux d'exécution des tâches pour chaque thème d'une formation.
 export const getTauxExecutionParThemePourFormation = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -884,7 +1149,7 @@ export const getTauxExecutionParThemePourFormation = async (req, res) => {
 //Taux d'execution des formations par programme
 export const getThemesExecutionParProgramme = async (req, res) => {
     const { programmeId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(programmeId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -926,7 +1191,7 @@ export const getThemesExecutionParProgramme = async (req, res) => {
 //Taux d'execution des formations par période
 export const getThemesExecutionParPeriode = async (req, res) => {
     const { dateDebut, dateFin } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!dateDebut || !dateFin) {
         return res.status(400).json({ success: false, message: t('dates_requises', lang) });
@@ -986,7 +1251,7 @@ export const getThemesExecutionParPeriode = async (req, res) => {
 //Taux d'execution des formations par axe stratégique
 export const getThemesExecutionParAxeStrategique = async (req, res) => {
     const { axeId } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(axeId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -1026,7 +1291,7 @@ export const getThemesExecutionParAxeStrategique = async (req, res) => {
 //Taux d'execution des formations à partir de la recherche d'une formation
 export const searchThemesExecutionParFormation = async (req, res) => {
     const { keyword } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!keyword) {
         return res.status(400).json({ success: false, message: t('mot_cle_requis', lang) });

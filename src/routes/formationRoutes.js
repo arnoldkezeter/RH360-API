@@ -3,12 +3,14 @@ import {
   createFormation,
   updateFormation,
   deleteFormation,
+  getFilteredFormations,
   getFormations,
   getFormationById,
   getFormationsByFamilleMetier,
   ajouterFamilleMetierAFormation,
   supprimerFamilleMetierDeFormation,
   getFormationsForDropdown,
+
   searchFormationByTitre,
   getStatsParSexe,
   getStatsParService,
@@ -22,6 +24,7 @@ import {
   getThemesExecutionParPeriode,
   getThemesExecutionParAxeStrategique,
   searchThemesExecutionParFormation,
+  
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateFormation.js';
@@ -36,6 +39,7 @@ router.delete('/:id', authentificate, deleteFormation);
 
 // GET
 router.get('/', authentificate, getFormations);
+router.get('/filtre', authentificate, getFilteredFormations);
 router.get('/dropdown', authentificate, getFormationsForDropdown);
 router.get('/:id', authentificate, getFormationById);
 router.get('/search/by-titre', authentificate, searchFormationByTitre);

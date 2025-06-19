@@ -40,7 +40,7 @@ router.delete('/:id', authentificate, deleteFormation);
 // GET
 router.get('/', authentificate, getFormations);
 router.get('/filtre', authentificate, getFilteredFormations);
-router.get('/dropdown', authentificate, getFormationsForDropdown);
+router.get('/dropdown/programme/:programmeId', authentificate, getFormationsForDropdown);
 router.get('/:id', authentificate, getFormationById);
 router.get('/search/by-titre', authentificate, searchFormationByTitre);
 router.get('/familleMetier/:id', authentificate, getFormationsByFamilleMetier);

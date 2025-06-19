@@ -305,15 +305,22 @@ export const supprimerFamilleMetierDeFormation = async (req, res) => {
 export const getFormationsForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+    const {programmeId} = req.params;
 
     try {
-        const formations = await Formation.find({}, '_id titreFr titreEn')
+        const formations = await Formation.find({programmeFormation:programmeId}, '_id titreFr titreEn')
             .sort({ [sortField]: 1 })
             .lean();
 
         return res.status(200).json({
             success: true,
-            data: formations,
+            data: {
+                formations,
+                totalItems: formations.length,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize: formations.length,
+            },
         });
     } catch (err) {
         return res.status(500).json({
@@ -573,7 +580,6 @@ export const getFilteredFormations = async (req, res) => {
         });
     }
 };
-
 
 
 // Formation par ID

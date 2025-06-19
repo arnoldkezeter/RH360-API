@@ -11,6 +11,7 @@ import {
   supprimerLieuFormation,
   getThemeFormationsForDropdown,
   getThemesByFamilleMetier,
+  getFilteredThemes,
 } from '../controllers/themeFormationController.js';
 import { validateFields } from '../middlewares/validateFields/validateTheme.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -23,6 +24,7 @@ router.post('/', validateFields, authentificate, createThemeFormation);
 router.put('/:id', validateFields, authentificate, updateThemeFormation);
 
 router.delete('/:id', authentificate, deleteThemeFormation);
+router.get('/filtre', authentificate, getFilteredThemes);
 
 router.put('/:id/publicCible', authentificate, ajouterPublicCible);
 router.delete('/:id/publicCible/:publicCibleId', authentificate, supprimerPublicCible);

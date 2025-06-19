@@ -8,8 +8,6 @@ export const validateFields = [
     body('dateDebut').notEmpty().withMessage('La date de début est requise'),
     
     body('dateFin').notEmpty().withMessage('La date de fin est requise'),
-    
-    body('responsable').notEmpty().withMessage('Le responsable de formation est requis'),
-    
+        
     body('formation').notEmpty().withMessage('La formation est obligatoire'),
 ];

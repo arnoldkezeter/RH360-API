@@ -523,15 +523,14 @@ export const getFilteredFormations = async (req, res) => {
             const nbTheme = themes.length;
 
             // Calcul optimisé de la période
-            let periode = null;
+            let dateDebut = null;
+            let dateFin = null;
             if (nbTheme > 0) {
                 const dates = themes.map(t => new Date(t.dateDebut).getTime());
                 const dateFins = themes.map(t => new Date(t.dateFin).getTime());
                 
-                periode = {
-                    debut: new Date(Math.min(...dates)),
-                    fin: new Date(Math.max(...dateFins))
-                };
+                dateDebut = new Date(Math.min(...dates)),
+                dateFin = new Date(Math.max(...dateFins))
             }
 
             // Calcul optimisé du public cible
@@ -554,7 +553,8 @@ export const getFilteredFormations = async (req, res) => {
             return {
                 ...formation,
                 nbTheme,
-                periode,
+                dateDebut,
+                dateFin,
                 totalPublicCible,
                 budgetEstimatif: Math.round(totalBudgetEstimatif * 100) / 100, // Arrondi à 2 décimales
                 budgetReel: Math.round(totalBudgetReel * 100) / 100,

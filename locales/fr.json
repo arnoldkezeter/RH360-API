@@ -226,8 +226,12 @@
 
     "etat_non_entame":"Non entamé",
     "etat_termine":"Terminé",
-    "etat_en_cours":"En cours"
-            
+    "etat_en_cours":"En cours",
+
+    "lieu_non_trouve":"Lieu non trouve",
+    "formateur_non_trouve":"Formateur non trouve",
+    "lieu_existant":"Ce lieu a déjà été enregistré pour cette formation",
+    "aucun_utilisateur_fournis":"Aucun utilisateur fourni"
     
     
 }

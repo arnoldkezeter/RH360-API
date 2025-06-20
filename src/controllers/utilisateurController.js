@@ -38,7 +38,7 @@ export const createUtilisateur = async (req, res) => {
         }
 
         const existsMatricule = await Utilisateur.exists({ matricule });
-        if (matricule!==undefined && existsMatricule) {
+        if (matricule && existsMatricule) {
             return res.status(409).json({
                 success: false,
                 message: t('matricule_existant', lang),

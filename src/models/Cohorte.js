@@ -6,7 +6,7 @@ const cohorteSchema = new mongoose.Schema({
   nomEn: { type: String, required: true },
   descriptionFr: {type:String},
   descriptionEn: {type:String},
-  utilisateurs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
+  participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }],
 }, { timestamps: true });
 
 const Cohorte = mongoose.model('Cohorte', cohorteSchema);

@@ -219,6 +219,12 @@
     
     "etat_non_entame":"Not started",
     "etat_termine":"Completed",
-    "etat_en_cours":"In progress"
+    "etat_en_cours":"In progress",
+
+    "lieu_non_trouve":"Location not found",
+    "formateur_non_trouve":"Trainer not found",
+    "lieu_existant":"This location has already been registered for this training",
+    "aucun_utilisateur_fournis":"No user provided"
+
 }
   

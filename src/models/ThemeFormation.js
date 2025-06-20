@@ -5,7 +5,7 @@ const themeFormationSchema = new mongoose.Schema({
     titreFr: {type:String, required:true},
     titreEn: {type:String, required:true},
     publicCible: [{type: mongoose.Schema.Types.ObjectId, ref: 'PosteDeTravail'}],
-    lieux: [{lieu:{type : String}, cohorte:{type: mongoose.Schema.Types.ObjectId, ref: 'Cohorte'}}],
+    lieux: [{lieu:{type : String}, cohortes:[{type: mongoose.Schema.Types.ObjectId, ref: 'Cohorte'}]}],
     dateDebut: {type : Date},
     dateFin: {type : Date},
     formateurs: [{formateur:{ type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }, interne:{type:Boolean}}],

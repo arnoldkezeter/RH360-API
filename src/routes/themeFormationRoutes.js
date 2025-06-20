@@ -3,12 +3,9 @@ import {
   createThemeFormation,
   updateThemeFormation,
   deleteThemeFormation,
-  ajouterPublicCible,
-  supprimerPublicCible,
   ajouterFormateur,
   supprimerFormateur,
-  ajouterLieuFormation,
-  supprimerLieuFormation,
+  
   getThemeFormationsForDropdown,
   getThemesByFamilleMetier,
   getFilteredThemes,
@@ -26,14 +23,9 @@ router.put('/:id', validateFields, authentificate, updateThemeFormation);
 router.delete('/:id', authentificate, deleteThemeFormation);
 router.get('/filtre', authentificate, getFilteredThemes);
 
-router.put('/:id/publicCible', authentificate, ajouterPublicCible);
-router.delete('/:id/publicCible/:publicCibleId', authentificate, supprimerPublicCible);
 
 router.put('/:id/formateur', authentificate, ajouterFormateur);
 router.delete('/:id/formateur/:formateurId', authentificate, supprimerFormateur);
-
-router.put('/:id/lieu', authentificate, ajouterLieuFormation);
-router.delete('/:id/lieu/:lieuId', authentificate, supprimerLieuFormation);
 
 router.get('/dropdown/all', authentificate, getThemeFormationsForDropdown);
 

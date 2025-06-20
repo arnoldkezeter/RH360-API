@@ -306,85 +306,6 @@ export const deleteThemeFormation = async (req, res) => {
 };
 
 
-// Ajouter un public cible
-export const ajouterPublicCible = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id } = req.params;
-    const { publicCibleId } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(publicCibleId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const theme = await ThemeFormation.findById(id);
-        if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
-        }
-
-        if (!theme.publicCible.includes(publicCibleId)) {
-            theme.publicCible.push(publicCibleId);
-            await theme.save();
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            data: theme,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-// Supprimer un public cible
-export const supprimerPublicCible = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id, publicCibleId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(publicCibleId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const theme = await ThemeFormation.findById(id);
-        if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
-        }
-
-        theme.publicCible = theme.publicCible.filter(pc => pc.toString() !== publicCibleId);
-        await theme.save();
-
-        return res.status(200).json({
-            success: true,
-            message: t('supprimer_succes', lang),
-            data: theme,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
 // Ajouter un formateur
 export const ajouterFormateur = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -448,90 +369,6 @@ export const supprimerFormateur = async (req, res) => {
         }
 
         theme.formateurs = theme.formateurs.filter(f => f.toString() !== formateurId);
-        await theme.save();
-
-        return res.status(200).json({
-            success: true,
-            message: t('supprimer_succes', lang),
-            data: theme,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-// Ajouter un lieu de formation
-export const ajouterLieuFormation = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id } = req.params;
-    const { lieu, cohorte } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(cohorte)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    if (!lieu) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-        });
-    }
-
-    try {
-        const theme = await ThemeFormation.findById(id);
-        if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
-        }
-
-        theme.lieux.push({ lieu, cohorte });
-        await theme.save();
-
-        return res.status(200).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            data: theme,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-// Supprimer un lieu de formation
-export const supprimerLieuFormation = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id, lieuId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(lieuId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const theme = await ThemeFormation.findById(id);
-        if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
-        }
-
-        theme.lieux = theme.lieux.filter(l => l._id.toString() !== lieuId);
         await theme.save();
 
         return res.status(200).json({
@@ -725,8 +562,6 @@ export const getFilteredThemes = async (req, res) => {
         });
     }
 };
-
-
 
 
 // Liste paginée des thèmes filtrés par familleMetier

@@ -224,7 +224,8 @@
     "lieu_non_trouve":"Location not found",
     "formateur_non_trouve":"Trainer not found",
     "lieu_existant":"This location has already been registered for this training",
-    "aucun_utilisateur_fournis":"No user provided"
+    "aucun_utilisateur_fournis":"No user provided",
+    "ressource_non_trouvee":"Resource not found"
 
 }
   

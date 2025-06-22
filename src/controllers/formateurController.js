@@ -1,22 +1,27 @@
 import mongoose from 'mongoose';
 import { t } from '../utils/i18n.js';
-import { Objectif } from '../models/Objectif.js';
+import Utilisateur from '../models/Utilisateur.js';
 import ThemeFormation from '../models/ThemeFormation.js';
+import { Formateur } from '../models/Formateur.js';
 
-// Ajouter un objectif
-export const ajouterObjectif = async (req, res) => {
+
+// Ajouter un formateur
+export const ajouterFormateur = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const {themeId} = req.params;
-  const { nomFr, nomEn } = req.body;
+  const{themeId} = req.params;
+  const { utilisateurId, interne } = req.body;
   
-  if (!nomFr || !nomEn || !themeId) {
+  if (!utilisateurId || !themeId || typeof interne !== 'boolean') {
     return res.status(400).json({
       success: false,
       message: t('champs_obligatoires', lang),
     });
   }
 
-  if (!mongoose.Types.ObjectId.isValid(themeId)) {
+  if (
+    !mongoose.Types.ObjectId.isValid(utilisateurId) ||
+    !mongoose.Types.ObjectId.isValid(themeId)
+  ) {
     return res.status(400).json({
       success: false,
       message: t('identifiant_invalide', lang),
@@ -24,20 +29,35 @@ export const ajouterObjectif = async (req, res) => {
   }
 
   try {
+    const utilisateur = await Utilisateur.findById(utilisateurId);
     const theme = await ThemeFormation.findById(themeId);
-    if (!theme) {
+
+    if (!utilisateur || !theme) {
       return res.status(404).json({
         success: false,
-        message: t('theme_non_trouve', lang),
+        message: t('ressource_non_trouvee', lang),
       });
     }
 
-    const nouvelObjectif = await Objectif.create({ nomFr, nomEn, theme: themeId });
+    const exist = await Formateur.findOne({ utilisateur: utilisateurId, theme: themeId });
+    if (exist) {
+      return res.status(400).json({
+        success: false,
+        message: t('formateur_existant', lang),
+      });
+    }
+
+    const nouveauFormateur = await Formateur.create({ utilisateur: utilisateurId, theme: themeId, interne });
+
+    const formateurPopule = await Formateur.findById(nouveauFormateur._id)
+      .populate('utilisateur')
+      .populate('theme')
+      .lean();
 
     return res.status(201).json({
       success: true,
       message: t('ajouter_succes', lang),
-      data: nouvelObjectif,
+      data: formateurPopule,
     });
   } catch (error) {
     return res.status(500).json({
@@ -48,54 +68,50 @@ export const ajouterObjectif = async (req, res) => {
   }
 };
 
-// Modifier un objectif
-export const modifierObjectif = async (req, res) => {
+// Modifier un formateur
+export const modifierFormateur = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { themeId, objectifId } = req.params;
-  const { nomFr, nomEn } = req.body;
-  console.log(themeId+" - "+objectifId)
-  if (!mongoose.Types.ObjectId.isValid(objectifId)) {
+  const { formateurId } = req.params;
+  const { utilisateurId, interne } = req.body;
+  console.log(utilisateurId)
+  if (!mongoose.Types.ObjectId.isValid(formateurId)) {
     return res.status(400).json({
       success: false,
       message: t('identifiant_invalide', lang),
     });
   }
 
-  if (!nomFr || !nomEn || !themeId) {
-    return res.status(400).json({
-      success: false,
-      message: t('champs_obligatoires', lang),
-    });
-  }
-
   try {
-
-    const theme = await ThemeFormation.findById(themeId);
-    if (!theme) {
+    const formateur = await Formateur.findById(formateurId);
+    if (!formateur) {
       return res.status(404).json({
         success: false,
-        message: t('theme_non_trouve', lang),
+        message: t('formateur_non_trouvee', lang),
       });
     }
 
-    const objectif = await Objectif.findById(objectifId);
-    if (!objectif) {
+    const utilisateur = await Utilisateur.findById(utilisateurId);
+    if (!utilisateur) {
       return res.status(404).json({
         success: false,
-        message: t('ressource_non_trouvee', lang),
+        message: t('utilisateur_non_trouve', lang),
       });
     }
 
-    objectif.nomFr = nomFr;
-    objectif.nomEn = nomEn;
-    objectif.theme = themeId;
+    if (typeof interne === 'boolean') formateur.interne = interne;
+    formateur.utilisateur = utilisateurId
 
-    await objectif.save();
+    await formateur.save();
+
+    const formateurPopule = await Formateur.findById(formateur._id)
+      .populate('utilisateur')
+      .populate('theme')
+      .lean();
 
     return res.status(200).json({
       success: true,
       message: t('modifier_succes', lang),
-      data: objectif,
+      data: formateurPopule,
     });
   } catch (error) {
     return res.status(500).json({
@@ -106,12 +122,12 @@ export const modifierObjectif = async (req, res) => {
   }
 };
 
-// Supprimer un objectif
-export const supprimerObjectif = async (req, res) => {
+// Supprimer un formateur
+export const supprimerFormateur = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { objectifId } = req.params;
+  const { formateurId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(objectifId)) {
+  if (!mongoose.Types.ObjectId.isValid(formateurId)) {
     return res.status(400).json({
       success: false,
       message: t('identifiant_invalide', lang),
@@ -119,15 +135,15 @@ export const supprimerObjectif = async (req, res) => {
   }
 
   try {
-    const objectif = await Objectif.findById(objectifId);
-    if (!objectif) {
+    const formateur = await Formateur.findById(formateurId);
+    if (!formateur) {
       return res.status(404).json({
         success: false,
-        message: t('ressource_non_trouvee', lang),
+        message: t('formateur_non_trouvee', lang),
       });
     }
 
-    await objectif.deleteOne();
+    await formateur.deleteOne();
 
     return res.status(200).json({
       success: true,
@@ -142,8 +158,8 @@ export const supprimerObjectif = async (req, res) => {
   }
 };
 
-// Lister les objectifs pour un thème (pagination + recherche)
-export const getObjectifsByTheme = async (req, res) => {
+// Lister les formateurs d’un thème (avec pagination + recherche utilisateur)
+export const getFormateursByTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
   const { query } = req.query;
@@ -161,14 +177,22 @@ export const getObjectifsByTheme = async (req, res) => {
     const filter = { theme: themeId };
 
     if (query && query.trim() !== '') {
-      filter.$or = [
-        { nomFr: { $regex: new RegExp(query, 'i') } },
-        { nomEn: { $regex: new RegExp(query, 'i') } },
-      ];
+      const utilisateurs = await Utilisateur.find({
+        $or: [
+          { nom: { $regex: new RegExp(query, 'i') } },
+          { prenom: { $regex: new RegExp(query, 'i') } },
+          { email: { $regex: new RegExp(query, 'i') } },
+        ],
+      }).select('_id');
+
+      filter.utilisateur = { $in: utilisateurs.map((u) => u._id) };
     }
 
-    const total = await Objectif.countDocuments(filter);
-    const objectifs = await Objectif.find(filter)
+    const total = await Formateur.countDocuments(filter);
+
+    const formateurs = await Formateur.find(filter)
+      .populate('utilisateur')
+      .populate('theme')
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
@@ -176,7 +200,7 @@ export const getObjectifsByTheme = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        objectifThemes : objectifs,
+        formateurs,
         totalItems: total,
         currentPage: page,
         totalPages: Math.ceil(total / limit),
@@ -192,8 +216,8 @@ export const getObjectifsByTheme = async (req, res) => {
   }
 };
 
-// Dropdown (id et noms)
-export const getObjectifsDropdown = async (req, res) => {
+// Dropdown : liste des formateurs pour un thème
+export const getFormateursDropdown = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
 
@@ -205,11 +229,13 @@ export const getObjectifsDropdown = async (req, res) => {
   }
 
   try {
-    const objectifs = await Objectif.find({ theme: themeId }).select('_id nomFr nomEn').lean();
+    const formateurs = await Formateur.find({ theme: themeId })
+      .populate('utilisateur', 'nom prenom email')
+      .lean();
 
     return res.status(200).json({
       success: true,
-      data: objectifs,
+      data: formateurs,
     });
   } catch (error) {
     return res.status(500).json({

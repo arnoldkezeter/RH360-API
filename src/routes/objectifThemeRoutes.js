@@ -1,25 +1,22 @@
 import express from 'express';
 import {
-  createObjectifTheme,
-  updateObjectifTheme,
-  deleteObjectifTheme,
-  getObjectifsTheme,
-  getObjectifThemeById,
-  searchObjectifThemeByName,
+  ajouterObjectif,
+  supprimerObjectif,
   getObjectifsByTheme,
+  modifierObjectif,
+  getObjectifsDropdown,
 } from '../controllers/objectifThemeController.js';
 import { authentificate } from '../middlewares/auth.js';
-import { validateFields } from '../middlewares/validateFields/validateObjectif.js';
+
 
 const router = express.Router();
 
 
-router.post('/',  validateFields, authentificate, createObjectifTheme);
-router.put('/:id', validateFields, authentificate, updateObjectifTheme);
-router.delete('/:id', authentificate, deleteObjectifTheme);
-router.get('/', authentificate, getObjectifsTheme);
-router.get('/:id', authentificate, getObjectifThemeById);
-router.get('/search/by-name', authentificate, searchObjectifThemeByName);
-router.get('/theme/:themeId', authentificate, getObjectifsByTheme);
+router.post('/:themeId/objectif', authentificate, ajouterObjectif);
+router.put('/:themeId/objectif/:objectifId', authentificate, modifierObjectif);
+router.delete('/:themeId/objectif/:objectifId', authentificate, supprimerObjectif);
+router.get('/filtre/:themeId', authentificate, getObjectifsByTheme);
+router.get('/dropdown/all/:themeId', authentificate, getObjectifsDropdown);
+
 
 export default router;

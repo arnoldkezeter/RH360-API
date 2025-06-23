@@ -73,7 +73,6 @@ export const modifierFormateur = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { formateurId } = req.params;
   const { utilisateurId, interne } = req.body;
-  console.log(utilisateurId)
   if (!mongoose.Types.ObjectId.isValid(formateurId)) {
     return res.status(400).json({
       success: false,

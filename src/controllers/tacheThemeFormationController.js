@@ -11,44 +11,56 @@ export const lierTacheAuTheme = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { theme, tache, dateDebut, dateFin } = req.body;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { tache, dateDebut, dateFin } = req.body; // `tache` doit être un ObjectId ou une chaîne
+    const { themeId } = req.params;
 
     try {
-        if (!mongoose.Types.ObjectId.isValid(theme) || !mongoose.Types.ObjectId.isValid(tache)) {
+        // Validation des identifiants
+        if (!mongoose.Types.ObjectId.isValid(themeId) || !mongoose.Types.ObjectId.isValid(tache)) {
             await session.abortTransaction();
             return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
         }
 
-        const existeTheme = await ThemeFormation.findById(theme).session(session);
+        // Vérification de l'existence du thème et de la tâche
+        const existeTheme = await ThemeFormation.findById(themeId).session(session);
         const existeTache = await TacheGenerique.findById(tache).session(session);
         if (!existeTheme || !existeTache) {
             await session.abortTransaction();
             return res.status(404).json({ success: false, message: t('tache_ou_theme_introuvable', lang) });
         }
 
-        const dejaLiee = await TacheThemeFormation.findOne({ theme, tache }).session(session);
+        // Vérification de l'existence de la liaison
+        const dejaLiee = await TacheThemeFormation.findOne({ theme: themeId, tache }).session(session);
         if (dejaLiee) {
             await session.abortTransaction();
             return res.status(400).json({ success: false, message: t('tache_deja_liee', lang) });
         }
 
-        const liaison = await TacheThemeFormation.create([{ theme, tache, dateDebut, dateFin }], { session });
+        // Création de la liaison
+        const liaison = await TacheThemeFormation.create([{ theme: themeId, tache, dateDebut, dateFin }], { session });
 
+        // Mise à jour des compteurs
         existeTheme.nbTachesTotal = (existeTheme.nbTachesTotal || 0) + 1;
-
         await existeTheme.save({ session });
 
-        // MAJ du compteur dans la formation
         const formation = await Formation.findById(existeTheme.formation).session(session);
         if (formation) {
             formation.nbTachesTotal = (formation.nbTachesTotal || 0) + 1;
             await formation.save({ session });
         }
 
+        // Validation de la transaction
         await session.commitTransaction();
-        return res.status(201).json({ success: true, message: t('liaison_tache_theme_reussie', lang), data: liaison[0] });
+
+        // Peuplement des champs `tache` et `theme`
+        const liaisonPeuplee = await TacheThemeFormation.findById(liaison[0]._id)
+            .populate('tache')
+            .populate('theme');
+
+        return res.status(201).json({ success: true, message: t('ajouter_succes', lang), data: liaisonPeuplee });
     } catch (error) {
+        console.error(error);
         await session.abortTransaction();
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
     } finally {
@@ -57,11 +69,12 @@ export const lierTacheAuTheme = async (req, res) => {
 };
 
 
+
 //Modifier la tache lier au thème
 export const modifierTacheTheme = async (req, res) => {
     const { id } = req.params;
-    const { dateDebut, dateFin, fichierJoint, donneesEnregistrees } = req.body;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const { dateDebut, dateFin, fichierJoint, donneesEnregistrees, tache } = req.body;
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ 
@@ -83,14 +96,21 @@ export const modifierTacheTheme = async (req, res) => {
         if (dateFin) tacheTheme.dateFin = dateFin;
         if (fichierJoint) tacheTheme.fichierJoint = fichierJoint;
         if (donneesEnregistrees) tacheTheme.donneesEnregistrees = donneesEnregistrees;
+        if  (tache) tacheTheme.tache = tache
 
         await tacheTheme.save();
+        const tacheThemePeuplee = await TacheThemeFormation.findById(id)
+            .populate('tache')
+            .populate('theme');
+
         return res.status(200).json({ 
             success: true, 
             message: t('modifier_succes', lang), 
-            data: tacheTheme 
+            data: tacheThemePeuplee 
         });
+
     } catch (error) {
+        console.log(error)
         return res.status(500).json({ 
             success: false, 
             message: t('erreur_serveur', lang), 
@@ -104,7 +124,7 @@ export const supprimerTacheTheme = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     try {
@@ -151,11 +171,12 @@ export const supprimerTacheTheme = async (req, res) => {
 
 
 //Lister les taches par thème
-export const listerTachesParTheme = async (req, res) => {
+export const getTachesParTheme = async (req, res) => {
     const { themeId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const { page = 1, limit = 10, query, dateDebut, dateFin, estExecutee } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
 
+    // Vérification de la validité de l'identifiant du thème
     if (!mongoose.Types.ObjectId.isValid(themeId)) {
         return res.status(400).json({ 
             success: false, 
@@ -164,6 +185,7 @@ export const listerTachesParTheme = async (req, res) => {
     }
 
     try {
+        // Vérification si le thème existe
         const themeExiste = await ThemeFormation.findById(themeId);
         if (!themeExiste) {
             return res.status(404).json({ 
@@ -172,32 +194,90 @@ export const listerTachesParTheme = async (req, res) => {
             });
         }
 
-        const taches = await TacheThemeFormation.find({ theme: themeId })
-        .populate('tache')
-        .populate('theme')
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit));
+        // Rechercher les identifiants des tâches correspondant au texte recherché
+        let tacheIds = [];
+        if (query) {
+            const searchField = lang === 'en' ? 'nomEn' : 'nomFr';
+            const tachesCorrespondantes = await TacheGenerique.find({
+                [searchField]: { $regex: new RegExp(query, 'i') },
+            }).select('_id');
+            tacheIds = tachesCorrespondantes.map(tache => tache._id);
+        }
 
-        const total = await TacheThemeFormation.countDocuments({ theme: themeId });
+        // Construction des filtres dynamiques
+        const filters = { theme: themeId };
+
+        // Ajouter un filtre sur les tâches si une recherche a été effectuée
+        if (query && tacheIds.length > 0) {
+            filters.tache = { $in: tacheIds };
+        } else if (query && tacheIds.length === 0) {
+            // Si aucune tâche ne correspond à la recherche, retourner un résultat vide
+            return res.status(200).json({
+                success: true,
+                data: { 
+                    tachesThemeFormation: [],
+                    totalItems: 0,
+                    currentPage: parseInt(page),
+                    totalPages: 0,
+                    pageSize: limit
+                },
+            });
+        }
+
+        // Filtre par période (dateDebut et/ou dateFin)
+        if (dateDebut || dateFin) {
+            filters.$and = [];
+            if (dateDebut) {
+                filters.$and.push({ dateDebut: { $gte: new Date(dateDebut) } });
+            }
+            if (dateFin) {
+                filters.$and.push({ dateFin: { $lte: new Date(dateFin) } });
+            }
+        }
+
+        // Filtre par état (estExecutee)
+        if (estExecutee !== undefined) {
+            filters.estExecutee = estExecutee === 'true'; // Convertir en booléen
+        }
+
+        // Récupération des tâches avec pagination
+        const taches = await TacheThemeFormation.find(filters)
+            .populate('tache')
+            .populate('theme')
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
+
+        // Total des documents correspondant au filtre
+        const total = await TacheThemeFormation.countDocuments(filters);
 
         return res.status(200).json({
             success: true,
-            data: taches,
-            total,
-            page: parseInt(page),
-            totalPages: Math.ceil(total / limit),
+            data: { 
+                tachesThemeFormation: taches,
+                totalItems: total,
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                pageSize: limit
+            },
         });
     } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
+        return res.status(500).json({ 
+            success: false, 
+            message: t('erreur_serveur', lang), 
+            error: error.message 
+        });
     }
 };
+
+
+
 
 //Valider l'exécution d'une tache
 export const validerExecutionTacheTheme = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const { methodeValidation, fichierJoint, donneesEnregistrees, dateExecution } = req.body;
 
@@ -207,7 +287,7 @@ export const validerExecutionTacheTheme = async (req, res) => {
             return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
         }
 
-        if (!methodeValidation || !['manuelle', 'donnees', 'fichier', 'automatique'].includes(methodeValidation)) {
+        if (!methodeValidation || !['MANUELLE', 'DONNEES', 'FICHIER', 'AUTOMATIQUE'].includes(methodeValidation)) {
             await session.abortTransaction();
             return res.status(400).json({ success: false, message: t('methode_validation_invalide', lang) });
         }
@@ -272,7 +352,7 @@ export const validerExecutionTacheTheme = async (req, res) => {
 
 // export const validerExecutionTacheTheme = async (req, res) => {
 //     const { id } = req.params;
-//     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+//     const lang = req.headers['accept-language'] || 'fr';
 //     const { methodeValidation, fichierJoint, donneesEnregistrees, dateExecution } = req.body;
 
 //     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -359,7 +439,7 @@ export const validerExecutionTacheTheme = async (req, res) => {
 // export const lierTacheAuTheme = async (req, res) => {
 
 //     const { theme, tache, dateDebut, dateFin } = req.body;
-//     const lag = req.headers['accept-language']?.toLowerCase() || 'fr';
+//     const lag = req.headers['accept-language'] || 'fr';
 
 //     if (!mongoose.Types.ObjectId.isValid(theme) || !mongoose.Types.ObjectId.isValid(tache)) {
 //         return res.status(400).json({ 
@@ -405,7 +485,7 @@ export const validerExecutionTacheTheme = async (req, res) => {
 
 // export const supprimerTacheTheme = async (req, res) => {
 //     const { id } = req.params;
-//     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+//     const lang = req.headers['accept-language'] || 'fr';
 
 //     if (!mongoose.Types.ObjectId.isValid(id)) {
 //         return res.status(400).json({ 

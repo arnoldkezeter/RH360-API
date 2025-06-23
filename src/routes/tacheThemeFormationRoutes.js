@@ -3,7 +3,7 @@ import {
   lierTacheAuTheme,
   modifierTacheTheme,
   supprimerTacheTheme,
-  listerTachesParTheme,
+  getTachesParTheme,
   validerExecutionTacheTheme
 } from '../controllers/tacheThemeFormationController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -11,10 +11,10 @@ import { validateFields, validateFieldsExecution } from '../middlewares/validate
 
 const router = express.Router();
 
-router.post('/', authentificate, validateFields, lierTacheAuTheme);
+router.post('/:themeId/', authentificate, validateFields, lierTacheAuTheme);
 router.put('/:id',authentificate, validateFields, modifierTacheTheme);
 router.delete('/:id',authentificate, supprimerTacheTheme);
-router.get('/theme/:themeId',listerTachesParTheme);
+router.get('/theme/:themeId/filtre',getTachesParTheme);
 router.put('/valider/:id', authentificate, validateFieldsExecution, validerExecutionTacheTheme);
 
 export default router;

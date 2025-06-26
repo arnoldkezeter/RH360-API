@@ -53,7 +53,6 @@ export const modifierObjectif = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId, objectifId } = req.params;
   const { nomFr, nomEn } = req.body;
-  console.log(themeId+" - "+objectifId)
   if (!mongoose.Types.ObjectId.isValid(objectifId)) {
     return res.status(400).json({
       success: false,

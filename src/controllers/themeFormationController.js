@@ -6,6 +6,7 @@ import { t } from '../utils/i18n.js';
 import ThemeFormation from '../models/ThemeFormation.js';
 import { calculerCoutTotalPrevu } from '../services/budgetFormationService.js';
 import BudgetFormation from '../models/BudgetFormation.js';
+import Depense from '../models/Depense.js';
 
 // Ajouter
 export const createThemeFormation = async (req, res) => {
@@ -70,6 +71,8 @@ export const createThemeFormation = async (req, res) => {
             });
         }
 
+        
+
         // Création du thème de formation
         const theme = await ThemeFormation.create({
             titreFr,
@@ -79,9 +82,9 @@ export const createThemeFormation = async (req, res) => {
             dateDebut,
             dateFin,
             formateurs: [],
-            responsable: responsable._id,
+            responsable: responsable?._id || undefined,
             supports: [],
-            formation: formation._id,
+            formation: formation?._id || undefined,
         });
 
         // Population des références pour la réponse
@@ -117,6 +120,7 @@ export const createThemeFormation = async (req, res) => {
             data: themeAvecDuree,
         });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -223,7 +227,7 @@ export const updateThemeFormation = async (req, res) => {
         if (titreEn !== undefined) theme.titreEn = titreEn;
         if (dateDebut !== undefined) theme.dateDebut = dateDebut;
         if (dateFin !== undefined) theme.dateFin = dateFin;
-        if (responsable !== undefined) theme.responsable = responsable._id;
+        if (responsable !== undefined) theme.responsable = responsable?._id || undefined;
         if (formation !== undefined) theme.formation = formation._id;
         if (publicCible !== undefined) theme.publicCible = publicCibleIds;
 
@@ -297,6 +301,7 @@ export const deleteThemeFormation = async (req, res) => {
             message: t('supprimer_succes', lang),
         });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -390,168 +395,24 @@ export const supprimerFormateur = async (req, res) => {
 export const getThemeFormationsForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+    const{formationId}=req.params
 
     try {
-        const themes = await ThemeFormation.find({}, `titreFr titreEn _id`).sort({ [sortField]: 1 }).lean();
-        return res.status(200).json({
-            success: true,
-            data: themes,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-//Filtrer la liste des thèmes de formation
-export const getFilteredThemes = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const {
-        formation,
-        familleMetier,
-        titre,
-        debut,
-        fin,
-        page = 1,
-        limit = 10,
-    } = req.query;
-
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-    const filters = {};
-    let publicCibleIds = [];
-    
-    try {
-        // Filtrer par formation
-        if (formation) {
-            if (!mongoose.Types.ObjectId.isValid(formation)) {
-                return res.status(400).json({
-                    success: false,
-                    message: t('identifiant_invalide', lang),
-                });
-            }
-            filters.formation = formation;
+        if (!mongoose.Types.ObjectId.isValid(formationId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
         }
-
-        // Filtrer par familleMetier via les postes de travail
-        if (familleMetier) {
-            if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
-                return res.status(400).json({
-                    success: false,
-                    message: t('identifiant_invalide', lang),
-                });
-            }
-            const postes = await PosteDeTravail.find({ familleMetier }).select('_id');
-            publicCibleIds = postes.map((poste) => poste._id);
-            filters.publicCible = { $in: publicCibleIds };
-        }
-
-        // Filtrer par titre
-        if (titre) {
-            const field = lang === 'en' ? 'titreEn' : 'titreFr';
-            filters[field] = { $regex: new RegExp(titre, 'i') };
-        }
-
-        // Filtrer par période
-        console.log(debut)
-        console.log(fin)
-        if (debut && fin) {
-            filters.dateDebut = { $gte: new Date(debut) };
-            filters.dateFin = { $lte: new Date(fin) };
-
-            
-        }
-
-        // Pagination et comptage
-        const total = await ThemeFormation.countDocuments(filters);
-
-        const themes = await ThemeFormation.find(filters)
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .sort({ [sortField]: 1 })
-            .populate({
-                path: 'formation',
-                populate: {
-                    path: 'programmeFormation'
-                }
-            })
-            .populate({path:'publicCible', option:{strictPopulate:false}})
-            .populate({path:'responsable', option:{strictPopulate:false}})
-            .populate({ path: 'formateurs.formateur', options: { strictPopulate: false } })
-            .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
-            .lean();
-
-        // Enrichir les thèmes avec les budgets et la durée
-        const enrichedThemes = await Promise.all(
-            themes.map(async (theme) => {
-                const budgets = await BudgetFormation.find({ theme: theme._id }).lean();
-                
-                const { estimatif, reel } = budgets.reduce(
-                    (totals, budget) => {
-                        const sectionTotals = budget.sections.reduce(
-                            (sectionAcc, section) => {
-                                const ligneTotals = section.lignes.reduce(
-                                    (ligneAcc, ligne) => {
-                                        const taxeRate = ligne.natureTaxe?.taux || 0;
-
-                                        const montantTTCPrevu =
-                                            ligne.montantUnitairePrevuHT *
-                                            ligne.quantite *
-                                            (1 + taxeRate / 100);
-
-                                        const montantTTCReel =
-                                            ligne.montantUnitaireReelHT *
-                                            ligne.quantite *
-                                            (1 + taxeRate / 100);
-
-                                        return {
-                                            estimatif: ligneAcc.estimatif + montantTTCPrevu,
-                                            reel: ligneAcc.reel + montantTTCReel,
-                                        };
-                                    },
-                                    { estimatif: 0, reel: 0 }
-                                );
-
-                                return {
-                                    estimatif: sectionAcc.estimatif + ligneTotals.estimatif,
-                                    reel: sectionAcc.reel + ligneTotals.reel,
-                                };
-                            },
-                            { estimatif: 0, reel: 0 }
-                        );
-
-                        return {
-                            estimatif: totals.estimatif + sectionTotals.estimatif,
-                            reel: totals.reel + sectionTotals.reel,
-                        };
-                    },
-                    { estimatif: 0, reel: 0 }
-                );
-
-                const duree = theme.dateDebut && theme.dateFin 
-                    ? Math.ceil((new Date(theme.dateFin) - new Date(theme.dateDebut)) / (1000 * 60 * 60 * 24))
-                    : null;
-
-                return {
-                    ...theme,
-                    budgetEstimatif: estimatif,
-                    budgetReel: reel,
-                    duree,
-                };
-            })
-        );
-
+        const themes = await ThemeFormation.find({formation:formationId}, `titreFr titreEn _id`).sort({ [sortField]: 1 }).lean();
         return res.status(200).json({
             success: true,
             data: {
-                themeFormations:enrichedThemes,
-                totalItems:total,
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(total / limit),
-                pageSize: parseInt(limit),
+                themeFormations: themes,
+                totalItems: themes.length,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize:  themes.length
             },
         });
     } catch (err) {
@@ -562,6 +423,153 @@ export const getFilteredThemes = async (req, res) => {
         });
     }
 };
+
+
+// Filtrer la liste des thèmes de formation
+export const getFilteredThemes = async (req, res) => {
+  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const {
+    formation,
+    familleMetier,
+    titre,
+    debut,
+    fin,
+    page = 1,
+    limit = 10,
+  } = req.query;
+
+  const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+  const filters = {};
+  let publicCibleIds = [];
+
+  try {
+    if (formation) {
+      if (!mongoose.Types.ObjectId.isValid(formation)) {
+        return res.status(400).json({
+          success: false,
+          message: t('identifiant_invalide', lang),
+        });
+      }
+      filters.formation = formation;
+    }
+
+    if (familleMetier) {
+      if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+        return res.status(400).json({
+          success: false,
+          message: t('identifiant_invalide', lang),
+        });
+      }
+      const postes = await PosteDeTravail.find({ familleMetier }).select('_id');
+      publicCibleIds = postes.map(p => p._id);
+      filters.publicCible = { $in: publicCibleIds };
+    }
+
+    if (titre) {
+      const field = lang === 'en' ? 'titreEn' : 'titreFr';
+      filters[field] = { $regex: new RegExp(titre, 'i') };
+    }
+
+    if (debut && fin) {
+      filters.dateDebut = { $gte: new Date(debut) };
+      filters.dateFin = { $lte: new Date(fin) };
+    }
+
+    const total = await ThemeFormation.countDocuments(filters);
+
+    const themes = await ThemeFormation.find(filters)
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .sort({ [sortField]: 1 })
+      .populate({
+        path: 'formation',
+        populate: { path: 'programmeFormation' }
+      })
+      .populate({ path: 'publicCible', options: { strictPopulate: false } })
+      .populate({ path: 'responsable', options: { strictPopulate: false } })
+      .populate({ path: 'formateurs.formateur', options: { strictPopulate: false } })
+      .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
+      .lean();
+
+    const themeIds = themes.map(t => t._id);
+
+    const budgets = await BudgetFormation.find({ theme: { $in: themeIds } }).lean();
+    const budgetIds = budgets.map(b => b._id);
+
+    const depenses = await Depense.find({ budget: { $in: budgetIds } })
+      .populate('taxes', 'taux')
+      .lean();
+
+    const depensesByBudget = depenses.reduce((acc, dep) => {
+      const bid = dep.budget.toString();
+      if (!acc[bid]) acc[bid] = [];
+      acc[bid].push(dep);
+      return acc;
+    }, {});
+
+    const budgetsByTheme = budgets.reduce((acc, budget) => {
+      const tid = budget.theme.toString();
+      if (!acc[tid]) acc[tid] = [];
+      acc[tid].push(budget);
+      return acc;
+    }, {});
+
+    const enrichedThemes = themes.map(theme => {
+      const themeId = theme._id.toString();
+      const themeBudgets = budgetsByTheme[themeId] || [];
+
+      let estimatif = 0;
+      let reel = 0;
+
+      themeBudgets.forEach(budget => {
+        const depList = depensesByBudget[budget._id.toString()] || [];
+        depList.forEach(dep => {
+          const quantite = dep.quantite ?? 1;
+          const tauxTotal = (dep.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+
+          const montantPrevuHT = dep.montantUnitairePrevu || 0;
+          const montantReelHT = dep.montantUnitaireReel ?? (dep.montantUnitairePrevu || 0);
+
+          const montantPrevuTTC = montantPrevuHT * quantite * (1 + tauxTotal / 100);
+          const montantReelTTC = montantReelHT * quantite * (1 + tauxTotal / 100);
+
+          estimatif += montantPrevuTTC;
+          reel += montantReelTTC;
+        });
+      });
+
+      const duree = (theme.dateDebut && theme.dateFin)
+        ? Math.ceil((new Date(theme.dateFin) - new Date(theme.dateDebut)) / (1000 * 60 * 60 * 24))
+        : null;
+
+      return {
+        ...theme,
+        budgetEstimatif: Math.round(estimatif * 100) / 100,
+        budgetReel: Math.round(reel * 100) / 100,
+        duree,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        themeFormations: enrichedThemes,
+        totalItems: total,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        pageSize: parseInt(limit),
+      },
+    });
+  } catch (err) {
+    console.error('Erreur dans getFilteredThemes:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
+};
+
 
 
 // Liste paginée des thèmes filtrés par familleMetier

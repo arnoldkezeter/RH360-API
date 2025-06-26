@@ -5,6 +5,7 @@ import Utilisateur from '../models/Utilisateur.js';
 import Formation from '../models/Formation.js';
 import mongoose from 'mongoose';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
+import Depense from '../models/Depense.js';
 
 // Ajouter un programme de formation
 export const createProgrammeFormation = async (req, res) => {
@@ -369,14 +370,13 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
 
         const programmeIds = programmes.map((p) => p._id);
         // Rechercher toutes les formations associées aux programmes retournés
-        const formations = await Formation.find({ programme: { $in: programmeIds } })
-            .select('programme nbTachesTotal nbTachesExecutees')
+        const formations = await Formation.find({ programmeFormation: { $in: programmeIds } })
+            .select('programmeFormation nbTachesTotal nbTachesExecutees')
             .lean();
-
         // Organiser les formations par programmeId
         const formationsParProgramme = {};
         for (const formation of formations) {
-            const pid = formation.programme.toString();
+            const pid = formation.programmeFormation.toString();
             if (!formationsParProgramme[pid]) {
                 formationsParProgramme[pid] = [];
             }
@@ -416,6 +416,7 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
                 etat
             };
         });
+        
         return res.status(200).json({
             success: true,
             data: {
@@ -427,7 +428,7 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
             }
         });
     } catch (err) {
-        console.error(err);
+        console.log(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -442,17 +443,17 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
 //Nombre total de programme de formation actif
 export const getNombreProgrammesActifs = async (req, res) => {
     try {
-        const programmes = await ProgrammeFormation.find().select('_id').lean();
+        const programmes = await ProgrammeFormation.find().select('annee').lean();
         const programmeIds = programmes.map(p => p._id);
 
-        const formations = await Formation.find({ programme: { $in: programmeIds } })
-            .select('programme nbTachesTotal nbTachesExecutees')
+        const formations = await Formation.find({ programmeFormation: { $in: programmeIds } })
+            .select('programmeFormation nbTachesTotal nbTachesExecutees')
             .lean();
 
         const programmesMap = {};
 
         for (const formation of formations) {
-            const pid = formation.programme.toString();
+            const pid = formation.programmeFormation.toString();
             if (!programmesMap[pid]) {
                 programmesMap[pid] = { total: 0, executees: 0 };
             }
@@ -476,6 +477,7 @@ export const getNombreProgrammesActifs = async (req, res) => {
 
         return res.status(200).json({ success: true, data: nombreActifs });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
     }
 };
@@ -503,6 +505,7 @@ export const getPourcentageExecutionProgrammes = async (req, res) => {
 
         return res.status(200).json({ success: true, data:pourcentage });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
     }
 };
@@ -514,14 +517,14 @@ export const getRepartitionFormationsParProgramme = async (req, res) => {
         const programmes = await ProgrammeFormation.find().select('annee').lean();
         const programmeIds = programmes.map(p => p._id);
 
-        const formations = await Formation.find({ programme: { $in: programmeIds } })
-            .select('programme nbTachesTotal nbTachesExecutees')
+        const formations = await Formation.find({ programmeFormation: { $in: programmeIds } })
+            .select('programmeFormation nbTachesTotal nbTachesExecutees')
             .lean();
 
         const regroupement = {};
 
         for (const formation of formations) {
-            const pid = formation.programme.toString();
+            const pid = formation.programmeFormation.toString();
             if (!regroupement[pid]) {
                 regroupement[pid] = { nombrePrevu: 0, nombreExecute: 0 };
             }
@@ -550,6 +553,7 @@ export const getRepartitionFormationsParProgramme = async (req, res) => {
 
         return res.status(200).json({ success: true, data: resultat });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
     }
 };
@@ -568,7 +572,7 @@ export const getTauxExecutionParAxeStrategique = async (req, res) => {
 
     try {
         // Récupérer les formations du programme avec axeStrategique, nbTachesTotal, nbTachesExecutees
-        const formations = await Formation.find({ programme: programmeId })
+        const formations = await Formation.find({ programmeFormation: programmeId })
         .select('axeStrategique nbTachesTotal nbTachesExecutees')
         .lean();
 
@@ -632,106 +636,123 @@ export const getTauxExecutionParAxeStrategique = async (req, res) => {
     }
 };
 
-//Coûts par formation pour un programme
+// Coûts par formation pour un programme
 export const getCoutsParFormationPourProgramme = async (req, res) => {
-    const { programmeId } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
+  const { programmeId } = req.params;
+  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
 
-    if (!mongoose.Types.ObjectId.isValid(programmeId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
+  if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+    return res.status(400).json({
+      success: false,
+      message: t('identifiant_invalide', lang),
+    });
+  }
+
+  try {
+    // 1. Formations du programme
+    const formations = await Formation.find({ programmeFormation: programmeId })
+      .select('_id titreFr titreEn')
+      .lean();
+
+    if (formations.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
     }
 
-    try {
-        // Formations du programme
-        const formations = await Formation.find({ programme: programmeId })
-        .select('_id titreFr titreEn')
-        .lean();
+    // 2. Thèmes associés
+    const formationIds = formations.map(f => f._id);
+    const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+      .select('_id formation')
+      .lean();
 
-        if (formations.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: t('aucune_formation_trouvee', lang),
-            });
-        }
-
-        const formationIds = formations.map(f => f._id);
-
-        // Thèmes liés aux formations
-        const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
-        .select('_id formation')
-        .lean();
-
-        if (themes.length === 0) {
-        // Pas de thèmes => coûts nuls
-            const result = formations.map(f => ({
-                formationId: f._id,
-                titreFr: f.titreFr,
-                titreEn: f.titreEn,
-                coutPrevu: 0,
-                coutReel: 0,
-            }));
-
-            return res.status(200).json({ success: true, data: result });
-        }
-
-        const themeIds = themes.map(t => t._id);
-
-        // Budgets liés aux thèmes
-        const budgets = await BudgetFormation.find({ theme: { $in: themeIds } })
-        .select('theme sections')
-        .lean();
-
-        // Coûts par thème
-        const coutsParTheme = {};
-
-        for (const budget of budgets) {
-            const themeIdStr = budget.theme.toString();
-            if (!coutsParTheme[themeIdStr]) {
-                coutsParTheme[themeIdStr] = { coutPrevu: 0, coutReel: 0 };
-            }
-
-            const coutsBudget = calculerCoutsBudget(budget);
-
-            coutsParTheme[themeIdStr].coutPrevu += coutsBudget.coutPrevu;
-            coutsParTheme[themeIdStr].coutReel += coutsBudget.coutReel;
-        }
-
-        // Agréger les coûts par formation
-        const coutsParFormation = {};
-
-        for (const theme of themes) {
-            const fIdStr = theme.formation.toString();
-            if (!coutsParFormation[fIdStr]) {
-                coutsParFormation[fIdStr] = { coutPrevu: 0, coutReel: 0 };
-            }
-            const themeCouts = coutsParTheme[theme._id.toString()] || { coutPrevu: 0, coutReel: 0 };
-            coutsParFormation[fIdStr].coutPrevu += themeCouts.coutPrevu;
-            coutsParFormation[fIdStr].coutReel += themeCouts.coutReel;
-        }
-
-        // Résultat final
-        const result = formations.map(f => {
-            const cout = coutsParFormation[f._id.toString()] || { coutPrevu: 0, coutReel: 0 };
-            return {
-                formationId: f._id,
-                titreFr: f.titreFr,
-                titreEn: f.titreEn,
-                coutPrevu: cout.coutPrevu,
-                coutReel: cout.coutReel,
-            };
-        });
-
-        return res.status(200).json({ success: true, data: result });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
+    if (themes.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: formations.map(f => ({
+          formationId: f._id,
+          titreFr: f.titreFr,
+          titreEn: f.titreEn,
+          coutPrevu: 0,
+          coutReel: 0,
+        })),
+      });
     }
+
+    // 3. Budgets des thèmes
+    const themeIds = themes.map(t => t._id);
+    const budgets = await BudgetFormation.find({ theme: { $in: themeIds } })
+      .select('_id theme')
+      .lean();
+    const budgetIds = budgets.map(b => b._id);
+
+    // 4. Dépenses avec taxes multiples
+    const depenses = await Depense.find({ budget: { $in: budgetIds } })
+      .populate('taxes', 'taux')
+      .lean();
+
+    const costsByTheme = {};
+
+    depenses.forEach(dep => {
+      const budget = budgets.find(b => b._id.toString() === dep.budget.toString());
+      if (!budget) return;
+
+      const themeId = budget.theme.toString();
+      const quantite = dep.quantite ?? 1;
+      const tauxTotal = (dep.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+
+      const prevuHT = dep.montantUnitairePrevu ?? 0;
+      const reelHT = dep.montantUnitaireReel ?? dep.montantUnitairePrevu ?? 0;
+
+      const prevuTTC = prevuHT * quantite * (1 + tauxTotal / 100);
+      const reelTTC = reelHT * quantite * (1 + tauxTotal / 100);
+
+      if (!costsByTheme[themeId]) {
+        costsByTheme[themeId] = { coutPrevu: 0, coutReel: 0 };
+      }
+
+      costsByTheme[themeId].coutPrevu += prevuTTC;
+      costsByTheme[themeId].coutReel += reelTTC;
+    });
+
+    // 5. Agrégation par formation
+    const costsByFormation = {};
+    themes.forEach(theme => {
+      const formationId = theme.formation.toString();
+      const themeId = theme._id.toString();
+      const themeCosts = costsByTheme[themeId] || { coutPrevu: 0, coutReel: 0 };
+
+      if (!costsByFormation[formationId]) {
+        costsByFormation[formationId] = { coutPrevu: 0, coutReel: 0 };
+      }
+
+      costsByFormation[formationId].coutPrevu += themeCosts.coutPrevu;
+      costsByFormation[formationId].coutReel += themeCosts.coutReel;
+    });
+
+    // 6. Format final
+    const result = formations.map(f => {
+      const c = costsByFormation[f._id.toString()] || { coutPrevu: 0, coutReel: 0 };
+      return {
+        formationId: f._id,
+        titreFr: f.titreFr,
+        titreEn: f.titreEn,
+        coutPrevu: +c.coutPrevu.toFixed(2),
+        coutReel: +c.coutReel.toFixed(2),
+      };
+    });
+
+    return res.status(200).json({ success: true, data: result });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
 };
+
 
 

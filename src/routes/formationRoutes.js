@@ -6,12 +6,11 @@ import {
   getFilteredFormations,
   getFormations,
   getFormationById,
-  getFormationsByFamilleMetier,
+  
   ajouterFamilleMetierAFormation,
   supprimerFamilleMetierDeFormation,
   getFormationsForDropdown,
 
-  searchFormationByTitre,
   getStatsParSexe,
   getStatsParService,
   getStatsParTrancheAge,
@@ -24,6 +23,7 @@ import {
   getThemesExecutionParPeriode,
   getThemesExecutionParAxeStrategique,
   searchThemesExecutionParFormation,
+  getFormationsForGantt,
   
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -40,10 +40,9 @@ router.delete('/:id', authentificate, deleteFormation);
 // GET
 router.get('/', authentificate, getFormations);
 router.get('/filtre', authentificate, getFilteredFormations);
+router.get('/calendrier', authentificate, getFormationsForGantt);
 router.get('/dropdown/programme/:programmeId', authentificate, getFormationsForDropdown);
 router.get('/:id', authentificate, getFormationById);
-router.get('/search/by-titre', authentificate, searchFormationByTitre);
-router.get('/familleMetier/:id', authentificate, getFormationsByFamilleMetier);
 
 // Famille métier
 router.patch('/:idFormation/ajouter-famille-metier/:idFamilleMetier', authentificate, ajouterFamilleMetierAFormation);

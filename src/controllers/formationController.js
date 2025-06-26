@@ -7,6 +7,9 @@ import Formation from '../models/Formation.js';
 import BudgetFormation from '../models/BudgetFormation.js';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 import { enrichirFormations } from '../services/formationService.js';
+import ProgrammeFormation from '../models/ProgrammeFormation.js';
+import Depense from '../models/Depense.js';
+
 
 // Ajouter
 export const createFormation = async (req, res) => {
@@ -383,8 +386,6 @@ export const getFilteredFormations = async (req, res) => {
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
     const filters = {};
 
-    // Validation des ObjectIds en parallèle
-    const validationPromises = [];
     if (axeStrategique) {
         if (!mongoose.Types.ObjectId.isValid(axeStrategique)) {
             return res.status(400).json({
@@ -410,20 +411,19 @@ export const getFilteredFormations = async (req, res) => {
         filters[field] = { $regex: new RegExp(titre, 'i') };
     }
 
-    // Gestion optimisée du filtrage par période
+    // Filtrage par période
     if (debut && fin) {
         const matchThemes = {
             dateDebut: { $gte: new Date(debut) },
             dateFin: { $lte: new Date(fin) }
         };
-        
-        // Récupération optimisée des IDs uniquement
+
         const themes = await ThemeFormation.find(matchThemes)
             .select('formation')
             .lean();
-        
+
         const formationIds = [...new Set(themes.map(t => t.formation.toString()))];
-        
+
         if (formationIds.length === 0) {
             return res.status(200).json({
                 success: true,
@@ -437,12 +437,11 @@ export const getFilteredFormations = async (req, res) => {
                 message: t('aucune_formation_periode', lang)
             });
         }
-        
+
         filters._id = { $in: formationIds };
     }
 
     try {
-        // Exécution en parallèle du count et de la requête principale
         const [total, formations] = await Promise.all([
             Formation.countDocuments(filters),
             Formation.find(filters)
@@ -453,25 +452,36 @@ export const getFilteredFormations = async (req, res) => {
                 .lean()
         ]);
 
-        // Optimisation : récupération groupée de toutes les données nécessaires
         const formationIds = formations.map(f => f._id);
-        
-        // Récupération de tous les thèmes en une seule requête
+
         const allThemes = await ThemeFormation.find({
             formation: { $in: formationIds }
         })
-        .populate('publicCible')
-        .lean();
+            .populate('publicCible')
+            .lean();
 
-        // Récupération de tous les budgets en une seule requête
         const themeIds = allThemes.map(t => t._id);
+
         const allBudgets = await BudgetFormation.find({
             theme: { $in: themeIds }
-        })
-        .populate('sections.lignes.natureTaxe')
-        .lean();
+        }).lean();
 
-        // Groupement des données par formation et thème pour éviter les requêtes répétées
+        const budgetIds = allBudgets.map(b => b._id);
+
+        const allDepenses = await Depense.find({
+            budget: { $in: budgetIds }
+        })
+            .populate('taxe', 'taux')
+            .lean();
+
+        // Regrouper les dépenses par budget
+        const depensesByBudget = allDepenses.reduce((acc, dep) => {
+            const budgetId = dep.budget.toString();
+            if (!acc[budgetId]) acc[budgetId] = [];
+            acc[budgetId].push(dep);
+            return acc;
+        }, {});
+
         const themesByFormation = allThemes.reduce((acc, theme) => {
             const formationId = theme.formation.toString();
             if (!acc[formationId]) acc[formationId] = [];
@@ -486,66 +496,60 @@ export const getFilteredFormations = async (req, res) => {
             return acc;
         }, {});
 
-        // Fonction optimisée pour calculer les budgets
-        const calculateBudgets = (themeBudgets) => {
-            return themeBudgets.reduce((totals, budget) => {
-                const sectionTotals = budget.sections.reduce((sectionAcc, section) => {
-                    const ligneTotals = section.lignes.reduce((ligneAcc, ligne) => {
-                        const taxeRate = ligne.natureTaxe?.taux || 0;
-                        const taxMultiplier = (1 + taxeRate / 100);
+        const calculateBudgets = (budgetIdList) => {
+            return budgetIdList.reduce((totals, budgetId) => {
+                const depenses = depensesByBudget[budgetId.toString()] || [];
 
-                        const montantTTCPrevu = ligne.montantUnitairePrevuHT * ligne.quantite * taxMultiplier;
-                        const montantTTCReel = ligne.montantUnitaireReelHT * ligne.quantite * taxMultiplier;
+                const budgetTotals = depenses.reduce((acc, dep) => {
+                    const quantite = dep.quantite ?? 1;
+                    const taux = dep.taxe?.taux || 0;
 
-                        return {
-                            estimatif: ligneAcc.estimatif + montantTTCPrevu,
-                            reel: ligneAcc.reel + montantTTCReel,
-                        };
-                    }, { estimatif: 0, reel: 0 });
+                    const prevuHT = dep.montantUnitairePrevu || 0;
+                    const reelHT = dep.montantUnitaireReel || 0;
+
+                    const montantPrevuTTC = prevuHT * quantite * (1 + taux / 100);
+                    const montantReelTTC = reelHT * quantite * (1 + taux / 100);
 
                     return {
-                        estimatif: sectionAcc.estimatif + ligneTotals.estimatif,
-                        reel: sectionAcc.reel + ligneTotals.reel,
+                        estimatif: acc.estimatif + montantPrevuTTC,
+                        reel: acc.reel + montantReelTTC,
                     };
                 }, { estimatif: 0, reel: 0 });
 
                 return {
-                    estimatif: totals.estimatif + sectionTotals.estimatif,
-                    reel: totals.reel + sectionTotals.reel,
+                    estimatif: totals.estimatif + budgetTotals.estimatif,
+                    reel: totals.reel + budgetTotals.reel,
                 };
             }, { estimatif: 0, reel: 0 });
         };
 
-        // Enrichissement optimisé des formations
         const enrichedFormations = formations.map(formation => {
             const formationId = formation._id.toString();
             const themes = themesByFormation[formationId] || [];
             const nbTheme = themes.length;
 
-            // Calcul optimisé de la période
             let dateDebut = null;
             let dateFin = null;
             if (nbTheme > 0) {
                 const dates = themes.map(t => new Date(t.dateDebut).getTime());
                 const dateFins = themes.map(t => new Date(t.dateFin).getTime());
-                
-                dateDebut = new Date(Math.min(...dates)),
-                dateFin = new Date(Math.max(...dateFins))
+
+                dateDebut = new Date(Math.min(...dates));
+                dateFin = new Date(Math.max(...dateFins));
             }
 
-            // Calcul optimisé du public cible
             const totalPublicCible = themes.reduce(
                 (total, theme) => total + (theme.publicCible?.length || 0),
                 0
             );
 
-            // Calcul optimisé des budgets
             let totalBudgetEstimatif = 0;
             let totalBudgetReel = 0;
 
             themes.forEach(theme => {
                 const themeBudgets = budgetsByTheme[theme._id.toString()] || [];
-                const { estimatif, reel } = calculateBudgets(themeBudgets);
+                const budgetIds = themeBudgets.map(b => b._id);
+                const { estimatif, reel } = calculateBudgets(budgetIds);
                 totalBudgetEstimatif += estimatif;
                 totalBudgetReel += reel;
             });
@@ -556,7 +560,7 @@ export const getFilteredFormations = async (req, res) => {
                 dateDebut,
                 dateFin,
                 totalPublicCible,
-                budgetEstimatif: Math.round(totalBudgetEstimatif * 100) / 100, // Arrondi à 2 décimales
+                budgetEstimatif: Math.round(totalBudgetEstimatif * 100) / 100,
                 budgetReel: Math.round(totalBudgetReel * 100) / 100,
             };
         });
@@ -580,6 +584,171 @@ export const getFilteredFormations = async (req, res) => {
         });
     }
 };
+
+
+//Liste des formations pour le diagramme de Gantt
+export const getFormationsForGantt = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const {
+        axeStrategique,
+        familleMetier,
+        titre,
+        programmeAnnee,
+        page = 1,
+        limit = 10,
+    } = req.query;
+
+    const filters = {};
+
+    // Validation et ajout des filtres
+    if (axeStrategique) {
+        if (!mongoose.Types.ObjectId.isValid(axeStrategique)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        filters.axeStrategique = axeStrategique;
+    }
+
+    if (familleMetier) {
+        if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        filters.familleMetier = familleMetier;
+    }
+
+    if (titre) {
+        const field = lang === 'en' ? 'titreEn' : 'titreFr';
+        filters[field] = { $regex: new RegExp(titre, 'i') };
+    }
+
+    try {
+        // Filtrage par année de programme de formation
+        if (programmeAnnee) {
+            const programmeIds = await ProgrammeFormation.find({ annee: programmeAnnee })
+                .select('_id')
+                .lean();
+            const programmeIdList = programmeIds.map((p) => p._id);
+            if (programmeIdList.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        formations: [],
+                        totalItems: 0,
+                        currentPage: parseInt(page),
+                        totalPages: 0,
+                        pageSize: parseInt(limit),
+                    },
+                });
+            }
+            filters.programmeFormation = { $in: programmeIdList };
+        }
+
+        // Récupérer les formations filtrées avec pagination
+        const [total, formations] = await Promise.all([
+            Formation.countDocuments(filters),
+            Formation.find(filters)
+                .sort({ dateDebut: 1 }) // Tri par date de début croissante
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit))
+                .populate('familleMetier axeStrategique programmeFormation')
+                .lean(),
+        ]);
+
+        const formationIds = formations.map((f) => f._id);
+
+        // Récupérer les thèmes associés à ces formations
+        const allThemes = await ThemeFormation.find({
+            formation: { $in: formationIds },
+        })
+            .sort({ dateDebut: 1 }) // Tri par date de début croissante
+            .select('formation titreFr titreEn dateDebut dateFin nbTachesTotal nbTachesExecutees')
+            .lean();
+
+        // Groupement des thèmes par formation
+        const themesByFormation = allThemes.reduce((acc, theme) => {
+            const formationId = theme.formation.toString();
+            if (!acc[formationId]) acc[formationId] = [];
+            acc[formationId].push(theme);
+            return acc;
+        }, {});
+
+        // Enrichissement des formations avec les données supplémentaires
+        const enrichedFormations = formations.map((formation) => {
+            const formationId = formation._id.toString();
+            const themes = themesByFormation[formationId] || [];
+            const nbTheme = themes.length;
+
+            // Calcul de dateDebut (la plus récente) et dateFin (la plus ancienne)
+            let dateDebut = null;
+            let dateFin = null;
+            if (nbTheme > 0) {
+                const datesDebut = themes.map((t) => new Date(t.dateDebut).getTime());
+                const datesFin = themes.map((t) => new Date(t.dateFin).getTime());
+
+                dateDebut = new Date(Math.min(...datesDebut));
+                dateFin = new Date(Math.max(...datesFin));
+            }
+
+            return {
+                _id: formation._id,
+                titreFr: formation.titreFr,
+                titreEn: formation.titreEn,
+                descriptionFr: formation.descriptionFr,
+                descriptionEn: formation.descriptionEn,
+                axeStrategique: formation.axeStrategique
+                    ? {
+                          nomFr: formation.axeStrategique.nomFr,
+                          nomEn: formation.axeStrategique.nomEn,
+                      }
+                    : null,
+                familleMetier: formation.familleMetier
+                    ? formation.familleMetier.map((fm) => ({
+                          nomFr: fm.nomFr,
+                          nomEn: fm.nomEn,
+                      }))
+                    : [],
+                programmeFormation: formation.programmeFormation,
+                nbTachesTotal: formation.nbTachesTotal || 0,
+                nbTachesExecutees: formation.nbTachesExecutees || 0,
+                dateDebut,
+                dateFin,
+                themes: themes.map((theme) => ({
+                    _id: theme._id,
+                    titreFr: theme.titreFr,
+                    titreEn: theme.titreEn,
+                    dateDebut: theme.dateDebut,
+                    dateFin: theme.dateFin,
+                    nbTachesTotal: theme.nbTachesTotal || 0,
+                    nbTachesExecutees: theme.nbTachesExecutees || 0,
+                })),
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                formations: enrichedFormations,
+                totalItems: total,
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(total / limit),
+                pageSize: parseInt(limit),
+            },
+        });
+    } catch (err) {
+        console.error("Erreur dans getFilteredFormations:", err);
+        return res.status(500).json({
+            success: false,
+            message: t("erreur_serveur", lang),
+            error: process.env.NODE_ENV === "development" ? err.message : "Erreur interne",
+        });
+    }
+};
+
 
 
 // Formation par ID
@@ -611,188 +780,6 @@ export const getFormationById = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: enriched,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-// Recherche par titre
-export const searchFormationByTitre = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { titre } = req.query;
-
-    if (!titre) {
-        return res.status(400).json({
-            success: false,
-            message: t('titre_requis', lang),
-        });
-    }
-
-    try {
-        const field = lang === 'en' ? 'titreEn' : 'titreFr';
-
-        const formations = await Formation.find({
-            [field]: { $regex: new RegExp(titre, 'i') },
-        })
-            .populate('familleMetier axeStrategique programmeFormation')
-            .sort({ [field]: 1 })
-            .lean();
-
-        const enriched = await enrichirFormations(formations);
-
-        return res.status(200).json({
-            success: true,
-            data: enriched,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-//Filtrer les formations par famille metier
-export const getFormationsByFamilleMetier = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const total = await Formation.countDocuments({ familleMetier: id });
-        const formations = await Formation.find({ familleMetier: id })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [sortField]: 1 })
-            .populate('familleMetier axeStrategique programmeFormation')
-            .lean();
-
-        const enriched = await enrichirFormations(formations);
-
-        return res.status(200).json({
-            success: true,
-            data: enriched,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
-            },
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-
-//Filtrer les formations par axeStrategique
-export const getFormationsByAxeStrategique = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { id } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const total = await Formation.countDocuments({ axeStrategique: id });
-        const formations = await Formation.find({ axeStrategique: id })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [sortField]: 1 })
-            .populate('familleMetier axeStrategique programmeFormation')
-            .lean();
-
-        const enriched = await enrichirFormations(formations);
-
-        return res.status(200).json({
-            success: true,
-            data: enriched,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
-            },
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-
-//Filtrer les formations par periode
-export const getFormationsByPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { debut, fin } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-
-    if (!debut || !fin) {
-        return res.status(400).json({
-            success: false,
-            message: t('dates_requises', lang),
-        });
-    }
-
-    try {
-        const themes = await ThemeFormation.find({
-            dateDebut: { $gte: new Date(debut) },
-            dateFin: { $lte: new Date(fin) },
-        }).lean();
-
-        const formationIds = [...new Set(themes.map(t => t.formation.toString()))];
-
-        const total = await Formation.countDocuments({ _id: { $in: formationIds } });
-
-        const formations = await Formation.find({ _id: { $in: formationIds } })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [sortField]: 1 })
-            .populate('familleMetier axeStrategique programmeFormation')
-            .lean();
-
-        const enriched = await enrichirFormations(formations);
-
-        return res.status(200).json({
-            success: true,
-            data: enriched,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
-            },
         });
     } catch (err) {
         return res.status(500).json({

@@ -27,7 +27,7 @@ router.get('/filtre', authentificate, getFilteredThemes);
 router.put('/:id/formateur', authentificate, ajouterFormateur);
 router.delete('/:id/formateur/:formateurId', authentificate, supprimerFormateur);
 
-router.get('/dropdown/all', authentificate, getThemeFormationsForDropdown);
+router.get('/dropdown/formation/:formationId', authentificate, getThemeFormationsForDropdown);
 
 router.get('/famille-metier', authentificate, getThemesByFamilleMetier);
 

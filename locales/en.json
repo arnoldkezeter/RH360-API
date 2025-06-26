@@ -14,6 +14,7 @@
     "modifier_succes": "Successfully updated",
     "identifiant_invalide": "Invalid identifier",
     "nom_requis": "Name is required for the search",
+    "statut_invalide":"Invalid status",
     
 
     "structure_non_trouvee":"Structure not found",

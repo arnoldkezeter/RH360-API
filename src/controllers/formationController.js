@@ -9,6 +9,12 @@ import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 import { enrichirFormations } from '../services/formationService.js';
 import ProgrammeFormation from '../models/ProgrammeFormation.js';
 import Depense from '../models/Depense.js';
+import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
+import Service from '../models/Service.js';
+import CategorieProfessionnelle from '../models/CategorieProfessionnelle.js';
+import AxeStrategique from '../models/AxeStrategique.js';
+import { LieuFormation } from '../models/LieuFormation.js';
+import { Formateur } from '../models/Formateur.js';
 
 
 // Ajouter
@@ -792,213 +798,194 @@ export const getFormationById = async (req, res) => {
 
 
 
-//Statistiques
+//Statistiques par sexe, service, categorie professionnelle, tranche d'âge
+export const getAllStatsParticipantsFormation = async (req, res) => {
+  const { programmeId, formationId } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
 
-//Stat par sexe
-export const getStatsParSexe = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
+  if (!programmeId && !formationId) {
+    return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+  }
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+  try {
+    let themeIds = [];
+
+    // Étape 1 : récupérer les thèmes selon le filtre
+    if (formationId) {
+      if (!mongoose.Types.ObjectId.isValid(formationId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+      const themes = await ThemeFormation.find({ formation: formationId }).select('_id').lean();
+      themeIds = themes.map(t => t._id);
+    } else if (programmeId) {
+      if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+      const formations = await Formation.find({ programmeFormation: programmeId }).select('_id').lean();
+      const formationIds = formations.map(f => f._id);
+      const themes = await ThemeFormation.find({ formation: { $in: formationIds } }).select('_id').lean();
+      themeIds = themes.map(t => t._id);
     }
 
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate({
-            path: 'lieux.cohorte',
-            populate: { path: 'participants', select: 'sexe' },
-        });
+    // Étape 2 : récupérer les lieux pour ces thèmes
+    const lieux = await LieuFormation.find({ theme: { $in: themeIds } })
+      .select('cohortes')
+      .lean();
 
-        const stats = { homme: 0, femme: 0 };
+    const cohorteIds = lieux.flatMap(lieu => lieu.cohortes?.map(id => id.toString()) || []);
+    
 
-        themes.forEach(theme => {
-            theme.lieux.forEach(lieu => {
-                lieu.cohorte?.participants?.forEach(participant => {
-                    if (participant.sexe === 'H') stats.homme++;
-                    else if (participant.sexe === 'F') stats.femme++;
-                });
-            });
-        });
+    // Étape 3 : récupérer les utilisateurs de ces cohortes
+    const cohortesUtilisateurs = await CohorteUtilisateur.find({ cohorte: { $in: cohorteIds } })
+      .populate({
+        path: 'utilisateur',
+        select: 'genre dateNaissance service categorieProfessionnelle'
+      })
+      .lean();
 
-        return res.status(200).json({ success: true, data: stats });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
+    // Étape 4 : Calcul des stats
+    const sexeMap = { H: 0, F: 0 };
+    const trancheAgeMap = {
+      '18-25': 0,
+      '26-35': 0,
+      '36-45': 0,
+      '46-60': 0,
+      '60+': 0
+    };
+    const serviceMap = new Map();
+    const categorieMap = new Map();
+
+    cohortesUtilisateurs.forEach(entry => {
+      const user = entry.utilisateur;
+    //   console.log(JSON.stringify(user, null, 2));
+      if (!user) return;
+        
+      // Sexe
+      if (user.genre === 'M') sexeMap.H++;
+        else if (user.genre === 'F') sexeMap.F++;
+
+      // Âge
+      if (user.dateNaissance) {
+        const age = calculerAge(user.dateNaissance);
+        if (age >= 18 && age <= 25) trancheAgeMap['18-25']++;
+        else if (age <= 35) trancheAgeMap['26-35']++;
+        else if (age <= 45) trancheAgeMap['36-45']++;
+        else if (age <= 60) trancheAgeMap['46-60']++;
+        else trancheAgeMap['60+']++;
+      }
+
+      // Service
+      const sid = user.service?.toString();
+      if (sid) serviceMap.set(sid, (serviceMap.get(sid) || 0) + 1);
+
+      // Catégorie
+      const cid = user.categorieProfessionnelle?.toString();
+      if (cid) categorieMap.set(cid, (categorieMap.get(cid) || 0) + 1);
+    });
+
+    // Étape 5 : récupérer les objets associés
+    const services = await Service.find({ _id: { $in: [...serviceMap.keys()] } }).lean();
+    const categories = await CategorieProfessionnelle.find({ _id: { $in: [...categorieMap.keys()] } }).lean();
+
+    // Étape 6 : format final
+    const sexe = [
+      { genre: 'H', total: sexeMap.H },
+      { genre: 'F', total: sexeMap.F }
+    ];
+
+    const trancheAge = Object.entries(trancheAgeMap).map(([tranche, total]) => ({ tranche, total }));
+
+    const service = services.map(s => ({
+      service: {_id:s._id || "", nomFr:s.nomFr||"", nomEn:s.nomEn||""},
+      total: serviceMap.get(s._id.toString()) || 0
+    }));
+
+    const categorieProfessionnelle = categories.map(c => ({
+      categorieProfessionnelle: {_id:c._id || "", nomFr:c.nomFr||"", nomEn:c.nomEn||""},
+      total: categorieMap.get(c._id.toString()) || 0
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        sexe: sexe,
+        trancheAge: trancheAge,
+        service: service,
+        categorieProfessionnelle: categorieProfessionnelle
+      }
+    });
+
+  } catch (err) {
+    console.error('Erreur getAllStatsParticipantsFormation:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message
+    });
+  }
 };
 
 
-// Stats par service
-export const getStatsParService = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate({
-            path: 'lieux.cohorte',
-            populate: { path: 'participants', select: 'service' },
-        });
-
-        const stats = {};
-
-        themes.forEach(theme => {
-            theme.lieux.forEach(lieu => {
-                lieu.cohorte?.participants?.forEach(p => {
-                    const idService = p.service?.toString();
-                    if (!stats[idService]) stats[idService] = 0;
-                    stats[idService]++;
-                });
-            });
-        });
-
-        return res.status(200).json({ success: true, data: stats });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-//Stats par tranche d'âge
-export const getStatsParTrancheAge = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate({
-            path: 'lieux.cohorte',
-            populate: { path: 'participants', select: 'dateNaissance' },
-        });
-
-        const tranches = {
-            '18-25': 0,
-            '26-35': 0,
-            '36-45': 0,
-            '46-60': 0,
-            '60+': 0,
-        };
-
-        themes.forEach(theme => {
-            theme.lieux.forEach(lieu => {
-                lieu.cohorte?.participants?.forEach(p => {
-                    const age = calculerAge(p.dateNaissance);
-                    if (age >= 18 && age <= 25) tranches['18-25']++;
-                    else if (age <= 35) tranches['26-35']++;
-                    else if (age <= 45) tranches['36-45']++;
-                    else if (age <= 60) tranches['46-60']++;
-                    else if (age > 60) tranches['60+']++;
-                });
-            });
-        });
-
-        return res.status(200).json({ success: true, data: tranches });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-//Stats par catégorie
-export const getStatsParCategoriePro = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate({
-            path: 'lieux.cohorte',
-            populate: { path: 'participants', select: 'categorieProfessionnelle' },
-        });
-
-        const stats = {};
-
-        themes.forEach(theme => {
-            theme.lieux.forEach(lieu => {
-                lieu.cohorte?.participants?.forEach(p => {
-                    const idCat = p.categorieProfessionnelle?.toString();
-                    if (!stats[idCat]) stats[idCat] = 0;
-                    stats[idCat]++;
-                });
-            });
-        });
-
-        return res.status(200).json({ success: true, data: stats });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-//Nombre total de personne formé
-export const getNombreTotalFormes = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate({
-            path: 'lieux.cohorte',
-            populate: { path: 'participants', select: '_id' },
-        });
-
-        const participants = new Set();
-
-        themes.forEach(theme => {
-            theme.lieux.forEach(lieu => {
-                lieu.cohorte?.participants?.forEach(p => {
-                    participants.add(p._id.toString());
-                });
-            });
-        });
-
-        return res.status(200).json({ success: true, data: participants.size });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
 
 
 //Formateur par type
 export const getNbFormateursParType = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
+  const { programmeId, formationId } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!programmeId && !formationId) {
+    return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+  }
+
+  try {
+    let themeIds = [];
+
+    if (formationId) {
+      if (!mongoose.Types.ObjectId.isValid(formationId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+
+      const themes = await ThemeFormation.find({ formation: formationId }).select('_id').lean();
+      themeIds = themes.map(t => t._id);
+    } else if (programmeId) {
+      if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+
+      const formations = await Formation.find({ programmeFormation: programmeId }).select('_id').lean();
+      const formationIds = formations.map(f => f._id);
+
+      const themes = await ThemeFormation.find({ formation: { $in: formationIds } }).select('_id').lean();
+      themeIds = themes.map(t => t._id);
     }
 
-    try {
-        const themes = await ThemeFormation.find({ formation: id }).populate('formateurs').lean();
+    // Récupérer les formateurs liés aux thèmes
+    const formateurs = await Formateur.find({ theme: { $in: themeIds } }).select('interne utilisateur').lean();
 
-        const stats = { interne: 0, externe: 0 };
-        const dejaCompte = new Set();
+    const stats = { interne: 0, externe: 0 };
+    const dejaCompte = new Set();
 
-        themes.forEach(theme => {
-            theme.formateurs.forEach(f => {
-                if (dejaCompte.has(f._id.toString())) return;
-                dejaCompte.add(f._id.toString());
-                if (f.type === 'interne') stats.interne++;
-                else if (f.type === 'externe') stats.externe++;
-            });
-        });
+    for (const f of formateurs) {
+      const userId = f.utilisateur?.toString();
+      if (!userId || dejaCompte.has(userId)) continue;
 
-        return res.status(200).json({ success: true, data: stats });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+      dejaCompte.add(userId);
+      if (f.interne) stats.interne++;
+      else stats.externe++;
     }
+
+    return res.status(200).json({ success: true, data: stats });
+  } catch (err) {
+    console.error('Erreur getNbFormateursParType:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
 };
+
+
 
 
 //Coûts par thème pour une formation
@@ -1068,22 +1055,336 @@ export const getCoutsParThemePourFormation = async (req, res) => {
     }
 };
 
-// Retourne le taux d'exécution des tâches pour chaque thème d'une formation.
-export const getTauxExecutionParThemePourFormation = async (req, res) => {
-    const { id } = req.params;
+
+export const getCoutReelTTCParTheme = async (req, res) => {
+    const { programmeId, formationId } = req.query;
     const lang = req.headers['accept-language'] || 'fr';
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    try {
+        // Filtrage formations
+        let formationFilter = {};
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter._id = formationId;
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter.programmeFormation = programmeId;
+        }
+
+        // Trouver formations
+        const formations = await Formation.find(formationFilter).select('_id').lean();
+        if (formations.length === 0) {
+            return res.status(404).json({ success: false, message: t('formation_introuvable', lang) });
+        }
+        const formationIds = formations.map(f => f._id);
+
+        // Trouver thèmes
+        const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+            .select('_id titreFr titreEn')
+            .lean();
+        if (themes.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_theme_trouve', lang) });
+        }
+        const themeIds = themes.map(t => t._id);
+
+        // Trouver budgets
+        const budgets = await BudgetFormation.find({ theme: { $in: themeIds } }).select('_id theme').lean();
+        if (budgets.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_budget_trouve', lang) });
+        }
+        const budgetIds = budgets.map(b => b._id);
+
+        // Trouver dépenses avec taxes peuplées
+        const depenses = await Depense.find({
+            budget: { $in: budgetIds },
+            montantUnitaireReel: { $ne: null }
+        })
+        .populate('taxes')
+        .lean();
+
+        // Calculer montant TTC par dépense puis total par thème
+        const coutParThemeMap = new Map();
+
+        for (const depense of depenses) {
+            const montantHT = depense.montantUnitaireReel * depense.quantite;
+
+            // Somme taux taxes
+            const tauxTotalTaxes = depense.taxes?.reduce((sum, taxe) => sum + (taxe.taux || 0), 0) || 0;
+
+            const montantTTC = montantHT * (1 + tauxTotalTaxes / 100);
+
+            const budgetThemeId = budgets.find(b => b._id.toString() === depense.budget.toString())?.theme.toString();
+
+            if (budgetThemeId) {
+                coutParThemeMap.set(
+                    budgetThemeId,
+                    (coutParThemeMap.get(budgetThemeId) || 0) + montantTTC
+                );
+            }
+        }
+
+        // Construire résultat final
+        const result = themes.map(theme => ({
+            themeId: theme._id,
+            titreFr: theme.titreFr,
+            titreEn: theme.titreEn,
+            coutReelTTC: coutParThemeMap.get(theme._id.toString()) || 0
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: result
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutReelTTCParTheme:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};
+
+
+export const getCoutReelEtPrevuTTCParTheme = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    try {
+        let formationFilter = {};
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter._id = formationId;
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter.programmeFormation = programmeId;
+        }
+
+        const formations = await Formation.find(formationFilter).select('_id').lean();
+        if (formations.length === 0) {
+            return res.status(404).json({ success: false, message: t('formation_introuvable', lang) });
+        }
+        const formationIds = formations.map(f => f._id);
+
+        const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+            .select('_id titreFr titreEn')
+            .lean();
+        if (themes.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_theme_trouve', lang) });
+        }
+        const themeIds = themes.map(t => t._id);
+
+        const budgets = await BudgetFormation.find({ theme: { $in: themeIds } })
+            .select('_id theme')
+            .lean();
+        if (budgets.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_budget_trouve', lang) });
+        }
+        const budgetIds = budgets.map(b => b._id);
+
+        // Récupérer dépenses avec taxes peuplées
+        const depenses = await Depense.find({
+            budget: { $in: budgetIds }
+        })
+        .populate('taxes')
+        .lean();
+
+        // Maps pour cumuler montants par thème
+        const coutReelTTCParTheme = new Map();
+        const coutPrevuTTCParTheme = new Map();
+
+        for (const depense of depenses) {
+            // Somme taux taxes
+            const tauxTotalTaxes = depense.taxes?.reduce((sum, taxe) => sum + (taxe.taux || 0), 0) || 0;
+
+            // Montant réel TTC (montantUnitaireReel peut être null)
+            const montantHTReel = (depense.montantUnitaireReel ?? 0) * (depense.quantite ?? 1);
+            const montantTTCReel = montantHTReel * (1 + tauxTotalTaxes / 100);
+
+            // Montant prévu TTC (montantUnitairePrevu toujours défini)
+            const montantHTPrevu = depense.montantUnitairePrevu * (depense.quantite ?? 1);
+            const montantTTCPrevu = montantHTPrevu * (1 + tauxTotalTaxes / 100);
+
+            const themeId = budgets.find(b => b._id.toString() === depense.budget.toString())?.theme.toString();
+
+            if (themeId) {
+                coutReelTTCParTheme.set(themeId, (coutReelTTCParTheme.get(themeId) || 0) + montantTTCReel);
+                coutPrevuTTCParTheme.set(themeId, (coutPrevuTTCParTheme.get(themeId) || 0) + montantTTCPrevu);
+            }
+        }
+
+        const result = themes.map(theme => ({
+            themeId: theme._id,
+            titreFr: theme.titreFr,
+            titreEn: theme.titreEn,
+            coutReelTTC: coutReelTTCParTheme.get(theme._id.toString()) || 0,
+            coutPrevuTTC: coutPrevuTTCParTheme.get(theme._id.toString()) || 0,
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: result
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutReelEtPrevuTTCParTheme:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};
+
+
+export const getCoutsThemesOuFormations = async (req, res) => {
+  const { programmeId, formationId } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+
+  if (!programmeId && !formationId) {
+    return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+  }
+
+  try {
+    let formations = [];
+
+    if (formationId) {
+      if (!mongoose.Types.ObjectId.isValid(formationId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+
+      formations = await Formation.find({ _id: formationId }).select('_id titreFr titreEn').lean();
+    }else if (programmeId) {
+      if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+      }
+
+      formations = await Formation.find({ programmeFormation: programmeId }).select('_id titreFr titreEn').lean();
+    }
+
+    const formationIds = formations.map(f => f._id);
+    const themes = await ThemeFormation.find({ formation: { $in: formationIds } }).select('_id titreFr titreEn formation').lean();
+
+    const themeIds = themes.map(t => t._id);
+    const budgets = await BudgetFormation.find({ theme: { $in: themeIds } }).select('_id theme').lean();
+    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } }).populate('taxes').lean();
+
+    const budgetMap = new Map(budgets.map(b => [b.theme.toString(), b._id.toString()]));
+
+    const dataMap = new Map();
+
+    themes.forEach(theme => {
+      const budgetId = budgetMap.get(theme._id.toString());
+      if (!budgetId) return;
+
+      const depensesDuTheme = depenses.filter(d => d.budget.toString() === budgetId);
+
+      let totalPrevu = 0;
+      let totalReel = 0;
+
+      depensesDuTheme.forEach(dep => {
+        const qte = dep.quantite || 1;
+        const tauxTaxes = (dep.taxes || []).reduce((acc, tax) => acc + tax.taux, 0);
+        const coeff = 1 + tauxTaxes / 100;
+
+        const prevu = dep.montantUnitairePrevu * qte * coeff;
+        const reel = dep.montantUnitaireReel != null ? dep.montantUnitaireReel * qte * coeff : 0;
+
+        totalPrevu += prevu;
+        totalReel += reel;
+      });
+
+      if (formationId) {
+        //  Résultat par thème
+        dataMap.set(theme._id.toString(), {
+          themeId: theme._id,
+          titreFr: theme.titreFr,
+          titreEn: theme.titreEn,
+          montantPrevuTTC: Math.round(totalPrevu),
+          montantReelTTC: Math.round(totalReel)
+        });
+      } else {
+        // Résultat par formation
+        const formation = formations.find(f => f._id.toString() === theme.formation.toString());
+        if (!formation) return;
+
+        const key = formation._id.toString();
+        const current = dataMap.get(key) || {
+          formationId: formation._id,
+          titreFr: formation.titreFr,
+          titreEn: formation.titreEn,
+          montantPrevuTTC: 0,
+          montantReelTTC: 0
+        };
+
+        current.montantPrevuTTC += totalPrevu;
+        current.montantReelTTC += totalReel;
+        dataMap.set(key, current);
+      }
+    });
+
+    const data = Array.from(dataMap.values()).map(d => ({
+      ...d,
+      montantPrevuTTC: Math.round(d.montantPrevuTTC),
+      montantReelTTC: Math.round(d.montantReelTTC)
+    }));
+
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    console.error('Erreur getCoutsThemesOuFormations:', err);
+    return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+  }
+};
+
+
+
+// Retourne le taux d'exécution des tâches pour chaque thème d'une formation.
+export const getTauxExecutionParTheme = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    if (!programmeId && !formationId) {
         return res.status(400).json({
             success: false,
-            message: t('identifiant_invalide', lang),
+            message: t('parametre_requis', lang),
         });
     }
 
     try {
-        const themes = await ThemeFormation.find({ formation: id })
-        .select('titreFr titreEn nbTaches nbTachesExecutees')
-        .lean();
+        let formationsIds = [];
+
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+            formationsIds = [formationId];
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            const formations = await Formation.find({ programmeFormation: programmeId }).select('_id').lean();
+            formationsIds = formations.map(f => f._id);
+        }
+
+        const themes = await ThemeFormation.find({ formation: { $in: formationsIds } })
+            .select('titreFr titreEn nbTachesTotal nbTachesExecutees')
+            .lean();
 
         if (!themes || themes.length === 0) {
             return res.status(404).json({
@@ -1096,7 +1397,7 @@ export const getTauxExecutionParThemePourFormation = async (req, res) => {
         let totalExecutees = 0;
 
         const themesExecution = themes.map(theme => {
-            const nbTaches = theme.nbTaches || 0;
+            const nbTaches = theme.nbTachesTotal || 0;
             const nbTachesExecutees = theme.nbTachesExecutees || 0;
 
             totalTaches += nbTaches;
@@ -1107,7 +1408,7 @@ export const getTauxExecutionParThemePourFormation = async (req, res) => {
                 : 0;
 
             return {
-                themeId: theme._id,
+                id: theme._id,
                 titreFr: theme.titreFr,
                 titreEn: theme.titreEn,
                 nbTaches,
@@ -1117,19 +1418,19 @@ export const getTauxExecutionParThemePourFormation = async (req, res) => {
         });
 
         const tauxExecutionGlobal = totalTaches > 0
-        ? Math.round((totalExecutees / totalTaches) * 100)
-        : 0;
+            ? Math.round((totalExecutees / totalTaches) * 100)
+            : 0;
 
         return res.status(200).json({
             success: true,
             data: {
-                tauxExecutionGlobal, // en %
-                themes: themesExecution,
+                tauxExecutionGlobal,
+                details: themesExecution,
             },
         });
 
     } catch (err) {
-        console.error('Erreur dans getTauxExecutionParThemePourFormation:', err);
+        console.error('Erreur dans getTauxExecutionParTheme:', err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -1137,6 +1438,106 @@ export const getTauxExecutionParThemePourFormation = async (req, res) => {
         });
     }
 };
+
+
+export const getTauxExecutionParAxeStrategique = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    try {
+        let formations = [];
+
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            const formation = await Formation.findById(formationId).lean();
+            if (!formation) {
+                return res.status(404).json({ success: false, message: t('formation_introuvable', lang) });
+            }
+            formations = [formation];
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formations = await Formation.find({ programmeFormation: programmeId }).lean();
+        } else {
+            // Pas de filtre → toutes les formations
+            formations = await Formation.find().lean();
+        }
+
+        const axeMap = new Map(); // Map<AxeStrategiqueId, { axe, formations[] }>
+        let totalGlobalTaches = 0;
+        let totalGlobalExecutees = 0;
+
+        for (const formation of formations) {
+            const axeId = formation.axeStrategique?.toString();
+            if (!axeId) continue;
+
+            if (!axeMap.has(axeId)) {
+                const axe = await AxeStrategique.findById(axeId).lean();
+                if (axe) axeMap.set(axeId, { axe, formationIds: [] });
+            }
+
+            if (axeMap.has(axeId)) {
+                axeMap.get(axeId).formationIds.push(formation._id);
+            }
+        }
+
+        const resultats = [];
+
+        for (const [axeId, { axe, formationIds }] of axeMap.entries()) {
+            const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+                .select('nbTachesTotal nbTachesExecutees')
+                .lean();
+
+            let totalTaches = 0;
+            let totalTachesExecutees = 0;
+
+            themes.forEach(theme => {
+                totalTaches += theme.nbTachesTotal || 0;
+                totalTachesExecutees += theme.nbTachesExecutees || 0;
+            });
+
+            totalGlobalTaches += totalTaches;
+            totalGlobalExecutees += totalTachesExecutees;
+
+            const taux = totalTaches > 0
+                ? Math.round((totalTachesExecutees / totalTaches) * 100)
+                : 0;
+
+            resultats.push({
+                id: axe._id,
+                titreFr:axe.nomFr,
+                titreEn:axe.nomEn,
+                nbTaches:totalTaches,
+                nbTachesExecutees:totalTachesExecutees,
+                tauxExecution: taux
+            });
+        }
+
+        const tauxExecutionGlobal = totalGlobalTaches > 0
+            ? Math.round((totalGlobalExecutees / totalGlobalTaches) * 100)
+            : 0;
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                tauxExecutionGlobal, // Global pour toutes les formations traitées
+                details: resultats
+            }
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getTauxExecutionParAxeStrategique:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};
+
 
 
 //Taux d'execution des formations par programme
@@ -1179,6 +1580,10 @@ export const getThemesExecutionParProgramme = async (req, res) => {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
+
+
+
 
 
 //Taux d'execution des formations par période

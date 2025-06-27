@@ -11,19 +11,19 @@ import {
   supprimerFamilleMetierDeFormation,
   getFormationsForDropdown,
 
-  getStatsParSexe,
-  getStatsParService,
-  getStatsParTrancheAge,
-  getStatsParCategoriePro,
-  getNombreTotalFormes,
+  
   getNbFormateursParType,
-  getCoutsParThemePourFormation,
-  getTauxExecutionParThemePourFormation,
   getThemesExecutionParProgramme,
   getThemesExecutionParPeriode,
   getThemesExecutionParAxeStrategique,
   searchThemesExecutionParFormation,
   getFormationsForGantt,
+  getAllStatsParticipantsFormation,
+  getTauxExecutionParAxeStrategique,
+  getCoutReelTTCParTheme,
+  getCoutReelEtPrevuTTCParTheme,
+  getTauxExecutionParTheme,
+  getCoutsThemesOuFormations,
   
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -49,14 +49,27 @@ router.patch('/:idFormation/ajouter-famille-metier/:idFamilleMetier', authentifi
 router.patch('/:idFormation/supprimer-famille-metier/:idFamilleMetier', authentificate, supprimerFamilleMetierDeFormation);
 
 //Statistiques
-router.get('/statistiques/sexe/:id', authentificate, getStatsParSexe);
-router.get('/statistiques/service/:id', authentificate, getStatsParService);
-router.get('/statistiques/tranche-age/:id', authentificate, getStatsParTrancheAge);
-router.get('/statistiques/categorie-professionnelle/:id', authentificate, getStatsParCategoriePro);
-router.get('/statistiques/total-formes/:id', authentificate, getNombreTotalFormes);
-router.get('/statistiques/formateurs-par-type/:id', authentificate, getNbFormateursParType);
-router.get('/statistiques/depense-par-theme/:id', authentificate, getCoutsParThemePourFormation);
-router.get('/statistiques/execution-par-theme/:id', authentificate, getTauxExecutionParThemePourFormation);
+// 1. Statistiques globales participants (sexe, âge, service, catégorie pro) filtré par programme ou thème
+router.get('/stats/participants', getAllStatsParticipantsFormation);
+
+// 2. Nombre de formateurs par type (interne/externe), filtré par programme ou formation
+router.get('/stats/formateurs', getNbFormateursParType);
+
+// 3. Taux d’exécution des tâches par thème, filtré par formation ou programme
+router.get('/stats/taux-execution/themes', getTauxExecutionParTheme);
+
+// 4. Taux d’exécution global et par axe stratégique, filtré par formation ou programme
+router.get('/stats/taux-execution/axes', getTauxExecutionParAxeStrategique);
+
+// 5. Coût réel TTC par thème, filtré par programme ou formation
+router.get('/stats/cout-reel-ttc/themes', getCoutReelTTCParTheme);
+
+// 6. Coût réel TTC et coût prévu TTC par thème, filtré par programme ou formation
+router.get('/stats/cout-reel-prevu-ttc/themes', getCoutReelEtPrevuTTCParTheme);
+
+// routes/stats.routes.js
+router.get('/stats/couts-reel-prevu', getCoutsThemesOuFormations);
+
 
 //execution
 router.get('/programme/taux-execution/:programmeId/themes', authentificate, getThemesExecutionParProgramme);

@@ -269,7 +269,7 @@ export const getBudgetThemesForDropdown = async (req, res) => {
 
 // 1. Budgets par thème avec pagination
 export const getBudgetsThemesParFormationPaginated = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { formationId } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
@@ -291,7 +291,11 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
     const budgetIds = validBudgets.map(b => b._id);
 
     const depenses = await Depense.find({ budget: { $in: budgetIds } })
-      .populate('taxes', 'taux')
+       .populate({
+          path: 'taxes',
+          select: 'taux',
+          options:{strictPopulate:false}
+      })
       .lean();
 
     const map = new Map();
@@ -346,7 +350,7 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
 
 // 2. Histogramme budget prévu / réel
 export const getBudgetEcartParTheme = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { formationId, themeId } = req.params;
 
   if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
@@ -360,7 +364,11 @@ export const getBudgetEcartParTheme = async (req, res) => {
   try {
     let budgets;
 
-    if (formationId) {
+    if (themeId) {
+        budgets = await BudgetFormation.find({ theme: themeId })
+        .populate('theme', 'titreFr titreEn')
+        .lean();
+    } else if(formationId) {
       budgets = await BudgetFormation.find()
         .populate({
           path: 'theme',
@@ -369,10 +377,7 @@ export const getBudgetEcartParTheme = async (req, res) => {
         })
         .lean();
       budgets = budgets.filter(b => b.theme);
-    } else {
-      budgets = await BudgetFormation.find({ theme: themeId })
-        .populate('theme', 'titreFr titreEn')
-        .lean();
+      
     }
 
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
@@ -426,7 +431,7 @@ export const getBudgetEcartParTheme = async (req, res) => {
 
 // 3. Totaux budget
 export const getTotauxBudgetParFormation = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { formationId, themeId } = req.params;
 
   if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
@@ -489,7 +494,7 @@ export const getTotauxBudgetParFormation = async (req, res) => {
 
 // 4a. Coût total prévu par thème
 export const getCoutTotalPrevuParTheme = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(themeId)) {
@@ -499,7 +504,10 @@ export const getCoutTotalPrevuParTheme = async (req, res) => {
   try {
     const budgets = await BudgetFormation.find({ theme: themeId }).lean();
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-      .populate('taxes', 'taux')
+       .populate({
+          path: 'taxes',
+          options:{strictPopulate:false}
+      })
       .lean();
 
     const totalPrevu = depenses.reduce((acc, d) => {
@@ -520,7 +528,7 @@ export const getCoutTotalPrevuParTheme = async (req, res) => {
 
 // 4b. Coût total réel par thème
 export const getCoutTotalReelParTheme = async (req, res) => {
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(themeId)) {
@@ -534,7 +542,11 @@ export const getCoutTotalReelParTheme = async (req, res) => {
     }).lean();
 
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-      .populate('taxes', 'taux')
+       .populate({
+          path: 'taxes',
+          select: 'taux',
+          options:{strictPopulate:false}
+      })
       .lean();
 
     const totalReel = depenses.reduce((acc, d) => {

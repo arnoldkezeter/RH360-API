@@ -487,8 +487,6 @@ export const getFilteredThemes = async (req, res) => {
       })
       .populate({ path: 'publicCible', options: { strictPopulate: false } })
       .populate({ path: 'responsable', options: { strictPopulate: false } })
-      .populate({ path: 'formateurs.formateur', options: { strictPopulate: false } })
-      .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
       .lean();
 
     const themeIds = themes.map(t => t._id);
@@ -497,7 +495,11 @@ export const getFilteredThemes = async (req, res) => {
     const budgetIds = budgets.map(b => b._id);
 
     const depenses = await Depense.find({ budget: { $in: budgetIds } })
-      .populate('taxes', 'taux')
+       .populate({
+          path: 'taxes',
+          select: 'taux',
+          options:{strictPopulate:false}
+      })
       .lean();
 
     const depensesByBudget = depenses.reduce((acc, dep) => {

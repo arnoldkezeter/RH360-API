@@ -380,6 +380,7 @@ export const getFormations = async (req, res) => {
 export const getFilteredFormations = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const {
+        programme,
         axeStrategique,
         familleMetier,
         titre,
@@ -391,6 +392,16 @@ export const getFilteredFormations = async (req, res) => {
 
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
     const filters = {};
+
+    if (programme) {
+        if (!mongoose.Types.ObjectId.isValid(programme)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        filters.programmeFormation = programme;
+    }
 
     if (axeStrategique) {
         if (!mongoose.Types.ObjectId.isValid(axeStrategique)) {
@@ -477,7 +488,7 @@ export const getFilteredFormations = async (req, res) => {
         const allDepenses = await Depense.find({
             budget: { $in: budgetIds }
         })
-            .populate('taxe', 'taux')
+            .populate({path:'taxes', select:'taux', options:{strictPopulate:false}})
             .lean();
 
         // Regrouper les dépenses par budget
@@ -1103,7 +1114,7 @@ export const getCoutReelTTCParTheme = async (req, res) => {
             budget: { $in: budgetIds },
             montantUnitaireReel: { $ne: null }
         })
-        .populate('taxes')
+        .populate({path:'taxes', options:{strictPopulate:false}})
         .lean();
 
         // Calculer montant TTC par dépense puis total par thème
@@ -1195,7 +1206,7 @@ export const getCoutReelEtPrevuTTCParTheme = async (req, res) => {
         const depenses = await Depense.find({
             budget: { $in: budgetIds }
         })
-        .populate('taxes')
+        .populate({path:'taxes', options:{strictPopulate:false}})
         .lean();
 
         // Maps pour cumuler montants par thème
@@ -1276,7 +1287,7 @@ export const getCoutsThemesOuFormations = async (req, res) => {
 
     const themeIds = themes.map(t => t._id);
     const budgets = await BudgetFormation.find({ theme: { $in: themeIds } }).select('_id theme').lean();
-    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } }).populate('taxes').lean();
+    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } }).populate({path:'taxes',  options:{strictPopulate:false}}).lean();
 
     const budgetMap = new Map(budgets.map(b => [b.theme.toString(), b._id.toString()]));
 

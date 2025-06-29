@@ -6,16 +6,21 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 
-const uploadsDir = path.join(process.cwd(), 'uploads', 'supports');
 
 export const createSupportFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!req.file) {
         return res.status(400).json({
             success: false,
             message: t('fichier_requis', lang),
         });
+    }
+
+    // Vérifie et crée dynamiquement le dossier d’upload s’il n’existe pas
+    const uploadsDir = path.join(process.cwd(), 'public/uploads/supports');
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
     const errors = validationResult(req);
@@ -29,7 +34,7 @@ export const createSupportFormation = async (req, res) => {
     }
 
     try {
-        const { titreFr, titreEn, descriptionFr, descriptionEn, theme } = req.body;
+        const { nomFr, nomEn, descriptionFr, descriptionEn, theme } = req.body;
 
         if (theme && !mongoose.Types.ObjectId.isValid(theme)) {
             fs.unlink(req.file.path, () => {});
@@ -49,15 +54,25 @@ export const createSupportFormation = async (req, res) => {
         }
 
         const fichierRelatif = `/files/supports/${req.file.filename}`;
+        const tailleFichier = req.file.size;
 
-        const support = await SupportFormation.create({
-            titreFr,
-            titreEn,
+        let support = await SupportFormation.create({
+            nomFr,
+            nomEn,
             descriptionFr,
             descriptionEn,
             fichier: fichierRelatif,
+            taille: tailleFichier,
             theme,
         });
+
+        support = await SupportFormation.findById(support._id)
+            .populate({
+                path: 'theme',
+                select: 'titreFr titreEn dateDebut dateFin',
+                options: { strictPopulate: false },
+            })
+            .lean();
 
         return res.status(201).json({
             success: true,
@@ -66,6 +81,7 @@ export const createSupportFormation = async (req, res) => {
         });
     } catch (err) {
         if (req.file) fs.unlink(req.file.path, () => {});
+        console.error('Erreur lors de la création du support :', err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -74,8 +90,9 @@ export const createSupportFormation = async (req, res) => {
     }
 };
 
+
 export const updateSupportFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -84,6 +101,12 @@ export const updateSupportFormation = async (req, res) => {
             success: false,
             message: t('identifiant_invalide', lang),
         });
+    }
+
+    // Vérifie et crée dynamiquement le dossier d’upload s’il n’existe pas
+    const uploadsDir = path.join(process.cwd(), 'public/uploads/supports');
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
     const errors = validationResult(req);
@@ -106,7 +129,7 @@ export const updateSupportFormation = async (req, res) => {
             });
         }
 
-        const { titreFr, titreEn, descriptionFr, descriptionEn, theme } = req.body;
+        const { nomFr, nomEn, descriptionFr, descriptionEn, theme } = req.body;
 
         if (theme && !mongoose.Types.ObjectId.isValid(theme)) {
             if (req.file) fs.unlink(req.file.path, () => {});
@@ -124,12 +147,13 @@ export const updateSupportFormation = async (req, res) => {
                 message: t('theme_non_trouve', lang),
             });
         }
-
-        if (titreFr !== undefined) support.titreFr = titreFr;
-        if (titreEn !== undefined) support.titreEn = titreEn;
+         const tailleFichier = req.file.size; // Taille en octets
+        if (nomFr !== undefined) support.nomFr = nomFr;
+        if (nomEn !== undefined) support.nomEn = nomEn;
         if (descriptionFr !== undefined) support.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) support.descriptionEn = descriptionEn;
         if (theme !== undefined) support.theme = theme;
+        if (taille !== undefined) support.taille = tailleFichier;
 
         if (req.file) {
             // Supprimer l'ancien fichier
@@ -143,6 +167,14 @@ export const updateSupportFormation = async (req, res) => {
         }
 
         await support.save();
+        // Peupler le champ `theme`
+        support = await SupportFormation.findById(support._id)
+            .populate({
+                path: 'theme',
+                select: 'titreFr titreEn dateDebut dateFin',
+                options: { strictPopulate: false },
+            })
+            .lean();
 
         return res.status(200).json({
             success: true,
@@ -152,6 +184,7 @@ export const updateSupportFormation = async (req, res) => {
 
     } catch (err) {
         if (req.file) fs.unlink(req.file.path, () => {});
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -163,7 +196,7 @@ export const updateSupportFormation = async (req, res) => {
 
 export const deleteSupportFormation = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -196,6 +229,7 @@ export const deleteSupportFormation = async (req, res) => {
             message: t('supprimer_succes', lang),
         });
     } catch (err) {
+        console.log(err)
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -205,36 +239,97 @@ export const deleteSupportFormation = async (req, res) => {
 };
 
 
-export const getSupportsFormation = async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+export const getFilteredSupportsFormation = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const { page = 1, limit = 10, titre, themeId } = req.query;
+
+  const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const filter = {};
+
+  // Filtrage par titre
+  if (titre) {
+    const queryField = lang === 'en' ? 'nomEn' : 'nomFr';
+    filter[queryField] = { $regex: new RegExp(titre, 'i') };
+  }
+
+  // Filtrage par thème
+  if (themeId) {
+    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+      return res.status(400).json({
+        success: false,
+        message: t('identifiant_invalide', lang),
+      });
+    }
+    filter.theme = themeId;
+  }
+
+  try {
+    const total = await SupportFormation.countDocuments(filter);
+
+    const supports = await SupportFormation.find(filter)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ [sortField]: 1 })
+      .populate({
+        path: 'theme',
+        select: 'titreFr titreEn dateDebut dateFin',
+        options: { strictPopulate: false },
+      })
+      .lean();
+
+    return res.status(200).json({
+        success: true,
+        data: {
+            supportFormations: supports,
+            totalItems: total,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / limit),
+            pageSize: parseInt(limit),
+        },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
+};
+
+
+//Télécharger un support de formation
+export const telechargerSupportFormation = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
 
     try {
-        const total = await SupportFormation.countDocuments();
+        const support = await SupportFormation.findById(id);
+        if (!support || !support.fichier) {
+            return res.status(404).json({
+                success: false,
+                message: t('support_non_trouve', lang),
+            });
+        }
 
-        const supports = await SupportFormation.find()
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [sortField]: 1 })
-            .populate({
-                path: 'theme',
-                select: lang === 'en' ? 'nomEn' : 'nomFr',
-                options: { strictPopulate: false },
-            })
-            .lean();
+        const nomFichier = path.basename(support.fichier);
+        const cheminFichier = path.join(process.cwd(), 'public/uploads', 'supports', nomFichier);
+        
+        if (!fs.existsSync(cheminFichier)) {
+            return res.status(404).json({
+                success: false,
+                message: t('fichier_introuvable', lang),
+            });
+        }
 
-        return res.status(200).json({
-            success: true,
-            data: supports,
-            pagination: {
-                total,
-                page,
-                pages: Math.ceil(total / limit),
-            },
-        });
-
+        return res.download(cheminFichier, nomFichier);
     } catch (err) {
         return res.status(500).json({
             success: false,
@@ -244,8 +339,9 @@ export const getSupportsFormation = async (req, res) => {
     }
 };
 
+
 export const getSupportFormationById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -276,128 +372,6 @@ export const getSupportFormationById = async (req, res) => {
             data: support,
         });
 
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-// Recherche par titre (fr/en)
-export const searchSupportFormationByTitle = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { titre } = req.query;
-
-    if (!titre) {
-        return res.status(400).json({
-            success: false,
-            message: t('titre_requis', lang),
-        });
-    }
-
-    try {
-        const queryField = lang === 'en' ? 'titreEn' : 'titreFr';
-
-        const supports = await SupportFormation.find({
-            [queryField]: { $regex: new RegExp(titre, 'i') },
-        })
-            .populate({
-                path: 'theme',
-                select: lang === 'en' ? 'nomEn' : 'nomFr',
-                options: { strictPopulate: false },
-            })
-            .sort({ [queryField]: 1 })
-            .lean();
-
-        return res.status(200).json({
-            success: true,
-            data: supports,
-        });
-
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-//Supports par thème
-export const getSupportsByTheme = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { themeId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-
-    if (!mongoose.Types.ObjectId.isValid(themeId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const skip = (page - 1) * limit;
-
-        const supports = await SupportFormation.find({ theme: themeId })
-            .skip(skip)
-            .limit(limit)
-            .sort({ createdAt: -1 });
-
-        const total = await SupportFormation.countDocuments({ theme: themeId });
-
-        return res.status(200).json({
-            success: true,
-            currentPage: page,
-            totalPages: Math.ceil(total / limit),
-            totalItems: total,
-            data: supports,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-//Télécharger un support de formation
-export const telechargerSupportFormation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        const support = await SupportFormation.findById(id);
-        if (!support || !support.fichier) {
-            return res.status(404).json({
-                success: false,
-                message: t('support_non_trouve', lang),
-            });
-        }
-
-        const nomFichier = path.basename(support.fichier);
-        const cheminFichier = path.join(process.cwd(), 'uploads', 'supports', nomFichier);
-
-        if (!fs.existsSync(cheminFichier)) {
-            return res.status(404).json({
-                success: false,
-                message: t('fichier_introuvable', lang),
-            });
-        }
-
-        return res.download(cheminFichier, nomFichier);
     } catch (err) {
         return res.status(500).json({
             success: false,

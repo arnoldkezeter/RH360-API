@@ -1,6 +1,7 @@
 # Node modules
 node_modules/
 tests/
+public/
 
 # Variables d'environnement
 .env

@@ -56,7 +56,7 @@ app.use(helmet());
 app.use(morgan('dev'));
 
 //middleware pour servir les supports de formations
-app.use('/files/supports', express.static(path.join(process.cwd(), 'uploads/supports')));
+app.use('/files/supports', express.static(path.join(process.cwd(), 'public/uploads/supports')));
 
 connectDB();
 
@@ -80,7 +80,7 @@ app.use('/api/v1/communes', communeRoutes);
 app.use('/api/v1/theme-formation/budgets-formations', budgetFormationRoutes);
 app.use('/api/v1/theme-formation/budget-formation/depenses', depenseRoutes);
 app.use('/api/v1/utilisateurs', utilisateurRoutes);
-app.use('/api/v1/support-formation', supportFormationRoutes);
+app.use('/api/v1/theme-formation/supports-formation', supportFormationRoutes);
 app.use('/api/v1/themes-formations', themeFormationRoutes);
 app.use('/api/v1/theme-formation/lieux-formation', lieuFormationRoutes);
 app.use('/api/v1/theme-formation/formateurs', formateurRoutes);

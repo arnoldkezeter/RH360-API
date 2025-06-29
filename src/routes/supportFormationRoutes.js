@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import {
   createSupportFormation,
   updateSupportFormation,
   deleteSupportFormation,
-  getSupportsFormation,
   getSupportFormationById,
-  searchSupportFormationByTitle,
-  getSupportsByTheme,
-  telechargerSupportFormation
+  telechargerSupportFormation,
+  getFilteredSupportsFormation
 } from '../controllers/supportFormationController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateSupport.js';
@@ -18,7 +17,12 @@ const router = Router();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/supports');
+    const uploadsDir = path.join(process.cwd(), 'public/uploads', 'supports');
+    // Création du dossier à chaque upload si nécessaire
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -28,13 +32,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-router.post('/', upload.single('fichier'), validateFields, authentificate, createSupportFormation);
-router.put('/:id', upload.single('fichier'), validateFields, authentificate, updateSupportFormation);
+
+router.post('/', upload.single('fichier'), authentificate, validateFields,  createSupportFormation);
+router.put('/:id', upload.single('fichier'), authentificate, validateFields,  updateSupportFormation);
 router.delete('/:id', authentificate, deleteSupportFormation);
-router.get('/', authentificate, getSupportsFormation);
+router.get('/', authentificate, getFilteredSupportsFormation);
 router.get('/:id', authentificate, getSupportFormationById);
-router.get('/search/by-title', authentificate, searchSupportFormationByTitle);
-router.get('/theme/:themeId', authentificate, getSupportsByTheme);
 router.get('/telecharger/:id', authentificate, telechargerSupportFormation);
 
 export default router;

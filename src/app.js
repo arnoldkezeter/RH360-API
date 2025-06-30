@@ -96,7 +96,7 @@ app.use('/api/v1/evaluation-a-chaud', evaluationAChaudRoutes);
 app.use('/api/v1/evaluation-a-chaud-reponse', evaluationAChaudReponseRoutes);
 app.use('/api/v1/stagiaires', stagiaireRoutes);
 app.use('/api/v1/stages', stageRoutes);
-app.use('/api/v1/taches-stagiaire', tacheStagiaireRoutes);
+app.use('/api/v1/stagiaire/taches-stagiaire', tacheStagiaireRoutes);
 app.use('/api/v1/chercheurs', chercheurRoutes);
 app.use('/api/v1/mandats-recherche', mandatRechercheRoutes);
 

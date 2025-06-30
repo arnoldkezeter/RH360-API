@@ -3,7 +3,7 @@ import {
   creerTache,
   modifierTache,
   supprimerTache,
-  getTaches,
+  getFilteredTaches,
   statistiquesTaches,
 } from '../controllers/tacheStagiaireController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -14,7 +14,7 @@ const router = express.Router();
 router.post('/', authentificate, validateFields, creerTache);
 router.put('/:tacheId', authentificate, validateFields, modifierTache);
 router.delete('/:tacheId', authentificate, supprimerTache);
-router.get('/', authentificate, getTaches);
-router.get('/statistiques', authentificate, statistiquesTaches);
+router.get('/:stagiaireId', authentificate, getFilteredTaches);
+router.get('/statistiques/:stagiaireId', authentificate, statistiquesTaches);
 
 export default router;

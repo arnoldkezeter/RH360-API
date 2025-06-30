@@ -6,7 +6,7 @@ const TacheStagiaireSchema = new mongoose.Schema({
   descriptionFr: {type: String,required: false},
   descriptionEn: {type: String,required: false},
   date: {type: Date, required: true,},
-  status: {type: String, enum: ['COMPLETE', 'EN COURS', 'ABSENT'], default: 'EN COURS'},
+  status: {type: String, enum: ['COMPLETE', 'EN_COURS', 'ABSENT'], default: 'EN_COURS'},
   stagiaire: {type: mongoose.Schema.Types.ObjectId, ref: 'Stagiaire', required: true},
   bloque: {type: Boolean,default: false}
 }, { timestamps: true });

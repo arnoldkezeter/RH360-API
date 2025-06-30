@@ -5,7 +5,7 @@ export const validateFields = [
 
     body('nomEn').notEmpty().withMessage('Le nom en anglais est requis'),
 
-    body('stagiaire').notEmpty().withMessage('Le stagiaire est requis'),
+    body('stagiaire').optional().notEmpty().withMessage('Le stagiaire est requis'),
 
     body('date').notEmpty().withMessage('La date est requise'),
 ];

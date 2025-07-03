@@ -197,7 +197,7 @@ export const getProgrammesFormation = async (req, res) => {
         const programmes = await ProgrammeFormation.find()
             .skip((page - 1) * limit)
             .limit(limit)
-            .sort({ [sortField]: 1 })
+            .sort({ [sortField]: -1 })
             .populate({
                 path: 'creePar',
                 select: 'nom prenom email',
@@ -312,7 +312,7 @@ export const getProgrammesForDropdown = async (req, res) => {
 
     try {
         const programmes = await ProgrammeFormation.find({}, '_id annee titreFr titreEn')
-            .sort({ 'annee': 1 })
+            .sort({ 'annee': -1 })
             .lean();
 
         return res.status(200).json({

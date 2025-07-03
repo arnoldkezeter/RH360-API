@@ -24,7 +24,8 @@ import {
     modifierGroupe,
     supprimerGroupe,
     supprimerStage,
-    calendrierRotations
+    calendrierRotations,
+    getNombreStagesEnCours
 } from '../controllers/stageController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateStage.js';
@@ -57,6 +58,7 @@ router.get('/duree-moyenne-stages', dureeMoyenneStages); // Route pour la durée
 router.get('/taux-statut-stages', tauxStatutStages);// Route pour les taux d'acceptation, de refus et en attente
 router.get('/repartition-stagiaires-par-service', repartitionStagiairesParService); // Route pour la répartition des stagiaires par service
 router.get('/repartition-stagiaires-par-superviseur', repartitionStagiairesParSuperviseur); // Route pour la répartition des stagiaires par superviseur
+router.get('/stages-en-cours', getNombreStagesEnCours)
 
 
 export default router;

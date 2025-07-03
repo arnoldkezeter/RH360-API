@@ -937,8 +937,6 @@ export const getAllStatsParticipantsFormation = async (req, res) => {
 };
 
 
-
-
 //Formateur par type
 export const getNbFormateursParType = async (req, res) => {
   const { programmeId, formationId } = req.query;
@@ -995,8 +993,6 @@ export const getNbFormateursParType = async (req, res) => {
     });
   }
 };
-
-
 
 
 //Coûts par thème pour une formation
@@ -1740,6 +1736,191 @@ export const searchThemesExecutionParFormation = async (req, res) => {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
+
+
+export const getUpcomingFormationsByProgramme = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const { programmeId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr' ? "Identifiant de programme invalide" : "Invalid program ID",
+    });
+  }
+
+  try {
+    const formations = await Formation.find({ programmeFormation: programmeId })
+      .lean();
+    
+    const formationIds = formations.map(f => f._id);
+
+    const themes = await ThemeFormation.find({
+      formation: { $in: formationIds }
+    })
+      .sort({ dateDebut: 1 }) // tri croissant par date
+      .populate('formation')
+      .lean();
+      
+
+    const themesByFormation = {};
+    for (const theme of themes) {
+      const formationId = theme.formation._id.toString();
+      if (!themesByFormation[formationId]) themesByFormation[formationId] = [];
+      themesByFormation[formationId].push(theme);
+    }
+
+    // Limiter aux 10 premières formations par date de début
+    const upcomingFormations = Object.entries(themesByFormation)
+      .map(([formationId, themes]) => {
+        const sortedThemes = themes.sort((a, b) => new Date(a.dateDebut) - new Date(b.dateDebut));
+        const firstTheme = sortedThemes[0];
+        const lastTheme = sortedThemes[sortedThemes.length - 1];
+
+        return {
+          formation: themes[0].formation,
+          dateDebut: firstTheme.dateDebut,
+          dateFin: lastTheme.dateFin,
+          themeIds: themes.map(t => t._id),
+          nbTheme: themes.length
+        };
+      })
+      .sort((a, b) => new Date(a.dateDebut) - new Date(b.dateDebut))
+      .slice(0, 10);
+      
+    // Calcul du nombre de participants et de formateurs pour chaque formation
+    const response = await Promise.all(
+      upcomingFormations.map(async (f) => {
+        const themeIds = f.themeIds;
+
+        const lieux = await LieuFormation.find({
+        theme: { $in: themeIds },
+        }).select('cohortes').lean();
+
+        const cohorteIds = lieux
+        .flatMap(lieu => lieu.cohortes || [])
+        .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+        const nbParticipants = await CohorteUtilisateur.countDocuments({
+          cohorte: { $in: cohorteIds }
+        });
+
+        const nbFormateurs = await Formateur.countDocuments({
+          theme: { $in: themeIds }
+        });
+
+        return {
+          titreFr: f.formation.titreFr,
+          titreEn: f.formation.titreEn,
+          dateDebut: f.dateDebut,
+          dateFin: f.dateFin,
+          nbTheme: f.nbTheme,
+          nbParticipants,
+          nbFormateurs
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: response
+    });
+
+  } catch (err) {
+    console.error('Erreur dans getUpcomingFormationsByProgramme:', err);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? "Erreur serveur" : "Server error",
+    });
+  }
+};
+
+
+
+
+const moisFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+const moisEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export const getTauxExecutionParMois = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const { programmeId } = req.params;
+
+  if (!programmeId || !mongoose.Types.ObjectId.isValid(programmeId)) {
+    return res.status(400).json({
+      success: false,
+      message: t('identifiant_invalide', lang),
+    });
+  }
+
+  try {
+    const formations = await Formation.find({ programmeFormation: programmeId })
+      .select('_id')
+      .lean();
+
+    const formationIds = formations.map(f => f._id);
+
+    const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+      .select('dateDebut nbTachesTotal nbTachesExecutees')
+      .lean();
+
+    const dataByMonth = {};
+
+    themes.forEach(theme => {
+      if (!theme.dateDebut) return;
+
+      const date = new Date(theme.dateDebut);
+      const monthIndex = date.getMonth(); // 0-11
+      const year = date.getFullYear();
+      const key = `${year}-${monthIndex}`;
+
+      const nbTaches = theme.nbTachesTotal || 0;
+      const nbTachesExecutees = theme.nbTachesExecutees || 0;
+
+      if (!dataByMonth[key]) {
+        dataByMonth[key] = {
+          nbTaches: 0,
+          nbTachesExecutees: 0,
+          monthIndex,
+          year
+        };
+      }
+
+      dataByMonth[key].nbTaches += nbTaches;
+      dataByMonth[key].nbTachesExecutees += nbTachesExecutees;
+    });
+
+    const result = Object.values(dataByMonth)
+      .sort((a, b) => {
+        const dateA = new Date(a.year, a.monthIndex);
+        const dateB = new Date(b.year, b.monthIndex);
+        return dateA - dateB;
+      })
+      .map(data => ({
+        moisFr: `${moisFr[data.monthIndex]} ${data.year}`,
+        moisEn: `${moisEn[data.monthIndex]} ${data.year}`,
+        taux: data.nbTaches > 0
+          ? Math.round((data.nbTachesExecutees / data.nbTaches) * 100)
+          : 0
+      }));
+
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (err) {
+    console.error('Erreur dans getTauxExecutionParMois:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message
+    });
+  }
+};
+
+
+
 
 
 

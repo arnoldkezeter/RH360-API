@@ -24,6 +24,8 @@ import {
   getCoutReelEtPrevuTTCParTheme,
   getTauxExecutionParTheme,
   getCoutsThemesOuFormations,
+  getUpcomingFormationsByProgramme,
+  getTauxExecutionParMois,
   
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -43,6 +45,7 @@ router.get('/filtre', authentificate, getFilteredFormations);
 router.get('/calendrier', authentificate, getFormationsForGantt);
 router.get('/dropdown/programme/:programmeId', authentificate, getFormationsForDropdown);
 router.get('/:id', authentificate, getFormationById);
+router.get('/formations-a-venir/:programmeId', getUpcomingFormationsByProgramme)
 
 // Famille métier
 router.patch('/:idFormation/ajouter-famille-metier/:idFamilleMetier', authentificate, ajouterFamilleMetierAFormation);
@@ -69,6 +72,9 @@ router.get('/stats/cout-reel-prevu-ttc/themes', getCoutReelEtPrevuTTCParTheme);
 
 // routes/stats.routes.js
 router.get('/stats/couts-reel-prevu', getCoutsThemesOuFormations);
+
+//Taux execution par mois
+router.get('/stats/taux-execution-mois/:programmeId', getTauxExecutionParMois)
 
 
 //execution

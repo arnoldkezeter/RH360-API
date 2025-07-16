@@ -268,11 +268,12 @@ export const getCommunesByDepartement = async (req, res) => {
         if (!departementExists) {
             return res.status(404).json({ success: false, message: t('departement_non_trouve', lang) });
         }
-        const total = await Commune.countDocuments();
+        const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
+        const total = await Commune.countDocuments({ departement: departementId });
         const communes = await Commune.find({ departement: departementId })
         .skip((page - 1) * limit)
         .limit(limit)
-        .sort(lang === 'en' ? 'nomEn' : 'nomFr')
+        .sort({[sortField]:1})
         .populate({
             path: 'departement',
             select: 'nomFr nomEn region', // Inclure les champs nécessaires

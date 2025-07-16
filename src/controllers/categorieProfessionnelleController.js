@@ -251,11 +251,12 @@ export const getCategoriesByGrade = async (req, res) => {
     }
 
     try {
-         const total = await CategorieProfessionnelle.countDocuments();
+         const total = await CategorieProfessionnelle.countDocuments({ grade: gradeId });
         
         const categories = await CategorieProfessionnelle.find({ grade: gradeId })
         .skip((page - 1) * limit)
         .limit(limit)
+        .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .populate({
             path: 'grade',
             select: 'nomFr nomEn',

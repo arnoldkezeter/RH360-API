@@ -221,6 +221,7 @@
     "etat_non_entame":"Not started",
     "etat_termine":"Completed",
     "etat_en_cours":"In progress",
+    "etat_cloture":"Cloturé",
 
     "lieu_non_trouve":"Location not found",
     "formateur_non_trouve":"Trainer not found",

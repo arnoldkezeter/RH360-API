@@ -280,8 +280,8 @@ export const getDepartementsByRegion = async (req, res) => {
             return res.status(404).json({ success: false, message: t('region_non_trouvee', lang) });
         }
 
-        const total = await Departement.countDocuments();
-
+        const total = await Departement.countDocuments({ region: regionId });
+        const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
         const departements = await Departement.find({ region: regionId })
         .populate({
             path: 'region',
@@ -290,7 +290,9 @@ export const getDepartementsByRegion = async (req, res) => {
         })
         .skip((page - 1) * limit)
         .limit(limit)
+        .sort({[sortField]:1})
         .lean();
+        
 
         return res.status(200).json({ 
             success: true, 

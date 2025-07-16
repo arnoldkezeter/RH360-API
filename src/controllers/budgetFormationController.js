@@ -2,7 +2,7 @@ import BudgetFormation from '../models/BudgetFormation.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
-import ThemeFormation from '../models/ThemeFormation.js'
+import Formation from '../models/Formation.js'
 import Depense from '../models/Depense.js';
 
 // Créer un budget
@@ -10,7 +10,7 @@ export const createBudget = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
   
     try {
-        const { theme, nomFr, nomEn, statut } = req.body;
+        const { formation, nomFr, nomEn, statut } = req.body;
 
         // Validation basique
         const errors = validationResult(req);
@@ -24,16 +24,16 @@ export const createBudget = async (req, res) => {
 
       
         // Vérifier que le thème existe
-        const themeExists = await ThemeFormation.findById(theme);
-        if (!themeExists) {
+        const formationExists = await Formation.findById(formation);
+        if (!formationExists) {
                 return res.status(404).json({ 
                 success: false, 
-                message: t('theme_non_trouve', lang)
+                message: t('formation_non_trouve', lang)
             });
         }
         
         const budget = new BudgetFormation({
-            theme,
+            formation,
             nomFr,
             nomEn,
             statut,
@@ -86,7 +86,7 @@ export const updateBudget = async (req, res) => {
             updates,
             { new: true, runValidators: true }
         )
-        .populate('theme')
+        .populate('formation')
         
         if (!budget) {
             return res.status(404).json({
@@ -161,7 +161,7 @@ export const changeStatut = async(req, res) => {
         id,
         { statut },
         { new: true }
-      ).populate('theme').populate('naturesDepenses.taxe');
+      ).populate('formation').populate('naturesDepenses.taxe');
       
       if (!budget) {
         return res.status(404).json({
@@ -185,14 +185,14 @@ export const changeStatut = async(req, res) => {
 }
 
 // Récupérer tous les budgets par thème avec pagination
-export const getBudgetFormationsByTheme = async (req, res) => {
+export const getBudgetFormationsByFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { themeId } = req.params;
+  const { formationId } = req.params;
   const { query } = req.query;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
 
-  if (!mongoose.Types.ObjectId.isValid(themeId)) {
+  if (!mongoose.Types.ObjectId.isValid(formationId)) {
     return res.status(400).json({
       success: false,
       message: t('identifiant_invalide', lang),
@@ -200,7 +200,7 @@ export const getBudgetFormationsByTheme = async (req, res) => {
   }
 
   try {
-    const filter = { theme: themeId };
+    const filter = {formation: formationId };
 
     if (query && query.trim() !== '') {
       filter.$or = [
@@ -234,19 +234,19 @@ export const getBudgetFormationsByTheme = async (req, res) => {
   }
 };
 
-export const getBudgetThemesForDropdown = async (req, res) => {
+export const getBudgetFormationForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'nomEn' : 'nomFr';
-    const{themeId}=req.params
+    const{formationId}=req.params
 
     try {
-        if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        if (!mongoose.Types.ObjectId.isValid(formationId)) {
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang),
             });
         }
-        const budgets = await BudgetFormation.find({theme:themeId}, `nomFr nomEn _id`).sort({ [sortField]: 1 }).lean();
+        const budgets = await BudgetFormation.find({formation:formationId}, `nomFr nomEn _id`).sort({ [sortField]: 1 }).lean();
         return res.status(200).json({
             success: true,
             data: {
@@ -268,7 +268,7 @@ export const getBudgetThemesForDropdown = async (req, res) => {
 
 
 // 1. Budgets par thème avec pagination
-export const getBudgetsThemesParFormationPaginated = async (req, res) => {
+export const getBudgetsFormationsByFormationPaginated = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { formationId } = req.params;
   const page = parseInt(req.query.page) || 1;
@@ -279,15 +279,14 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
   }
 
   try {
-    const budgets = await BudgetFormation.find()
+    const budgets = await BudgetFormation.find({ formation: formationId })
       .populate({
-        path: 'theme',
-        match: { formation: formationId },
+        path: 'formation',
         select: 'titreFr titreEn',
       })
       .lean();
 
-    const validBudgets = budgets.filter(b => b.theme);
+    const validBudgets = budgets.filter(b => b.formation);
     const budgetIds = validBudgets.map(b => b._id);
 
     const depenses = await Depense.find({ budget: { $in: budgetIds } })
@@ -302,12 +301,12 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
 
     depenses.forEach(d => {
       const budget = validBudgets.find(b => b._id.toString() === d.budget.toString());
-      if (!budget || !budget.theme) return;
+      if (!budget || !budget.formation) return;
 
-      const tid = budget.theme._id.toString();
+      const tid = budget.formation._id.toString();
       if (!map.has(tid)) {
         map.set(tid, {
-          theme: budget.theme,
+          formation: budget.formation,
           totalPrevuHT: 0, totalPrevuTTC: 0, totalReelHT: 0, totalReelTTC: 0
         });
       }
@@ -331,7 +330,7 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
     });
 
     const all = Array.from(map.values()).map(e => ({
-      theme: e.theme,
+      formation: e.formation,
       totalPrevuHT: +e.totalPrevuHT.toFixed(2),
       totalPrevuTTC: +e.totalPrevuTTC.toFixed(2),
       totalReelHT: +e.totalReelHT.toFixed(2),
@@ -351,34 +350,21 @@ export const getBudgetsThemesParFormationPaginated = async (req, res) => {
 // 2. Histogramme budget prévu / réel
 export const getBudgetEcartParTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { formationId, themeId } = req.params;
+  const { formationId} = req.params;
 
   if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
     return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
   }
 
-  if (themeId && !mongoose.Types.ObjectId.isValid(themeId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
 
   try {
     let budgets;
 
-    if (themeId) {
-        budgets = await BudgetFormation.find({ theme: themeId })
-        .populate('theme', 'titreFr titreEn')
+    if (formationId) {
+        budgets = await BudgetFormation.find({ formation: formationId })
+        .populate('formation', 'titreFr titreEn')
         .lean();
-    } else if(formationId) {
-      budgets = await BudgetFormation.find()
-        .populate({
-          path: 'theme',
-          match: { formation: formationId },
-          select: 'titreFr titreEn',
-        })
-        .lean();
-      budgets = budgets.filter(b => b.theme);
-      
-    }
+    } 
 
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
       .populate({
@@ -392,12 +378,12 @@ export const getBudgetEcartParTheme = async (req, res) => {
 
     depenses.forEach(d => {
       const budget = budgets.find(b => b._id.toString() === d.budget.toString());
-      if (!budget || !budget.theme) return;
+      if (!budget || !budget.formation) return;
 
-      const tid = budget.theme._id.toString();
+      const tid = budget.formation._id.toString();
       if (!map.has(tid)) {
         map.set(tid, {
-          theme: budget.theme,
+          formation: budget.formation,
           budgetPrevu: 0,
           budgetReel: 0,
         });
@@ -415,9 +401,9 @@ export const getBudgetEcartParTheme = async (req, res) => {
     });
 
     const resArr = Array.from(map.values()).map(e => ({
-      themeId: e.theme._id,
-      titreFr: e.theme.titreFr,
-      titreEn: e.theme.titreEn,
+      formationId: e.formation._id,
+      titreFr: e.formation.titreFr,
+      titreEn: e.formation.titreEn,
       budgetPrevu: +e.budgetPrevu.toFixed(2),
       budgetReel: +e.budgetReel.toFixed(2),
       ecart: +Math.abs(e.budgetReel - e.budgetPrevu).toFixed(2),
@@ -432,30 +418,19 @@ export const getBudgetEcartParTheme = async (req, res) => {
 // 3. Totaux budget
 export const getTotauxBudgetParFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { formationId, themeId } = req.params;
+  const { formationId} = req.params;
 
   if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
     return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
   }
 
-  if (themeId && !mongoose.Types.ObjectId.isValid(themeId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
+  
 
   try {
     let budgets;
 
     if (formationId) {
-      budgets = await BudgetFormation.find()
-        .populate({
-          path: 'theme',
-          match: { formation: formationId },
-          select: '_id',
-        })
-        .lean();
-      budgets = budgets.filter(b => b.theme);
-    } else {
-      budgets = await BudgetFormation.find({ theme: themeId }).lean();
+      budgets = await BudgetFormation.find({ formation: formationId }).lean();
     }
 
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
@@ -495,14 +470,14 @@ export const getTotauxBudgetParFormation = async (req, res) => {
 // 4a. Coût total prévu par thème
 export const getCoutTotalPrevuParTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { themeId } = req.params;
+  const { formationId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(themeId)) {
+  if (!mongoose.Types.ObjectId.isValid(formationId)) {
     return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
   }
 
   try {
-    const budgets = await BudgetFormation.find({ theme: themeId }).lean();
+    const budgets = await BudgetFormation.find({ formation: formationId }).lean();
     const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
        .populate({
           path: 'taxes',
@@ -519,7 +494,7 @@ export const getCoutTotalPrevuParTheme = async (req, res) => {
     return res.json({
       success: true,
       message: t('calcul_succes', lang),
-      data: { themeId, totalPrevu: +totalPrevu.toFixed(2) }
+      data: { formationId, totalPrevu: +totalPrevu.toFixed(2) }
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -529,15 +504,15 @@ export const getCoutTotalPrevuParTheme = async (req, res) => {
 // 4b. Coût total réel par thème
 export const getCoutTotalReelParTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { themeId } = req.params;
+  const { formationId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(themeId)) {
+  if (!mongoose.Types.ObjectId.isValid(formationId)) {
     return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
   }
 
   try {
     const budgets = await BudgetFormation.find({
-      theme: themeId,
+      formation: formationId,
       statut: { $in: ['EXECUTE', 'CLOTURE'] }
     }).lean();
 
@@ -559,7 +534,7 @@ export const getCoutTotalReelParTheme = async (req, res) => {
     return res.json({
       success: true,
       message: t('calcul_succes', lang),
-      data: { themeId, totalReel: +totalReel.toFixed(2) }
+      data: { formationId, totalReel: +totalReel.toFixed(2) }
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
@@ -570,14 +545,14 @@ export const getCoutTotalReelParTheme = async (req, res) => {
 // Différentes dépenses d'un thème donné, filtrées par type (ACQUISITION_BIENS_SERVICES ou FRAIS_ADMINISTRATIF) avec pagination.
 export const getFilteredDepenses = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-    const { themeId } = req.params;
+    const { formationId } = req.params;
     const { type, natureDepense, page = 1, limit = 10 } = req.query;
 
     const pageInt = parseInt(page);
     const limitInt = parseInt(limit);
 
     try {
-        if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        if (!mongoose.Types.ObjectId.isValid(formationId)) {
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang),
@@ -585,7 +560,7 @@ export const getFilteredDepenses = async (req, res) => {
         }
 
         // Rechercher les budgets liés au thème
-        const budgets = await BudgetFormation.find({ theme: themeId })
+        const budgets = await BudgetFormation.find({ formation: formationId })
             .populate('naturesDepenses.taxe', 'taux natureFr natureEn')
             .lean();
 

@@ -20,12 +20,12 @@ import {
   getFormationsForGantt,
   getAllStatsParticipantsFormation,
   getTauxExecutionParAxeStrategique,
-  getCoutReelTTCParTheme,
-  getCoutReelEtPrevuTTCParTheme,
   getTauxExecutionParTheme,
-  getCoutsThemesOuFormations,
   getUpcomingFormationsByProgramme,
   getTauxExecutionParMois,
+  getCoutsFormations,
+  getCoutReelEtPrevuTTCParFormation,
+  getCoutReelTTCParFormation,
   
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -65,13 +65,13 @@ router.get('/stats/taux-execution/themes', getTauxExecutionParTheme);
 router.get('/stats/taux-execution/axes', getTauxExecutionParAxeStrategique);
 
 // 5. Coût réel TTC par thème, filtré par programme ou formation
-router.get('/stats/cout-reel-ttc/themes', getCoutReelTTCParTheme);
+router.get('/stats/cout-reel-ttc/themes', getCoutReelTTCParFormation);
 
 // 6. Coût réel TTC et coût prévu TTC par thème, filtré par programme ou formation
-router.get('/stats/cout-reel-prevu-ttc/themes', getCoutReelEtPrevuTTCParTheme);
+router.get('/stats/cout-reel-prevu-ttc/themes', getCoutReelEtPrevuTTCParFormation);
 
 // routes/stats.routes.js
-router.get('/stats/couts-reel-prevu', getCoutsThemesOuFormations);
+router.get('/stats/couts-reel-prevu', getCoutsFormations);
 
 //Taux execution par mois
 router.get('/stats/taux-execution-mois/:programmeId', getTauxExecutionParMois)

@@ -2,7 +2,7 @@
 import mongoose from 'mongoose';
 
 const budgetFormationSchema = new mongoose.Schema({
-  theme: {type: mongoose.Schema.Types.ObjectId,ref: 'ThemeFormation',required: true},
+  formation: {type: mongoose.Schema.Types.ObjectId,ref: 'Formation',required: true},
   nomFr: {type: String, required: true, trim: true},
   nomEn: {type: String, required: true, trim: true},
   statut: {type: String, enum: ['BROUILLON', 'VALIDE', 'EXECUTE', 'CLOTURE'], default: 'BROUILLON'},

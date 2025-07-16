@@ -278,7 +278,7 @@ export const getCompetenceByFamille = async (req, res) => {
             return res.status(404).json({ success: false, message: t('famille_metier_non_trouvee', lang) });
         }
 
-        const total = await Competence.countDocuments();
+        const total = await Competence.countDocuments({ familleMetier: familleId });
 
         const competences = await Competence.find({ familleMetier: familleId })
         .populate({
@@ -288,6 +288,7 @@ export const getCompetenceByFamille = async (req, res) => {
         })
         .skip((page - 1) * limit)
         .limit(limit)
+        .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .lean();
 
         return res.status(200).json({ 

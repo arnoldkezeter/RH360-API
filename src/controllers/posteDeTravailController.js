@@ -329,11 +329,12 @@ export const getPostesByFamilleMetier = async (req, res) => {
 
     try {
         
-        const total = await PosteDeTravail.countDocuments();
+        const total = await PosteDeTravail.countDocuments({ familleMetier: familleMetierId });
 
         const postes = await PosteDeTravail.find({ familleMetier: familleMetierId })
         .skip((page - 1) * limit)
         .limit(limit)
+        .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .populate({
             path: 'familleMetier',
             select: 'nomFr nomEn',

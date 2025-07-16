@@ -353,7 +353,7 @@ export const getServicesByStructure = async (req, res) => {
     }
 
     try {
-        const total = await Service.countDocuments();
+        const total = await Service.countDocuments({ structure: structureId });
         
         const services = await Service.find({ structure: structureId })
         .skip((page - 1) * limit)
@@ -362,6 +362,7 @@ export const getServicesByStructure = async (req, res) => {
             { path: 'chefService', select: 'nom' },
             { path: 'structure', select: 'nomFr nomEn' }
         ])
+        .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .lean();
 
         return res.status(200).json({

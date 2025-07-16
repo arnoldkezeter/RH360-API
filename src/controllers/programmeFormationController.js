@@ -639,7 +639,7 @@ export const getTauxExecutionParAxeStrategique = async (req, res) => {
 // Coûts par formation pour un programme
 export const getCoutsParFormationPourProgramme = async (req, res) => {
   const { programmeId } = req.params;
-  const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+  const lang = req.headers['accept-language'] || 'fr';
 
   if (!mongoose.Types.ObjectId.isValid(programmeId)) {
     return res.status(400).json({
@@ -661,77 +661,43 @@ export const getCoutsParFormationPourProgramme = async (req, res) => {
       });
     }
 
-    // 2. Thèmes associés
+    // 2. Budgets liés directement aux formations
     const formationIds = formations.map(f => f._id);
-    const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+    const budgets = await BudgetFormation.find({ formation: { $in: formationIds } })
       .select('_id formation')
-      .lean();
-
-    if (themes.length === 0) {
-      return res.status(200).json({
-        success: true,
-        data: formations.map(f => ({
-          formationId: f._id,
-          titreFr: f.titreFr,
-          titreEn: f.titreEn,
-          coutPrevu: 0,
-          coutReel: 0,
-        })),
-      });
-    }
-
-    // 3. Budgets des thèmes
-    const themeIds = themes.map(t => t._id);
-    const budgets = await BudgetFormation.find({ theme: { $in: themeIds } })
-      .select('_id theme')
       .lean();
     const budgetIds = budgets.map(b => b._id);
 
-    // 4. Dépenses avec taxes multiples
+    // 3. Dépenses avec taxes multiples
     const depenses = await Depense.find({ budget: { $in: budgetIds } })
       .populate('taxes', 'taux')
       .lean();
 
-    const costsByTheme = {};
+    const costsByFormation = {};
 
     depenses.forEach(dep => {
       const budget = budgets.find(b => b._id.toString() === dep.budget.toString());
       if (!budget) return;
 
-      const themeId = budget.theme.toString();
+      const formationId = budget.formation.toString();
       const quantite = dep.quantite ?? 1;
       const tauxTotal = (dep.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
 
       const prevuHT = dep.montantUnitairePrevu ?? 0;
-      const reelHT = dep.montantUnitaireReel ?? dep.montantUnitairePrevu ?? 0;
+      const reelHT = dep.montantUnitaireReel ?? prevuHT;
 
       const prevuTTC = prevuHT * quantite * (1 + tauxTotal / 100);
       const reelTTC = reelHT * quantite * (1 + tauxTotal / 100);
-
-      if (!costsByTheme[themeId]) {
-        costsByTheme[themeId] = { coutPrevu: 0, coutReel: 0 };
-      }
-
-      costsByTheme[themeId].coutPrevu += prevuTTC;
-      costsByTheme[themeId].coutReel += reelTTC;
-    });
-
-    // 5. Agrégation par formation
-    const costsByFormation = {};
-    themes.forEach(theme => {
-      const formationId = theme.formation.toString();
-      const themeId = theme._id.toString();
-      const themeCosts = costsByTheme[themeId] || { coutPrevu: 0, coutReel: 0 };
 
       if (!costsByFormation[formationId]) {
         costsByFormation[formationId] = { coutPrevu: 0, coutReel: 0 };
       }
 
-      costsByFormation[formationId].coutPrevu += themeCosts.coutPrevu;
-      costsByFormation[formationId].coutReel += themeCosts.coutReel;
+      costsByFormation[formationId].coutPrevu += prevuTTC;
+      costsByFormation[formationId].coutReel += reelTTC;
     });
 
-    // 6. Format final
+    // 4. Format final
     const result = formations.map(f => {
       const c = costsByFormation[f._id.toString()] || { coutPrevu: 0, coutReel: 0 };
       return {
@@ -753,6 +719,7 @@ export const getCoutsParFormationPourProgramme = async (req, res) => {
     });
   }
 };
+
 
 
 

@@ -226,8 +226,9 @@
     "mandat_non_trouve": "Le mandat spécifié est introuvable.",
 
     "etat_non_entame":"Non entamé",
+    "etat_en_cours":"En progression",
     "etat_termine":"Terminé",
-    "etat_en_cours":"En cours",
+    "etat_cloture":"Cloturé",
 
     "lieu_non_trouve":"Lieu non trouve",
     "formateur_non_trouve":"Formateur non trouve",

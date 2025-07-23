@@ -8,7 +8,8 @@ import {
   getPosteDeTravailById,
   searchPostesDeTravailByName,
   getPostesByFamilleMetier,
-  getPosteDeTravailsForDropdownByFamilleMetier
+  getPosteDeTravailsForDropdownByFamilleMetier,
+  supprimerDoublonsPosteDeTravail
 } from '../controllers/posteDeTravailController.js';
 import { validateFields } from '../middlewares/validateFields/validatePosteDeTravail.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -23,5 +24,6 @@ router.get('/search/by-name', authentificate, searchPostesDeTravailByName);
 router.get('/famille-metier/:familleMetierId', authentificate, getPostesByFamilleMetier);
 router.get('/:id', authentificate, getPosteDeTravailById);
 router.get('/dropdown/famille-metier/:familleMetierId', authentificate, getPosteDeTravailsForDropdownByFamilleMetier);
+router.delete('/supprimer/supprimer-doublons', supprimerDoublonsPosteDeTravail);
 
 export default router;

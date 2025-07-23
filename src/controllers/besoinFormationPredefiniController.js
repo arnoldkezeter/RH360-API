@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 
 // Ajouter
 export const createBesoinFormationPredefini = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -18,38 +18,21 @@ export const createBesoinFormationPredefini = async (req, res) => {
     }
 
     try {
-        const { titreFr, titreEn, descriptionFr, descriptionEn, posteDeTravail } = req.body;
+        const { titreFr, titreEn, descriptionFr, descriptionEn, postesDeTravail } = req.body;
 
-        // if (!mongoose.Types.ObjectId.isValid(posteDeTravail)) {
-        //     return res.status(400).json({
-        //         success: false,
-        //         message: t('identifiant_invalide', lang),
-        //     });
-        // }
-
-        // const poste = await PosteDeTravail.findById(posteDeTravail);
-        // if (!poste) {
-        //     return res.status(404).json({
-        //         success: false,
-        //         message: t('poste_de_travail_non_trouve', lang),
-        //     });
-        // }
-
-        // const existsFr = await BesoinFormationPredefini.findOne({ titreFr, posteDeTravail });
-        // if (existsFr) {
-        //     return res.status(409).json({
-        //         success: false,
-        //         message: t('besoin_existant_fr', lang),
-        //     });
-        // }
-
-        // const existsEn = await BesoinFormationPredefini.findOne({ titreEn, posteDeTravail });
-        // if (existsEn) {
-        //     return res.status(409).json({
-        //         success: false,
-        //         message: t('besoin_existant_en', lang),
-        //     });
-        // }
+        // Validation et extraction des IDs du public cible
+        const posteDeTravailIds = [];
+        if (postesDeTravail && Array.isArray(postesDeTravail)) {
+            for (const item of postesDeTravail) {
+                if (!mongoose.Types.ObjectId.isValid(item._id)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: t('identifiant_invalide', lang),
+                    });
+                }
+                posteDeTravailIds.push(item._id);
+            }
+        }
 
         const existsFr = await BesoinFormationPredefini.findOne({ titreFr });
         if (existsFr) {
@@ -72,6 +55,7 @@ export const createBesoinFormationPredefini = async (req, res) => {
             titreEn,
             descriptionFr,
             descriptionEn,
+            postesDeTravail:posteDeTravailIds
         });
 
         return res.status(201).json({
@@ -90,9 +74,9 @@ export const createBesoinFormationPredefini = async (req, res) => {
 
 // Modifier
 export const updateBesoinFormationPredefini = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
-    const { titreFr, titreEn, descriptionFr, descriptionEn, posteDeTravail } = req.body;
+    const { titreFr, titreEn, descriptionFr, descriptionEn, postesDeTravail } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -119,50 +103,21 @@ export const updateBesoinFormationPredefini = async (req, res) => {
             });
         }
 
-        // if (posteDeTravail && !mongoose.Types.ObjectId.isValid(posteDeTravail)) {
-        //     return res.status(400).json({
-        //         success: false,
-        //         message: t('identifiant_invalide', lang),
-        //     });
-        // }
-
-        // const poste = await PosteDeTravail.findById(posteDeTravail);
-        // if (!poste) {
-        //     return res.status(404).json({
-        //         success: false,
-        //         message: t('poste_de_travail_non_trouve', lang),
-        //     });
-        // }
-
-        // if (titreFr && posteDeTravail) {
-        //     const duplicate = await BesoinFormationPredefini.findOne({
-        //         _id: { $ne: id },
-        //         titreFr,
-        //         posteDeTravail,
-        //     });
-        //     if (duplicate) {
-        //         return res.status(409).json({
-        //             success: false,
-        //             message: t('besoin_existant_fr', lang),
-        //         });
-        //     }
-        // }
-
-        // if (titreEn && posteDeTravail) {
-        //     const duplicate = await BesoinFormationPredefini.findOne({
-        //         _id: { $ne: id },
-        //         titreEn,
-        //         posteDeTravail,
-        //     });
-        //     if (duplicate) {
-        //         return res.status(409).json({
-        //             success: false,
-        //             message: t('besoin_existant_en', lang),
-        //         });
-        //     }
-        // }
-
-         if (titreFr) {
+        // Validation et extraction des IDs du public cible
+        const posteDeTravailIds = [];
+        if (postesDeTravail && Array.isArray(postesDeTravail)) {
+            for (const item of postesDeTravail) {
+                if (!mongoose.Types.ObjectId.isValid(item._id)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: t('identifiant_invalide', lang),
+                    });
+                }
+                posteDeTravailIds.push(item._id);
+            }
+        }
+        
+        if (titreFr) {
             const duplicate = await BesoinFormationPredefini.findOne({
                 _id: { $ne: id },
                 titreFr,
@@ -192,7 +147,7 @@ export const updateBesoinFormationPredefini = async (req, res) => {
         if (titreEn) besoin.titreEn = titreEn;
         if (descriptionFr !== undefined) besoin.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) besoin.descriptionEn = descriptionEn;
-        // if (posteDeTravail) besoin.posteDeTravail = posteDeTravail;
+        if (postesDeTravail) besoin.postesDeTravail = posteDeTravailIds;
 
         await besoin.save();
 
@@ -214,7 +169,7 @@ export const updateBesoinFormationPredefini = async (req, res) => {
 // Supprimer
 export const deleteBesoinFormationPredefini = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -248,51 +203,12 @@ export const deleteBesoinFormationPredefini = async (req, res) => {
     }
 };
 
-// Liste paginée
-export const getBesoinsFormationPredefinis = async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
 
-    try {
-        const total = await BesoinFormationPredefini.countDocuments();
-
-        const besoins = await BesoinFormationPredefini.find()
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [sortField]: 1 })
-            .populate({
-                path: 'posteDeTravail',
-                select: 'intituleFr intituleEn',
-                options: { strictPopulate: false },
-            })
-            .lean();
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                besoinFormationPredefinis:besoins,
-                totalItems:total,
-                currentPage:page,
-                totalPages: Math.ceil(total / limit),
-                pageSize:limit
-            }
-        });
-
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
 
 // Obtenir par ID
 export const getBesoinFormationPredefiniById = async (req, res) => {
     const { id } = req.params;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -334,7 +250,7 @@ export const getBesoinFormationPredefiniById = async (req, res) => {
 // Rechercher par titre
 export const searchBesoinFormationPredefiniByTitre = async (req, res) => {
     const { titre } = req.query;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const champ = lang === 'en' ? 'titreEn' : 'titreFr';
 
     if (!titre) {
@@ -349,7 +265,7 @@ export const searchBesoinFormationPredefiniByTitre = async (req, res) => {
             [champ]: { $regex: new RegExp(titre, 'i') },
         })
             .populate({
-                path: 'posteDeTravail',
+                path: 'postesDeTravail',
                 select: 'nomFr nomEn',
                 options: { strictPopulate: false },
             })
@@ -359,7 +275,7 @@ export const searchBesoinFormationPredefiniByTitre = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                besoinFormationPredefinis:besoins,
+                besoinsFormationPredefinis:besoins,
                 totalItems:besoins.length,
                 currentPage:1,
                 totalPages: 1,
@@ -378,7 +294,7 @@ export const searchBesoinFormationPredefiniByTitre = async (req, res) => {
 
 // Pour les menus déroulants
 export const getBesoinsFormationPredefinisForDropdown = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const champ = lang === 'en' ? 'titreEn' : 'titreFr';
 
     try {
@@ -412,7 +328,7 @@ export const getBesoinsParPosteDeTravail = async (req, res) => {
     const { posteId } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const champTri = lang === 'en' ? 'titreEn' : 'titreFr';
 
     if (!mongoose.Types.ObjectId.isValid(posteId)) {
@@ -421,32 +337,36 @@ export const getBesoinsParPosteDeTravail = async (req, res) => {
             message: t('identifiant_invalide', lang),
         });
     }
-
+    
     try {
-        const total = await BesoinFormationPredefini.countDocuments({ posteDeTravail: posteId });
+        // Recherche les besoins liés à ce poste dans le tableau postesDeTravail
+        const filter = { postesDeTravail: posteId };
+        console.log(filter)
+        const total = await BesoinFormationPredefini.countDocuments(filter);
 
-        const besoins = await BesoinFormationPredefini.find({ posteDeTravail: posteId })
+        const besoins = await BesoinFormationPredefini.find(filter)
             .skip((page - 1) * limit)
             .limit(limit)
             .sort({ [champTri]: 1 })
             .populate({
-                path: 'posteDeTravail',
+                path: 'postesDeTravail',
                 select: 'nomFr nomEn',
                 options: { strictPopulate: false },
             })
             .lean();
-
+        console.log(besoins)
         return res.status(200).json({
             success: true,
             data: {
-                getBesoinsFormationPredefinis:besoins,
-                totalItems:total,
-                currentPage:page,
+                besoinsFormationPredefinis: besoins,
+                totalItems: total,
+                currentPage: page,
                 totalPages: Math.ceil(total / limit),
-                pageSize:limit
+                pageSize: limit
             },
         });
     } catch (err) {
+        console.error('Erreur dans getBesoinsParPosteDeTravail:', err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -455,61 +375,4 @@ export const getBesoinsParPosteDeTravail = async (req, res) => {
     }
 };
 
-
-//Besoin par famille de metier
-export const getBesoinsParFamilleMetier = async (req, res) => {
-    const { familleMetierId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const champTri = lang === 'en' ? 'titreEn' : 'titreFr';
-
-    if (!mongoose.Types.ObjectId.isValid(familleMetierId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        // On filtre par famille métier à travers la relation avec `PosteDeTravail`
-        const postes = await PosteDeTravail.find({ familleMetier: familleMetierId }, '_id').lean();
-        const posteIds = postes.map(p => p._id);
-
-        const total = await BesoinFormationPredefini.countDocuments({
-            posteDeTravail: { $in: posteIds },
-        });
-
-        const besoins = await BesoinFormationPredefini.find({
-            posteDeTravail: { $in: posteIds },
-        })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .sort({ [champTri]: 1 })
-            .populate({
-                path: 'posteDeTravail',
-                select: 'nomFr nomEn familleMetier',
-                options: { strictPopulate: false },
-            })
-            .lean();
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                besoinFormationPredefinis:besoins,
-                totalItems:total,
-                currentPage:page,
-                totalPages: Math.ceil(total / limit),
-                pageSize:limit
-            },
-        });
-
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
 

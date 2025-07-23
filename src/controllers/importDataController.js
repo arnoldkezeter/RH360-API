@@ -80,15 +80,15 @@ export const importerDonnees = async (req, res) => {
 
     console.log(`📊 ${lignes.length} lignes à traiter`);
 
-    // Caches pour éviter les requêtes répétées
+    // Caches améliorés pour éviter les requêtes répétées
     const caches = {
       regions: new Map(),
       departements: new Map(),
       communes: new Map(),
       grades: new Map(),
-      categories: new Map(),
+      categories: new Map(), // Stockera {id, grades, isInDB, data?}
       famillesMetier: new Map(),
-      postes: new Map(),
+      postes: new Map(), // Stockera {id, famillesMetier, isInDB, data?}
       structures: new Map(),
       services: new Map(),
       utilisateurs: new Set()
@@ -212,23 +212,73 @@ export const importerDonnees = async (req, res) => {
           }
         }
 
-        // 5️⃣ Catégorie Professionnelle
+        // 5️⃣ Catégorie Professionnelle - CORRIGÉ
         if (gradeId && ligne.CATEGORIE_PROFESSIONNELLE && nettoyerTexte(ligne.CATEGORIE_PROFESSIONNELLE)) {
           const categoriePro = nettoyerTexte(ligne.CATEGORIE_PROFESSIONNELLE).toUpperCase();
-          const categorieKey = `${categoriePro}|${gradeId}`;
-          
+          const categorieKey = categoriePro;
+
           if (!caches.categories.has(categorieKey)) {
-            const categorieData = {
-              _id: new mongoose.Types.ObjectId(),
-              nomFr: categoriePro,
-              nomEn: categoriePro,
-              grade: gradeId,
-            };
-            caches.categories.set(categorieKey, categorieData._id);
-            donneesAInserer.categories.push(categorieData);
-            categorieId = categorieData._id;
+            // Vérifier si la catégorie existe déjà en base
+            let existingCategorie = await CategorieProfessionnelle.findOne({ 
+              nomFr: categoriePro, 
+              nomEn: categoriePro
+            });
+
+            if (existingCategorie) {
+              // Ajout du grade si absent
+              if (!existingCategorie.grades.some(id => id.equals(gradeId))) {
+                existingCategorie.grades.push(gradeId);
+                await existingCategorie.save();
+              }
+
+              caches.categories.set(categorieKey, {
+                id: existingCategorie._id,
+                grades: [...existingCategorie.grades],
+                isInDB: true
+              });
+              categorieId = existingCategorie._id;
+            } else {
+              // Nouvelle catégorie
+              const categorieData = {
+                _id: new mongoose.Types.ObjectId(),
+                nomFr: categoriePro,
+                nomEn: categoriePro,
+                grades: [gradeId],
+              };
+              caches.categories.set(categorieKey, {
+                id: categorieData._id,
+                grades: [gradeId],
+                isInDB: false,
+                data: categorieData
+              });
+              donneesAInserer.categories.push(categorieData);
+              categorieId = categorieData._id;
+            }
           } else {
-            categorieId = caches.categories.get(categorieKey);
+            // La catégorie existe dans le cache
+            const cachedCategorie = caches.categories.get(categorieKey);
+            
+            // Vérifier si le grade doit être ajouté
+            const gradeExists = cachedCategorie.grades.some(id => 
+              id.equals ? id.equals(gradeId) : id.toString() === gradeId.toString()
+            );
+            
+            if (!gradeExists) {
+              cachedCategorie.grades.push(gradeId);
+              
+              if (cachedCategorie.isInDB) {
+                // Mettre à jour en base
+                await CategorieProfessionnelle.findByIdAndUpdate(
+                  cachedCategorie.id,
+                  { $addToSet: { grades: gradeId } }
+                );
+              } else {
+                // Mettre à jour les données en attente d'insertion
+                cachedCategorie.data.grades.push(gradeId);
+              }
+            }
+            
+            categorieId = cachedCategorie.id;
           }
         }
 
@@ -252,24 +302,74 @@ export const importerDonnees = async (req, res) => {
           }
         }
 
-        // 7️⃣ Poste de Travail
+        // 7️⃣ Poste de Travail - CORRIGÉ
         if (familleMetierId && ligne.POSTE_DE_TRAVAIL_FR && nettoyerTexte(ligne.POSTE_DE_TRAVAIL_FR) && ligne.POSTE_DE_TRAVAIL_EN && nettoyerTexte(ligne.POSTE_DE_TRAVAIL_EN)) {
           const posteFr = nettoyerTexte(ligne.POSTE_DE_TRAVAIL_FR).toUpperCase();
           const posteEn = nettoyerTexte(ligne.POSTE_DE_TRAVAIL_EN).toUpperCase();
-          const posteKey = `${posteFr}|${familleMetierId}`;
-          
+          const posteKey = posteFr;
+
           if (!caches.postes.has(posteKey)) {
-            const posteData = {
-              _id: new mongoose.Types.ObjectId(),
-              nomFr: posteFr,
-              nomEn: posteEn,
-              familleMetier: familleMetierId,
-            };
-            caches.postes.set(posteKey, posteData._id);
-            donneesAInserer.postes.push(posteData);
-            posteId = posteData._id;
+            // Vérifier si le poste existe déjà en base
+            let existingPoste = await PosteDeTravail.findOne({ 
+              nomFr: posteFr, 
+              nomEn: posteEn
+            });
+
+            if (existingPoste) {
+              // Ajout familleMetier si elle n'existe pas déjà
+              if (!existingPoste.famillesMetier.some(id => id.equals(familleMetierId))) {
+                existingPoste.famillesMetier.push(familleMetierId);
+                await existingPoste.save();
+              }
+
+              caches.postes.set(posteKey, {
+                id: existingPoste._id,
+                famillesMetier: [...existingPoste.famillesMetier],
+                isInDB: true
+              });
+              posteId = existingPoste._id;
+            } else {
+              // Nouveau poste
+              const posteData = {
+                _id: new mongoose.Types.ObjectId(),
+                nomFr: posteFr,
+                nomEn: posteEn,
+                famillesMetier: [familleMetierId],
+              };
+              caches.postes.set(posteKey, {
+                id: posteData._id,
+                famillesMetier: [familleMetierId],
+                isInDB: false,
+                data: posteData
+              });
+              donneesAInserer.postes.push(posteData);
+              posteId = posteData._id;
+            }
           } else {
-            posteId = caches.postes.get(posteKey);
+            // Le poste existe dans le cache
+            const cachedPoste = caches.postes.get(posteKey);
+            
+            // Vérifier si la famille métier doit être ajoutée
+            const familleExists = cachedPoste.famillesMetier.some(id => 
+              id.equals ? id.equals(familleMetierId) : id.toString() === familleMetierId.toString()
+            );
+            
+            if (!familleExists) {
+              cachedPoste.famillesMetier.push(familleMetierId);
+              
+              if (cachedPoste.isInDB) {
+                // Mettre à jour en base
+                await PosteDeTravail.findByIdAndUpdate(
+                  cachedPoste.id,
+                  { $addToSet: { famillesMetier: familleMetierId } }
+                );
+              } else {
+                // Mettre à jour les données en attente d'insertion
+                cachedPoste.data.famillesMetier.push(familleMetierId);
+              }
+            }
+            
+            posteId = cachedPoste.id;
           }
         }
 

@@ -5,5 +5,5 @@ export const validateFields = [
 
     body('nomEn').notEmpty().withMessage('Le nom en anglais est requis'),
 
-    body('familleMetier').notEmpty().withMessage('La famille métier est obligatoire')
+    body('famillesMetier').notEmpty().withMessage('La famille métier est obligatoire')
 ];

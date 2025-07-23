@@ -5,5 +5,5 @@ export const validateFields = [
 
     body('nomEn').notEmpty().withMessage('Le nom en anglais est requis'),
 
-    body('grade').notEmpty().withMessage('Le grade est obligatoire')
+    body('grades').notEmpty().withMessage('Le grade est obligatoire')
 ];

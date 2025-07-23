@@ -351,7 +351,7 @@ export const getServicesByStructure = async (req, res) => {
         message: t('identifiant_invalide', lang),
         });
     }
-
+   
     try {
         const total = await Service.countDocuments({ structure: structureId });
         
@@ -364,7 +364,7 @@ export const getServicesByStructure = async (req, res) => {
         ])
         .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .lean();
-
+       
         return res.status(200).json({
             success: true,
             data: {

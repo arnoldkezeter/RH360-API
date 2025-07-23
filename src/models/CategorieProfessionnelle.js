@@ -6,7 +6,7 @@ const categorieProfessionnelleSchema = new mongoose.Schema({
   nomEn: { type: String, required: true },
   descriptionFr: {type : String},
   descriptionEn: {type : String},
-  grade:{ type: mongoose.Schema.Types.ObjectId, ref: 'Grade', required:true }
+  grades:[{ type: mongoose.Schema.Types.ObjectId, ref: 'Grade', required:true }]
 }, { timestamps: true });
 
 const CategorieProfessionnelle = mongoose.model('CategorieProfessionnelle', categorieProfessionnelleSchema);

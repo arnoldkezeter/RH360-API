@@ -7,18 +7,18 @@ import mongoose from 'mongoose';
 // Créer une catégorie professionnelle
 export const createCategorieProfessionnelle = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
-        success: false,
-        message: t('champs_obligatoires', lang),
-        errors: errors.array().map(err => err.msg),
+            success: false,
+            message: t('champs_obligatoires', lang),
+            errors: errors.array().map(err => err.msg),
         });
     }
 
     try {
-        const { nomFr, nomEn, descriptionFr, descriptionEn, grade } = req.body;
+        const { nomFr, nomEn, descriptionFr, descriptionEn, grades } = req.body;
 
         // Vérifier unicité nomFr et nomEn
         if (await CategorieProfessionnelle.exists({ nomFr })) {
@@ -28,12 +28,21 @@ export const createCategorieProfessionnelle = async (req, res) => {
             return res.status(409).json({ success: false, message: t('categorie_professionnelle_existante_en', lang) });
         }
 
-        // Vérifier que le grade existe si fourni
-        if (grade) {
-            if (!mongoose.Types.ObjectId.isValid(grade._id)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+        // Vérifier les grades
+        let gradeIds = [];
+        if (grades && Array.isArray(grades)) {
+            for (const grade of grades) {
+                if (!mongoose.Types.ObjectId.isValid(grade._id)) {
+                    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+                }
+                const exists = await Grade.exists({ _id: grade._id });
+                if (!exists) {
+                    return res.status(404).json({ success: false, message: t('grade_non_trouve', lang) });
+                }
+                gradeIds.push(grade._id);
             }
-            
+        } else {
+            return res.status(400).json({ success: false, message: t('grades_requis', lang) });
         }
 
         const categorie = await CategorieProfessionnelle.create({
@@ -41,7 +50,7 @@ export const createCategorieProfessionnelle = async (req, res) => {
             nomEn,
             descriptionFr,
             descriptionEn,
-            grade
+            grades: gradeIds
         });
 
         return res.status(201).json({
@@ -51,15 +60,17 @@ export const createCategorieProfessionnelle = async (req, res) => {
         });
 
     } catch (err) {
+        console.error('Erreur createCategorieProfessionnelle:', err);
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
 
 // Modifier une catégorie professionnelle
 export const updateCategorieProfessionnelle = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
-    const { nomFr, nomEn, descriptionFr, descriptionEn, grade } = req.body;
+    const { nomFr, nomEn, descriptionFr, descriptionEn, grades } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
@@ -68,9 +79,9 @@ export const updateCategorieProfessionnelle = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
-        success: false,
-        message: t('champs_obligatoires', lang),
-        errors: errors.array().map(err => err.msg),
+            success: false,
+            message: t('champs_obligatoires', lang),
+            errors: errors.array().map(err => err.msg),
         });
     }
 
@@ -96,25 +107,36 @@ export const updateCategorieProfessionnelle = async (req, res) => {
         if (descriptionFr !== undefined) categorie.descriptionFr = descriptionFr;
         if (descriptionEn !== undefined) categorie.descriptionEn = descriptionEn;
 
-        if (grade) {
-            if (!mongoose.Types.ObjectId.isValid(grade._id)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+        // Mettre à jour les grades
+        if (grades && Array.isArray(grades)) {
+            let validGradeIds = [];
+            for (const grade of grades) {
+                if (!mongoose.Types.ObjectId.isValid(grade._id)) {
+                    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+                }
+                const exists = await Grade.exists({ _id: grade._id });
+                if (!exists) {
+                    return res.status(404).json({ success: false, message: t('grade_non_trouve', lang) });
+                }
+                validGradeIds.push(grade._id);
             }
-            categorie.grade = grade;
+            categorie.grades = validGradeIds; // Remplace l’ancien tableau
         }
 
         await categorie.save();
 
         return res.status(200).json({
-        success: true,
-        message: t('modifier_succes', lang),
-        data: categorie
+            success: true,
+            message: t('modifier_succes', lang),
+            data: categorie
         });
 
     } catch (err) {
+        console.error('Erreur updateCategorieProfessionnelle:', err);
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
 
 // Supprimer une catégorie professionnelle
 export const deleteCategorieProfessionnelle = async (req, res) => {
@@ -153,7 +175,7 @@ export const getCategoriesProfessionnelles = async (req, res) => {
         .skip((page - 1) * limit)
         .limit(limit)
         .sort({ [sortField]: 1 })
-        .populate('grade', 'nomFr nomEn')
+        .populate('grades', 'nomFr nomEn')
         .lean();
 
         return res.status(200).json({
@@ -183,7 +205,7 @@ export const getCategorieProfessionnelleById = async (req, res) => {
 
     try {
         const categorie = await CategorieProfessionnelle.findById(id)
-        .populate('grade', 'nomFr nomEn')
+        .populate('grades', 'nomFr nomEn')
         .lean();
 
         if (!categorie) {
@@ -217,7 +239,7 @@ export const searchCategoriesProfessionnellesByName = async (req, res) => {
 
         const categories = await CategorieProfessionnelle.find({
         [queryField]: { $regex: nom, $options: 'i' }
-        }).populate('grade', 'nomFr nomEn').lean();
+        }).populate('grades', 'nomFr nomEn').lean();
 
         return res.status(200).json({
             success: true, 
@@ -251,14 +273,14 @@ export const getCategoriesByGrade = async (req, res) => {
     }
 
     try {
-         const total = await CategorieProfessionnelle.countDocuments({ grade: gradeId });
+         const total = await CategorieProfessionnelle.countDocuments({ grades: gradeId });
         
-        const categories = await CategorieProfessionnelle.find({ grade: gradeId })
+        const categories = await CategorieProfessionnelle.find({ grades: gradeId })
         .skip((page - 1) * limit)
         .limit(limit)
         .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .populate({
-            path: 'grade',
+            path: 'grades',
             select: 'nomFr nomEn',
             options: { strictPopulate: false },
         })
@@ -295,9 +317,9 @@ export const getCategorieProfessionnellesForDropdownByGrade = async (req, res) =
             message: t('identifiant_invalide', lang),
             });
         }
-        const categorieProfessionnelles = await CategorieProfessionnelle.find({grade:gradeId}, "_id nomFr nomEn")
+        const categorieProfessionnelles = await CategorieProfessionnelle.find({grades:gradeId}, "_id nomFr nomEn")
             .populate([
-                { path: 'grade', select: 'nomFr nomEn',  options:{strictPopulate:false}}
+                { path: 'grades', select: 'nomFr nomEn',  options:{strictPopulate:false}}
             ])
             .sort({ [sortField]: 1 })
             .lean();

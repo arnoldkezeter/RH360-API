@@ -6,7 +6,7 @@ const posteDeTravailSchema = new mongoose.Schema({
   nomEn: { type: String, required: true },
   descriptionFr: {type:String},
   descriptionEn: {type:String},
-  familleMetier: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier', required:true },
+  famillesMetier: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier', required:true }],
 }, { timestamps: true });
 
 const PosteDeTravail = mongoose.model('PosteDeTravail', posteDeTravailSchema);

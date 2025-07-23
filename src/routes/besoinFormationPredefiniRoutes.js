@@ -1,11 +1,9 @@
 import express from 'express';
 import {
   getBesoinsParPosteDeTravail,
-  getBesoinsParFamilleMetier,
   createBesoinFormationPredefini,
   updateBesoinFormationPredefini,
   deleteBesoinFormationPredefini,
-  getBesoinsFormationPredefinis,
   getBesoinFormationPredefiniById,
   getBesoinsFormationPredefinisForDropdown,
   searchBesoinFormationPredefiniByTitre
@@ -19,7 +17,6 @@ const router = express.Router();
 router.post('/', authentificate, validateFields, createBesoinFormationPredefini);
 router.put('/:id', authentificate, validateFields, updateBesoinFormationPredefini);
 router.delete('/:id', authentificate, deleteBesoinFormationPredefini);
-router.get('/', authentificate, getBesoinsFormationPredefinis);
 router.get('/:id', authentificate, getBesoinFormationPredefiniById);
 
 // Recherche
@@ -31,7 +28,5 @@ router.get('/dropdown/list', authentificate, getBesoinsFormationPredefinisForDro
 // Besoins par poste de travail
 router.get('/poste/:posteId', authentificate, getBesoinsParPosteDeTravail);
 
-// Besoins par famille métier
-router.get('/famille-metier/:familleMetierId', authentificate, getBesoinsParFamilleMetier);
 
 export default router;

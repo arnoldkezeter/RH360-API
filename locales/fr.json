@@ -234,8 +234,11 @@
     "formateur_non_trouve":"Formateur non trouve",
     "lieu_existant":"Ce lieu a déjà été enregistré pour cette formation",
     "aucun_utilisateur_fournis":"Aucun utilisateur fourni",
-    "ressource_non_trouvee":"Ressource non trouvée"
-    
+    "ressource_non_trouvee":"Ressource non trouvée",
+
+    "error_niveau":"Le niveau doit être entre 1 et 4.",
+    "evaluation_soumis":"Vous avez déjà soumis une évaluation pour ce besoin.",
+    "auto_evaluation_non_trouvee":"Auto-évaluation non trouvée"
     
 }
   

@@ -437,6 +437,9 @@ export const importerDonnees = async (req, res) => {
           if (serviceId) utilisateurData.service = serviceId;
           if (categorieId) utilisateurData.categorieProfessionnelle = categorieId;
           if (posteId) utilisateurData.posteDeTravail = posteId;
+          if (gradeId) utilisateurData.grade = gradeId;
+          if (familleMetierId) utilisateurData.familleMetier = familleMetierId;
+          if (communeId) utilisateurData.commune = communeId
 
           donneesAInserer.utilisateurs.push(utilisateurData);
           caches.utilisateurs.add(ligne.EMAIL.toLowerCase());

@@ -20,8 +20,11 @@ const utilisateurSchema = new mongoose.Schema({
     },
     dateEntreeEnService:{type:Date},
     service: { type: mongoose.Schema.Types.ObjectId, ref: 'Service'},
+    grade: { type: mongoose.Schema.Types.ObjectId, ref: 'Grade' },
     categorieProfessionnelle: { type: mongoose.Schema.Types.ObjectId, ref: 'CategorieProfessionnelle' },
+    familleMetier:{ type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier' },
     posteDeTravail:{ type: mongoose.Schema.Types.ObjectId, ref: 'PosteDeTravail' },
+    commune:{ type: mongoose.Schema.Types.ObjectId, ref: 'Commune' },
     actif: { type: Boolean, default: true },
 }, { timestamps: true });
 

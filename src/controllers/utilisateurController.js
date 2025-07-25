@@ -25,7 +25,7 @@ export const createUtilisateur = async (req, res) => {
 
     try {
         const {
-            matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,
+            matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,grade, familleMetier,
             role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
@@ -48,7 +48,7 @@ export const createUtilisateur = async (req, res) => {
         const password = generateRandomPassword();
         const utilisateur = new Utilisateur({
             matricule, nom, prenom, email, motDePasse : password, genre, dateNaissance, lieuNaissance, telephone,
-            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
+            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, grade, familleMetier
         });
 
         await utilisateur.save();
@@ -103,7 +103,7 @@ export const updateUtilisateur = async (req, res) => {
         }
 
         const {
-            matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,
+            matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, grade, familleMetier,
             role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
@@ -143,6 +143,8 @@ export const updateUtilisateur = async (req, res) => {
         utilisateur.posteDeTravail = posteDeTravail ?? utilisateur.posteDeTravail;
         utilisateur.actif = actif ?? utilisateur.actif;
         utilisateur.commune = commune ?? utilisateur.commune;
+        utilisateur.grade = grade
+        utilisateur.familleMetier=familleMetier
 
         await utilisateur.save();
 
@@ -320,24 +322,25 @@ export const getUtilisateursFiltres = async (req, res) => {
                     }
                 },
                 { 
-                    path: 'categorieProfessionnelle', 
-                    select: 'nomFr nomEn grade', 
+                    path: 'grade', 
+                    select: 'nomFr nomEn', 
                     options: { strictPopulate: false },
-                    populate: {
-                        path: 'grade',
-                        select: 'nomFr nomEn',
-                        options: { strictPopulate: false }
-                    }
+                },
+                { 
+                    path: 'categorieProfessionnelle', 
+                    select: 'nomFr nomEn', 
+                    options: { strictPopulate: false },
+                },
+                { 
+                    path: 'familleMetier',
+                    select: 'nomFr nomEn',
+                    options: { strictPopulate: false }
                 },
                 { 
                     path: 'posteDeTravail', 
-                    select: 'nomFr nomEn familleMetier', 
+                    select: 'nomFr nomEn', 
                     options: { strictPopulate: false },
-                    populate: {
-                        path: 'familleMetier',
-                        select: 'nomFr nomEn',
-                        options: { strictPopulate: false }
-                    }
+                   
                 },
                 { 
                     path: 'commune', 

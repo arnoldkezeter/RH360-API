@@ -1,10 +1,6 @@
+//../models/EvaluationAChaud
 import mongoose from 'mongoose';
 
-const EchelleSchema = new mongoose.Schema({
-    valeurFr: { type: String, required: true }, // ex: "Très satisfait"
-    valeurEn: { type: String, required: true }, // ex: "Très satisfait"
-    ordre: { type: Number, required: true }   // ex: 1, 2, 3, 4, 5
-}, { _id: false });
 
 const SousQuestionSchema = new mongoose.Schema({
     libelleFr: { type: String, required: true },
@@ -16,7 +12,7 @@ const SousQuestionSchema = new mongoose.Schema({
 const QuestionSchema = new mongoose.Schema({
     libelleFr: { type: String, required: true },
     libelleEn: { type: String, required: true },
-    echelle: [EchelleSchema],
+    echelles: [{type: mongoose.Schema.Types.ObjectId, ref: 'EchelleReponse', required: true}],
     sousQuestions: [SousQuestionSchema], // vide si question simple
     commentaireGlobal: { type: Boolean, default: false }, // si true, champ commentaire à l’échelle de la question
     ordre: { type: Number, required: true }

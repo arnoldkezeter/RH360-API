@@ -1,4 +1,5 @@
 import EvaluationAChaud from '../models/EvaluationAChaud.js';
+import ThemeFormation from '../models/ThemeFormation.js'; // Import manquant
 import { validationResult } from 'express-validator';
 import mongoose from 'mongoose';
 import { t } from '../utils/i18n.js';
@@ -14,26 +15,26 @@ export const createEvaluationAChaud = async (req, res) => {
             errors: errors.array().map(err => err.msg),
         });
     }
+
     const {
         titreFr,
         titreEn,
         theme,
         descriptionFr,
         descriptionEn,
-        rubriques: [],
+        rubriques, // Correction: suppression des crochets vides
         actif,
     } = req.body;
 
     try {
-
-        if (theme && !mongoose.Types.ObjectId.isValid(theme)) {
+        if (theme && !mongoose.Types.ObjectId.isValid(theme._id)) {
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang),
             });
         }
 
-        const themeExists = theme ? await ThemeFormation.findById(theme) : null;
+        const themeExists = theme ? await ThemeFormation.findById(theme._id) : null;
         if (theme && !themeExists) {
             return res.status(404).json({
                 success: false,
@@ -60,7 +61,7 @@ export const createEvaluationAChaud = async (req, res) => {
         const evaluation = new EvaluationAChaud({
             titreFr,
             titreEn,
-            theme,
+            theme:theme._id,
             descriptionFr,
             descriptionEn,
             rubriques,
@@ -82,8 +83,7 @@ export const createEvaluationAChaud = async (req, res) => {
     }
 };
 
-
-// Modifier un modèle d’évaluation
+// Modifier un modèle d'évaluation
 export const updateEvaluationAChaud = async (req, res) => {
     const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
     const { id } = req.params;
@@ -93,6 +93,7 @@ export const updateEvaluationAChaud = async (req, res) => {
         theme,
         descriptionFr,
         descriptionEn,
+        rubriques, // Ajout manquant
         actif,
     } = req.body;
 
@@ -113,14 +114,14 @@ export const updateEvaluationAChaud = async (req, res) => {
             });
         }
 
-        if (theme && !mongoose.Types.ObjectId.isValid(theme)) {
+        if (theme && !mongoose.Types.ObjectId.isValid(theme._id)) {
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang),
             });
         }
 
-        const themeExists = theme ? await ThemeFormation.findById(theme) : null;
+        const themeExists = theme ? await ThemeFormation.findById(theme._id) : null;
         if (theme && !themeExists) {
             return res.status(404).json({
                 success: false,
@@ -136,12 +137,15 @@ export const updateEvaluationAChaud = async (req, res) => {
             });
         }
 
-        evaluation.titreFr = titreFr,
-        evaluation.titreEn = titreEn,
-        evaluation.theme = theme,
-        evaluation.descriptionFr = descriptionFr,
-        evaluation.descriptionEn = descriptionEn,
-        evaluation.actif = actif
+        // Correction: utilisation de l'opérateur d'affectation
+        evaluation.titreFr = titreFr;
+        evaluation.titreEn = titreEn;
+        evaluation.theme = theme._id;
+        evaluation.descriptionFr = descriptionFr;
+        evaluation.descriptionEn = descriptionEn;
+        evaluation.rubriques = rubriques; // Ajout manquant
+        evaluation.actif = actif;
+        
         await evaluation.save();
 
         return res.status(200).json({
@@ -202,9 +206,10 @@ export const listEvaluationAChaud = async (req, res) => {
     try {
         const total = await EvaluationAChaud.countDocuments();
         const data = await EvaluationAChaud.find()
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit);
+            .populate('theme', 'nomFr nomEn') // Ajout du populate pour le thème
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
 
         return res.status(200).json({
             success: true,
@@ -224,24 +229,25 @@ export const listEvaluationAChaud = async (req, res) => {
 
 // Pour menus déroulants
 export const dropdownEvaluationAChaud = async (req, res) => {
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr'; // Correction: déclaration de lang
+    
     try {
         const evaluations = await EvaluationAChaud.find({ actif: true })
-        .select('titreFr titreEn')
-        .sort({ titreFr: 1 });
+            .select('titreFr titreEn')
+            .sort({ titreFr: 1 });
 
         return res.status(200).json({ 
-            success: true, data: 
-            evaluations 
+            success: true, 
+            data: evaluations // Correction: formatage
         });
     } catch (err) {
         return res.status(500).json({ 
             success: false, 
-            message: (t('erreur_serveur', lang)), 
+            message: t('erreur_serveur', lang), 
             error: err.message 
         });
     }
 };
-
 
 // Récupérer une évaluation à chaud complète par ID
 export const getEvaluationAChaudById = async (req, res) => {
@@ -256,7 +262,9 @@ export const getEvaluationAChaudById = async (req, res) => {
     }
 
     try {
-        const evaluation = await EvaluationAChaud.findById(id);
+        const evaluation = await EvaluationAChaud.findById(id)
+            .populate('theme', 'nomFr nomEn') // Ajout du populate pour le thème
+            .populate('rubriques.questions.echelles'); // Populate des échelles de réponse
 
         if (!evaluation) {
             return res.status(404).json({
@@ -270,7 +278,7 @@ export const getEvaluationAChaudById = async (req, res) => {
             data: evaluation,
         });
     } catch (err) {
-        res.status(500).json({
+        return res.status(500).json({ // Correction: ajout de return
             success: false,
             message: t('erreur_serveur', lang),
             error: err.message,
@@ -278,446 +286,62 @@ export const getEvaluationAChaudById = async (req, res) => {
     }
 };
 
-//Evaluation d'un thème
-export const getEvaluationParTheme = async (req, res) => {
-    const { themeId } = req.params;
+export const getFilteredEvaluation = async (req, res) => {
+    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    // const { themeId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search?.trim();
+    
+
+    // if (!mongoose.Types.ObjectId.isValid(themeId)) {
+    //     return res.status(400).json({
+    //         success: false,
+    //         message: t('identifiant_invalide', lang),
+    //     });
+    // }
 
     try {
-        const evaluation = await EvaluationAChaud.findOne({ theme: themeId, actif: true });
+        let filter = {}
+        // Construction du filtre de base
+        // filter = { 
+        //     theme: themeId, 
+        // };
 
-        if (!evaluation) {
-            return res.status(404).json({
-                success: false,
-                message: t('aucune_evaluation_actif_theme', lang),
-            });
+        // Ajout du filtre de recherche si search existe
+        if (search) {
+            filter.$or = [
+                { titreFr: { $regex: search, $options: 'i' } },
+                { titreEn: { $regex: search, $options: 'i' } },
+            ];
         }
 
-        res.status(200).json({
+        // Compter le total d'évaluations avec les filtres appliqués
+        const total = await EvaluationAChaud.countDocuments(filter);
+
+        // Récupérer les évaluations avec pagination et filtres
+        const evaluations = await EvaluationAChaud.find(filter)
+            .populate('theme', 'titreFr titreEn')
+            .populate('rubriques.questions.echelles')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+        
+        return res.status(200).json({
             success: true,
-            data: evaluation,
+            data:{ 
+                evaluationChauds:evaluations,
+                totalItems:total,
+                currentPage:page,
+                totalPage: Math.ceil(total / limit),
+                pageSize:limit
+            } 
         });
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
             error: error.message,
         });
-    }
-};
-
-
-
-//Rubrique
-export const ajouterRubrique = async (req, res) => {
-    const { evaluationId } = req.params;
-    const { titreFr, titreEn, ordre } = req.body;
-
-    try {
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) {
-            return res.status(404).json({ 
-                success: false, 
-                message: t('evaluation_non_trouvee', lang) 
-            });
-        }
-
-        evaluation.rubriques.push({ titreFr, titreEn, ordre, questions: [] });
-        await evaluation.save();
-
-        return res.status(200).json({ 
-            success: true, 
-            message: t('ajouter_succes', lang), 
-            data: evaluation 
-        });
-    } catch (error) {
-        return res.status(500).json({ 
-            success: false, 
-            message: t('erreur_serveur'), 
-            error: error.message 
-        });
-    }
-};
-
-
-export const modifierRubrique = async (req, res) => {
-    const { evaluationId, rubriqueId } = req.params;
-    const { titreFr, titreEn, ordre } = req.body;
-
-    try {
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-
-        const rubrique = evaluation.rubriques.id(rubriqueId);
-        if (!rubrique) return res.status(404).json({ success: false, message: t('rubrique_non_trouvee') });
-
-        rubrique.titreFr = titreFr ?? rubrique.titreFr;
-        rubrique.titreEn = titreEn ?? rubrique.titreEn;
-        rubrique.ordre = ordre ?? rubrique.ordre;
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('modifier_succes', lang), data: evaluation });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-
-export const supprimerRubrique = async (req, res) => {
-    const { evaluationId, rubriqueId } = req.params;
-
-    try {
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-
-        evaluation.rubriques.id(rubriqueId)?.remove();
-        await evaluation.save();
-
-        return res.status(200).json({ success: true, message: t('supprimer_succes', lang) });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-
-//Questions
-export const ajouterQuestion = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { evaluationId, rubriqueId } = req.params;
-    const {
-        libelleFr,
-        libelleEn,
-        echelle = [],
-        sousQuestions = [],
-        commentaireGlobal = false
-    } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(evaluationId) || !mongoose.Types.ObjectId.isValid(rubriqueId)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) {
-            return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        }
-
-        const rubrique = evaluation.rubriques.id(rubriqueId);
-        if (!rubrique) {
-            return res.status(404).json({ success: false, message: t('rubrique_non_trouvee', lang) });
-        }
-
-        rubrique.questions.push({
-            libelleFr,
-            libelleEn,
-            echelle,
-            sousQuestions,
-            commentaireGlobal
-        });
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('ajouter_succes', lang), data: evaluation });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-export const modifierQuestion = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { evaluationId, rubriqueId, questionId } = req.params;
-    const update = req.body;
-
-    if (
-        !mongoose.Types.ObjectId.isValid(evaluationId) ||
-        !mongoose.Types.ObjectId.isValid(rubriqueId) ||
-        !mongoose.Types.ObjectId.isValid(questionId)
-    ) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) {
-            return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        }
-
-        const rubrique = evaluation.rubriques.id(rubriqueId);
-        if (!rubrique) {
-            return res.status(404).json({ success: false, message: t('rubrique_non_trouvee', lang) });
-        }
-
-        const question = rubrique.questions.id(questionId);
-        if (!question) {
-            return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-        }
-
-        question.libelleFr = update.libelleFr ?? question.libelleFr;
-        question.libelleEn = update.libelleEn ?? question.libelleEn;
-        question.commentaireGlobal = update.commentaireGlobal ?? question.commentaireGlobal;
-        if (update.echelle) question.echelle = update.echelle;
-        if (update.sousQuestions) question.sousQuestions = update.sousQuestions;
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('modifier_succes', lang), data: evaluation });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-export const supprimerQuestion = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
-    const { evaluationId, rubriqueId, questionId } = req.params;
-
-    if (
-        !mongoose.Types.ObjectId.isValid(evaluationId) ||
-        !mongoose.Types.ObjectId.isValid(rubriqueId) ||
-        !mongoose.Types.ObjectId.isValid(questionId)
-    ) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-    }
-
-    try {
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) {
-            return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        }
-
-        const rubrique = evaluation.rubriques.id(rubriqueId);
-        if (!rubrique) {
-            return res.status(404).json({ success: false, message: t('rubrique_non_trouvee', lang) });
-        }
-
-        const question = rubrique.questions.id(questionId);
-        if (!question) {
-            return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-        }
-
-        question.deleteOne();
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('supprimer_succes', lang), data: evaluation });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-//Sous question
-export const ajouterSousQuestion = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId } = req.params;
-    const { libelleFr, libelleEn, commentaireObligatoire } = req.body;
-
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const rubrique = evaluation?.rubriques.id(rubriqueId);
-        if (!rubrique) return res.status(404).json({ success: false, message: t('rubrique_non_trouvee', lang) });
-        const question = rubrique?.questions.id(questionId);
-        if (!question) return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-
-        question.sousQuestions.push({ libelleFr, libelleEn, commentaireObligatoire });
-        await evaluation.save();
-
-        return res.status(200).json({ success: true, message: t('ajouter_succes', lang), data: evaluation });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-
-export const modifierSousQuestion = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId, sousQuestionId } = req.params;
-    const { libelleFr, libelleEn, commentaireObligatoire } = req.body;
-
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const question = evaluation?.rubriques.id(rubriqueId)?.questions.id(questionId);
-        if (!question) return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-        const sousQuestion = question?.sousQuestions.id(sousQuestionId);
-        if (!sousQuestion) return res.status(404).json({ success: false, message: t('sous_question_non_trouvee', lang) });
-
-        sousQuestion.libelleFr = libelleFr ?? sousQuestion.libelleFr;
-        sousQuestion.libelleEn = libelleEn ?? sousQuestion.libelleEn;
-        sousQuestion.commentaireObligatoire = commentaireObligatoire ?? sousQuestion.commentaireObligatoire;
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('modifier_succes', lang), data: evaluation });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-
-export const supprimerSousQuestion = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId, sousQuestionId } = req.params;
-
-    try {
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(400).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const question = evaluation?.rubriques.id(rubriqueId)?.questions.id(questionId);
-        if (!question) return res.status(400).json({ success: false, message: t('question_non_trouvee', lang) });
-        question?.sousQuestions.id(sousQuestionId)?.remove();
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('supprimer_succes', lang) });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-//Echelle de réponse question
-export const ajouterEchelle = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId } = req.params;
-    const { valeurFr, valeurEn, ordre } = req.body;
-
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const question = evaluation?.rubriques.id(rubriqueId)?.questions.id(questionId);
-        if (!question) return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-
-        question.echelle.push({ valeurFr, valeurEn, ordre });
-        await evaluation.save();
-
-        return res.status(200).json({ success: true, message: t('ajouter_succes', lang), data: evaluation });
-  } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-  }
-};
-
-
-export const modifierEchelle = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId, index } = req.params;
-    const { valeurFr, valeurEn, ordre } = req.body;
-
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: t('champs_obligatoires', lang),
-                errors: errors.array().map(err => err.msg),
-            });
-        }
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const question = evaluation?.rubriques.id(rubriqueId)?.questions.id(questionId);
-        if (!question) return res.status(404).json({ success: false, message: t('question_non_trouvee', lang) });
-
-        if (!question?.echelle[index]) return res.status(404).json({ success: false, message: t('echelle_non_trouvee', lang) });
-
-        if (valeurFr !== undefined) question.echelle[index].valeurFr = valeurFr;
-        if (valeurEn !== undefined) question.echelle[index].valeurEn = valeurEn;
-        if (ordre !== undefined) question.echelle[index].ordre = ordre;
-
-        await evaluation.save();
-        return res.status(200).json({ success: true, message: t('modifier_succes', lang), data: evaluation });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
-    }
-};
-
-
-export const supprimerEchelle = async (req, res) => {
-    const { evaluationId, rubriqueId, questionId, index } = req.params;
-
-    try {
-        if (!mongoose.Types.ObjectId.isValid(evaluationId)) {
-            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-        }
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
-        if (!evaluation) return res.status(400).json({ success: false, message: t('evaluation_non_trouvee', lang) });
-        const question = evaluation?.rubriques.id(rubriqueId)?.questions.id(questionId);
-        if (!question) return res.status(400).json({ success: false, message: t('question_non_trouvee', lang) });
-
-        if (!question?.echelle[index]) return res.status(404).json({ success: false, message: t('echelle_non_trouvee') });
-
-        question.echelle.splice(index, 1);
-        await evaluation.save();
-
-        return res.status(200).json({ success: true, message: t('supprimer_succes', lang) });
-    } catch (error) {
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
     }
 };

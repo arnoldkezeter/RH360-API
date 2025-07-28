@@ -10,7 +10,14 @@ import {
     getTauxReponseFormation,
     getReponsesUtilisateur,
     getStatsByField,
-    getStatsParParticipant
+    getStatsParParticipant,
+    getDashboardEvaluations,
+    getEvaluationStats,
+    getResultatsByRubrique,
+    getQuestionDetails,
+    getCommentaires,
+    getComparaisonEvaluations,
+    exportEvaluationData
 } from '../controllers/evaluationAChaudReponseController.js';
 
 import { authentificate } from '../middlewares/auth.js';
@@ -31,5 +38,13 @@ router.get('/stats/taux/:formationId', authentificate, getTauxReponseFormation);
 router.get('/stats/field/:formationId', authentificate, getStatsByField);
 router.get('/stats/utilisateur/:utilisateurId', authentificate, getReponsesUtilisateur);
 router.get('/stats/participant/:formationId/:utilisateurId', authentificate, getStatsParParticipant);
+
+router.get('/dashboard', getDashboardEvaluations);
+router.get('/:evaluationId/stats', getEvaluationStats);
+router.get('/:evaluationId/rubriques', getResultatsByRubrique);
+router.get('/:evaluationId/questions/:questionId', getQuestionDetails);
+router.get('/:evaluationId/commentaires', getCommentaires);
+router.get('/:evaluationId/comparaison', getComparaisonEvaluations);
+router.get('/:evaluationId/export', exportEvaluationData);
 
 export default router;

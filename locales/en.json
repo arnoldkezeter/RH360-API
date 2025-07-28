@@ -178,13 +178,19 @@
 
     "evaluation_existe_fr": "An evaluation with this French title already exists.",
     "evaluation_existe_en": "An evaluation with this English title already exists.",
-    "evaluation_non_trouvee": "Hot evaluation not found.",
-    "evaluation_non_trouvee_theme": "No active hot evaluation found for this theme.",
+    "evaluation_non_trouvee": "Evaluation not found.",
+    "evaluation_non_trouvee_theme": "No active evaluation found for this theme.",
     "rubrique_non_trouvee": "Section not found.",
     "question_non_trouvee": "Question not found.",
     "sous_question_non_trouvee": "Sub-question not found.",
-    "echelle_non_trouvee": "Scale  not found.",
-    "evaluation_deja_repondu":"You have already submitted this evaluation.",
+    "echelle_non_trouvee": "Scale not found.",
+    "evaluation_deja_repondu": "You have already answered this evaluation.",
+    "error_niveau": "The level must be between 1 and 4.",
+    "evaluation_soumis": "You have already submitted an evaluation for this need.",
+    "auto_evaluation_non_trouvee": "Self-evaluation not found.",
+    "type_echelle_non_trouve": "Response scale type not found.",
+    "type_echelle_existante_fr": "A scale type with the same French name already exists.",
+    "type_echelle_existante_en": "A scale type with the same English name already exists.",
 
 
     "stagiaire_email_existe": "This email is already associated with an intern.",

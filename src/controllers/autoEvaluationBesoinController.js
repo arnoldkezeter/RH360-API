@@ -309,9 +309,11 @@ export const getGroupedAutoEvaluations = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
+  const search = req.query.search ? req.query.search.trim() : '';
 
   try {
-    const grouped = await AutoEvaluationBesoin.aggregate([
+    // Pipeline de base avec filtres de recherche
+    const basePipeline = [
       {
         $match: {
           niveau: { $lte: 2 } // niveau faible uniquement
@@ -334,7 +336,51 @@ export const getGroupedAutoEvaluations = async (req, res) => {
           as: 'utilisateur'
         }
       },
-      { $unwind: '$utilisateur' },
+      { $unwind: '$utilisateur' }
+    ];
+
+    // Ajouter le filtre de recherche si défini
+    if (search) {
+      basePipeline.push({
+        $match: {
+          $or: [
+            // Recherche dans le titre français du besoin
+            { 'besoin.titreFr': { $regex: search, $options: 'i' } },
+            // Recherche dans le titre anglais du besoin
+            { 'besoin.titreEn': { $regex: search, $options: 'i' } },
+            // Recherche dans le nom de l'utilisateur
+            { 'utilisateur.nom': { $regex: search, $options: 'i' } },
+            // Recherche dans le prénom de l'utilisateur
+            { 'utilisateur.prenom': { $regex: search, $options: 'i' } },
+            // Recherche dans l'email de l'utilisateur
+            { 'utilisateur.email': { $regex: search, $options: 'i' } },
+            // Recherche dans les insuffisances
+            { 'insuffisancesFr': { $regex: search, $options: 'i' } },
+            { 'insuffisancesEn': { $regex: search, $options: 'i' } },
+            // Recherche dans la formulation des besoins
+            { 'formulationBesoinsFr': { $regex: search, $options: 'i' } },
+            { 'formulationBesoinsEn': { $regex: search, $options: 'i' } },
+            // Recherche dans les commentaires admin
+            { 'commentaireAdminFr': { $regex: search, $options: 'i' } },
+            { 'commentaireAdminEn': { $regex: search, $options: 'i' } },
+            // Recherche dans le nom complet (prénom + nom)
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ['$utilisateur.prenom', ' ', '$utilisateur.nom'] },
+                  regex: search,
+                  options: 'i'
+                }
+              }
+            }
+          ]
+        }
+      });
+    }
+
+    // Pipeline principal pour obtenir les données groupées
+    const mainPipeline = [
+      ...basePipeline,
       {
         $group: {
           _id: {
@@ -349,7 +395,109 @@ export const getGroupedAutoEvaluations = async (req, res) => {
               utilisateurNom: '$utilisateur.nom',
               utilisateurPrenom: '$utilisateur.prenom',
               utilisateurEmail: '$utilisateur.email',
+              utilisateurId: '$utilisateur._id',
+              niveau: '$niveau',
+              insuffisancesFr: '$insuffisancesFr',
+              insuffisancesEn: '$insuffisancesEn',
+              insuffisances: {
+                $cond: [
+                  { $eq: [lang, 'fr'] },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$insuffisancesFr', null] }, { $ne: ['$insuffisancesFr', ''] }] },
+                      '$insuffisancesFr',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$insuffisancesEn', null] }, { $ne: ['$insuffisancesEn', ''] }] },
+                          '$insuffisancesEn',
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$insuffisancesEn', null] }, { $ne: ['$insuffisancesEn', ''] }] },
+                      '$insuffisancesEn',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$insuffisancesFr', null] }, { $ne: ['$insuffisancesFr', ''] }] },
+                          '$insuffisancesFr',
+                          null
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              formulationBesoinsFr: '$formulationBesoinsFr',
+              formulationBesoinsEn: '$formulationBesoinsEn',
+              formulationBesoins: {
+                $cond: [
+                  { $eq: [lang, 'fr'] },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$formulationBesoinsFr', null] }, { $ne: ['$formulationBesoinsFr', ''] }] },
+                      '$formulationBesoinsFr',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$formulationBesoinsEn', null] }, { $ne: ['$formulationBesoinsEn', ''] }] },
+                          '$formulationBesoinsEn',
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$formulationBesoinsEn', null] }, { $ne: ['$formulationBesoinsEn', ''] }] },
+                      '$formulationBesoinsEn',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$formulationBesoinsFr', null] }, { $ne: ['$formulationBesoinsFr', ''] }] },
+                          '$formulationBesoinsFr',
+                          null
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              commentaireAdminFr: '$commentaireAdminFr',
+              commentaireAdminEn: '$commentaireAdminEn',
+              commentaireAdmin: {
+                $cond: [
+                  { $eq: [lang, 'fr'] },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$commentaireAdminFr', null] }, { $ne: ['$commentaireAdminFr', ''] }] },
+                      '$commentaireAdminFr',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$commentaireAdminEn', null] }, { $ne: ['$commentaireAdminEn', ''] }] },
+                          '$commentaireAdminEn',
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$commentaireAdminEn', null] }, { $ne: ['$commentaireAdminEn', ''] }] },
+                      '$commentaireAdminEn',
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$commentaireAdminFr', null] }, { $ne: ['$commentaireAdminFr', ''] }] },
+                          '$commentaireAdminFr',
+                          null
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
               createdAt: '$createdAt',
+              updatedAt: '$updatedAt',
               statut: '$statut',
               evaluationId: '$_id'
             }
@@ -361,7 +509,20 @@ export const getGroupedAutoEvaluations = async (req, res) => {
           '_id.niveau': 1,
           count: -1
         }
-      },
+      }
+    ];
+
+    // Pipeline pour compter le total
+    const countPipeline = [
+      ...mainPipeline,
+      {
+        $count: "total"
+      }
+    ];
+
+    // Pipeline pour les données paginées
+    const dataPipeline = [
+      ...mainPipeline,
       {
         $skip: (page - 1) * limit
       },
@@ -374,24 +535,72 @@ export const getGroupedAutoEvaluations = async (req, res) => {
           besoinId: '$_id.besoinId',
           titreFr: '$_id.titreFr',
           titreEn: '$_id.titreEn',
+          titre: {
+            $cond: [
+              { $eq: [lang, 'fr'] },
+              {
+                $cond: [
+                  { $and: [{ $ne: ['$_id.titreFr', null] }, { $ne: ['$_id.titreFr', ''] }] },
+                  '$_id.titreFr',
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$_id.titreEn', null] }, { $ne: ['$_id.titreEn', ''] }] },
+                      '$_id.titreEn',
+                      null
+                    ]
+                  }
+                ]
+              },
+              {
+                $cond: [
+                  { $and: [{ $ne: ['$_id.titreEn', null] }, { $ne: ['$_id.titreEn', ''] }] },
+                  '$_id.titreEn',
+                  {
+                    $cond: [
+                      { $and: [{ $ne: ['$_id.titreFr', null] }, { $ne: ['$_id.titreFr', ''] }] },
+                      '$_id.titreFr',
+                      null
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
           niveau: '$_id.niveau',
           count: 1,
           evaluations: 1
         }
       }
+    ];
+
+    // Exécuter les deux pipelines en parallèle
+    const [countResult, dataResult] = await Promise.all([
+      AutoEvaluationBesoin.aggregate(countPipeline),
+      AutoEvaluationBesoin.aggregate(dataPipeline)
     ]);
+
+    // Calculer les informations de pagination
+    const totalItems = countResult.length > 0 ? countResult[0].total : 0;
+    const totalPages = Math.ceil(totalItems / limit);
+    
 
     return res.status(200).json({
       success: true,
-      data: grouped,
-      pagination: { page, limit }
+      data: {
+        groupedBesoins: dataResult,
+        currentPage: page,
+        pageSize: limit,
+        totalItems,
+        totalPages
+      }
     });
 
   } catch (err) {
+    console.error('Erreur dans getGroupedAutoEvaluations:', err);
     return res.status(500).json({
       success: false,
       message: t('erreur_serveur', lang),
-      error: err.message
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Une erreur est survenue'
     });
   }
 };

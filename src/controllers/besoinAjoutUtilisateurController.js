@@ -309,9 +309,11 @@ export const getGroupedBesoinsAjoutes = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
+  const search = req.query.search ? req.query.search.trim() : '';
 
   try {
-    const grouped = await BesoinAjouteUtilisateur.aggregate([
+    // Pipeline de base avec lookup des utilisateurs
+    const basePipeline = [
       {
         $lookup: {
           from: 'utilisateurs',
@@ -320,8 +322,52 @@ export const getGroupedBesoinsAjoutes = async (req, res) => {
           as: 'utilisateur'
         }
       },
-      { $unwind: '$utilisateur' },
+      { $unwind: '$utilisateur' }
+    ];
 
+    // Ajouter le filtre de recherche si défini
+    if (search) {
+      basePipeline.push({
+        $match: {
+          $or: [
+            // Recherche dans le titre français du besoin
+            { 'titreFr': { $regex: search, $options: 'i' } },
+            // Recherche dans le titre anglais du besoin
+            { 'titreEn': { $regex: search, $options: 'i' } },
+            // Recherche dans les points à améliorer (français)
+            { 'pointsAAmeliorerFr': { $regex: search, $options: 'i' } },
+            // Recherche dans les points à améliorer (anglais)
+            { 'pointsAAmeliorerEn': { $regex: search, $options: 'i' } },
+            // Recherche dans les commentaires admin (français)
+            { 'commentaireAdminFr': { $regex: search, $options: 'i' } },
+            // Recherche dans les commentaires admin (anglais)
+            { 'commentaireAdminEn': { $regex: search, $options: 'i' } },
+            // Recherche dans le nom de l'utilisateur
+            { 'utilisateur.nom': { $regex: search, $options: 'i' } },
+            // Recherche dans le prénom de l'utilisateur
+            { 'utilisateur.prenom': { $regex: search, $options: 'i' } },
+            // Recherche dans l'email de l'utilisateur
+            { 'utilisateur.email': { $regex: search, $options: 'i' } },
+            // Recherche dans le nom complet (prénom + nom)
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ['$utilisateur.prenom', ' ', '$utilisateur.nom'] },
+                  regex: search,
+                  options: 'i'
+                }
+              }
+            },
+            // Recherche dans le statut
+            { 'statut': { $regex: search, $options: 'i' } }
+          ]
+        }
+      });
+    }
+
+    // Pipeline principal pour obtenir les données groupées
+    const mainPipeline = [
+      ...basePipeline,
       {
         $group: {
           _id: {
@@ -332,32 +378,100 @@ export const getGroupedBesoinsAjoutes = async (req, res) => {
           },
           besoins: {
             $push: {
+              besoinId: '$_id',
+              titreFr: '$titreFr',
+              titreEn: '$titreEn',
               titre: {
                 $cond: {
                   if: { $eq: [lang, 'fr'] },
-                  then: { $ifNull: ['$titreFr', '$titreEn'] },
-                  else: { $ifNull: ['$titreEn', '$titreFr'] }
+                  then: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$titreFr', null] }, { $eq: ['$titreFr', ''] }] },
+                      then: '$titreEn',
+                      else: '$titreFr'
+                    }
+                  },
+                  else: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$titreEn', null] }, { $eq: ['$titreEn', ''] }] },
+                      then: '$titreFr',
+                      else: '$titreEn'
+                    }
+                  }
                 }
               },
+              pointsAAmeliorerFr: '$pointsAAmeliorerFr',
+              pointsAAmeliorerEn: '$pointsAAmeliorerEn',
               pointsAAmeliorer: {
                 $cond: {
                   if: { $eq: [lang, 'fr'] },
-                  then: { $ifNull: ['$pointsAAmeliorerFr', '$pointsAAmeliorerEn'] },
-                  else: { $ifNull: ['$pointsAAmeliorerEn', '$pointsAAmeliorerFr'] }
+                  then: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$pointsAAmeliorerFr', null] }, { $eq: ['$pointsAAmeliorerFr', ''] }] },
+                      then: '$pointsAAmeliorerEn',
+                      else: '$pointsAAmeliorerFr'
+                    }
+                  },
+                  else: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$pointsAAmeliorerEn', null] }, { $eq: ['$pointsAAmeliorerEn', ''] }] },
+                      then: '$pointsAAmeliorerFr',
+                      else: '$pointsAAmeliorerEn'
+                    }
+                  }
+                }
+              },
+              commentaireAdminFr: '$commentaireAdminFr',
+              commentaireAdminEn: '$commentaireAdminEn',
+              commentaireAdmin: {
+                $cond: {
+                  if: { $eq: [lang, 'fr'] },
+                  then: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$commentaireAdminFr', null] }, { $eq: ['$commentaireAdminFr', ''] }] },
+                      then: '$commentaireAdminEn',
+                      else: '$commentaireAdminFr'
+                    }
+                  },
+                  else: { 
+                    $cond: {
+                      if: { $or: [{ $eq: ['$commentaireAdminEn', null] }, { $eq: ['$commentaireAdminEn', ''] }] },
+                      then: '$commentaireAdminFr',
+                      else: '$commentaireAdminEn'
+                    }
+                  }
                 }
               },
               statut: '$statut',
-              createdAt: '$createdAt'
+              createdAt: '$createdAt',
+              updatedAt: '$updatedAt'
             }
           },
           count: { $sum: 1 }
         }
       },
+      {
+        $sort: { count: -1 }
+      }
+    ];
 
-      { $sort: { count: -1 } },
-      { $skip: (page - 1) * limit },
-      { $limit: limit },
+    // Pipeline pour compter le total
+    const countPipeline = [
+      ...mainPipeline,
+      {
+        $count: "total"
+      }
+    ];
 
+    // Pipeline pour les données paginées
+    const dataPipeline = [
+      ...mainPipeline,
+      {
+        $skip: (page - 1) * limit
+      },
+      {
+        $limit: limit
+      },
       {
         $project: {
           _id: 0,
@@ -365,22 +479,41 @@ export const getGroupedBesoinsAjoutes = async (req, res) => {
           nom: '$_id.nom',
           prenom: '$_id.prenom',
           email: '$_id.email',
+          nomComplet: { $concat: ['$_id.prenom', ' ', '$_id.nom'] },
           count: 1,
           besoins: 1
         }
       }
+    ];
+
+    // Exécuter les deux pipelines en parallèle
+    const [countResult, dataResult] = await Promise.all([
+      BesoinAjouteUtilisateur.aggregate(countPipeline),
+      BesoinAjouteUtilisateur.aggregate(dataPipeline)
     ]);
+
+    // Calculer les informations de pagination
+    const totalItems = countResult.length > 0 ? countResult[0].total : 0;
+    const totalPages = Math.ceil(totalItems / limit);
+
 
     return res.status(200).json({
       success: true,
-      data: grouped,
-      pagination: { page, limit }
+      data: {
+        groupedCompetences: dataResult,
+        currentPage: page,
+        pageSize: limit,
+        totalItems,
+        totalPages,
+      }
     });
+
   } catch (err) {
+    console.error('Erreur dans getGroupedBesoinsAjoutes:', err);
     return res.status(500).json({
       success: false,
-      message: lang === 'fr' ? 'Erreur serveur' : 'Server error',
-      error: err.message
+      message: t('erreur_serveur', lang),
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Une erreur est survenue'
     });
   }
 };

@@ -189,6 +189,12 @@
   "sous_question_non_trouvee": "Sous-question non trouvée.",
   "echelle_non_trouvee": "Echelle non trouvée.",
   "evaluation_deja_repondu":"Vous avez déjà répondu à cette évaluation.",
+  "error_niveau":"Le niveau doit être entre 1 et 4.",
+  "evaluation_soumis":"Vous avez déjà soumis une évaluation pour ce besoin.",
+  "auto_evaluation_non_trouvee":"Auto-évaluation non trouvée",
+  "type_echelle_non_trouve":"Type échelle de réponse non trouvé.",
+  "type_echelle_existante_fr":"Un type d'échelle avec le même nom en français existe déjà",
+  "type_echelle_existante_en":"Un type d'échelle avec le même nom en anglais existe déjà",
 
 
     "stagiaire_email_existe": "Cet email est déjà associé à un stagiaire.",
@@ -234,11 +240,9 @@
     "formateur_non_trouve":"Formateur non trouve",
     "lieu_existant":"Ce lieu a déjà été enregistré pour cette formation",
     "aucun_utilisateur_fournis":"Aucun utilisateur fourni",
-    "ressource_non_trouvee":"Ressource non trouvée",
+    "ressource_non_trouvee":"Ressource non trouvée"
 
-    "error_niveau":"Le niveau doit être entre 1 et 4.",
-    "evaluation_soumis":"Vous avez déjà soumis une évaluation pour ce besoin.",
-    "auto_evaluation_non_trouvee":"Auto-évaluation non trouvée"
+    
     
 }
   

@@ -4,6 +4,7 @@ import {createEvaluationAChaud,
         deleteEvaluationAChaud, 
         dropdownEvaluationAChaud, 
         getEvaluationAChaudById, 
+        getEvaluationsChaudByUtilisateur, 
         getFilteredEvaluation, 
         listEvaluationAChaud, 
         updateEvaluationAChaud} from '../controllers/evaluationAChaudController.js';
@@ -18,6 +19,7 @@ router.delete('/:id', authentificate, deleteEvaluationAChaud);
 router.get('/', getFilteredEvaluation);
 router.get('/dropdown/all', authentificate, dropdownEvaluationAChaud);
 router.get('/:id', authentificate, getEvaluationAChaudById);
+router.get('/user-evaluations/:utilisateurId', authentificate, getEvaluationsChaudByUtilisateur)
 
 
 

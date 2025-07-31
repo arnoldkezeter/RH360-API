@@ -98,7 +98,7 @@ app.use('/api/v1/besoins-formation-predefinis', besoinFormationPredefiniRoutes);
 app.use('/api/v1/auto-evaluations', autoEvaluationBesoinRoutes);
 app.use('/api/v1/besoins-ajoutes', besoinAjouteUtilisateurRoutes);
 app.use('/api/v1/evaluations-a-chaud', evaluationAChaudRoutes);
-app.use('/api/v1/evaluations-a-chaud-reponse', evaluationAChaudReponseRoutes);
+app.use('/api/v1/evaluations-a-chaud-reponses', evaluationAChaudReponseRoutes);
 app.use('/api/v1/type-echelle-reponse/echelles-reponses', echelleReponseRoutes);
 app.use('/api/v1/types-echelles-reponses', typeEchelleReponseRoutes);
 app.use('/api/v1/stagiaires', stagiaireRoutes);

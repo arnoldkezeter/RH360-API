@@ -32,8 +32,6 @@ import EvaluationAChaud from '../models/EvaluationAChaud.js';
  * @param {string} field - Clé utilisateur sur laquelle regrouper les statistiques
  * @returns {Promise<object>} - Résultat structuré des statistiques ou message d'erreur
  */
-
-
 export const getStatsGroupedByField = async (formationId, field) => {
     try {
         const stats = await EvaluationAChaudReponse.aggregate([
@@ -456,4 +454,109 @@ export async function getEvolutionMensuelle(matchCondition) {
         },
         { $sort: { '_id.year': 1, '_id.month': 1 }}
     ]);
+}
+
+// Calculer la progression
+export function calculateProgression(rubriques, evaluationModel) {
+    if (!rubriques || !Array.isArray(rubriques)) return 0;
+    
+    let totalQuestions = 0;
+    let questionsRepondues = 0;
+
+    // Compter les questions du modèle
+    evaluationModel.rubriques.forEach(rubrique => {
+        rubrique.questions.forEach(question => {
+            totalQuestions++;
+            if (question.sousQuestions && question.sousQuestions.length > 0) {
+                totalQuestions += question.sousQuestions.length - 1; // -1 car la question principale compte déjà
+            }
+        });
+    });
+
+    // Compter les réponses
+    rubriques.forEach(rubrique => {
+        if (rubrique.questions) {
+            rubrique.questions.forEach(question => {
+                if (question.reponseEchelleId) {
+                    questionsRepondues++;
+                } else if (question.sousReponses && question.sousReponses.length > 0) {
+                    questionsRepondues += question.sousReponses.filter(sr => sr.reponseEchelleId).length;
+                }
+            });
+        }
+    });
+
+    return totalQuestions > 0 ? Math.round((questionsRepondues / totalQuestions) * 100) : 0;
+}
+
+// Formater les rubriques
+export function formatRubriques(rubriques) {
+    if (!rubriques || !Array.isArray(rubriques)) return [];
+    
+    return rubriques.map(rubrique => ({
+        rubriqueId: new mongoose.Types.ObjectId(rubrique.rubriqueId),
+        questions: rubrique.questions ? rubrique.questions.map(question => ({
+            questionId: new mongoose.Types.ObjectId(question.questionId),
+            reponseEchelleId: question.reponseEchelleId ? 
+                new mongoose.Types.ObjectId(question.reponseEchelleId) : undefined,
+            sousReponses: question.sousReponses ? question.sousReponses.map(sr => ({
+                sousQuestionId: new mongoose.Types.ObjectId(sr.sousQuestionId),
+                reponseEchelleId: sr.reponseEchelleId ? 
+                    new mongoose.Types.ObjectId(sr.reponseEchelleId) : undefined,
+                commentaire: sr.commentaire
+            })).filter(sr => sr.reponseEchelleId) : undefined,
+            commentaireGlobal: question.commentaireGlobal
+        })).filter(q => q.reponseEchelleId || (q.sousReponses && q.sousReponses.length > 0)) : []
+    })).filter(r => r.questions.length > 0);
+}
+
+// Validation complète pour finalisation
+export function validateCompleteEvaluation(rubriques, evaluationModel) {
+    const errors = [];
+    
+    // Vérifier que toutes les questions obligatoires ont une réponse
+    evaluationModel.rubriques.forEach(rubriqueModel => {
+        const rubriqueReponse = rubriques.find(r => r._id === rubriqueModel._id.toString());
+        
+        if (!rubriqueReponse) {
+            errors.push(`Rubrique "${rubriqueModel.titreFr}" non remplie`);
+            return;
+        }
+
+        rubriqueModel.questions.forEach(questionModel => {
+            const questionReponse = rubriqueReponse.questions.find(q => 
+                q._id === questionModel._id.toString()
+            );
+
+            if (!questionReponse) {
+                errors.push(`Question "${questionModel.texteFr}" non répondue`);
+                return;
+            }
+
+            // Validation selon le type de question
+            if (questionModel.sousQuestions && questionModel.sousQuestions.length > 0) {
+                // Question avec sous-questions
+                if (!questionReponse.sousReponses || questionReponse.sousReponses.length === 0) {
+                    errors.push(`Question "${questionModel.texteFr}" incomplète`);
+                } else {
+                    // Vérifier que toutes les sous-questions obligatoires ont une réponse
+                    questionModel.sousQuestions.forEach(sousQuestion => {
+                        const sousReponse = questionReponse.sousReponses.find(sr => 
+                            sr.sousQuestion._id === sousQuestion._id.toString()
+                        );
+                        if (!sousReponse || !sousReponse.reponseEchelleId) {
+                            errors.push(`Sous-question "${sousQuestion.texteFr}" non répondue`);
+                        }
+                    });
+                }
+            } else {
+                // Question simple
+                if (!questionReponse.reponseEchelleId) {
+                    errors.push(`Question "${questionModel.texteFr}" non répondue`);
+                }
+            }
+        });
+    });
+
+    return errors;
 }

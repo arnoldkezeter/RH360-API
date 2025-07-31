@@ -7,4 +7,6 @@ const cohorteUtilisateurSchema = new mongoose.Schema({
     dateAjout: {type: Date, default: Date.now}
 }, { timestamps: true });
 
+cohorteUtilisateurSchema.index({ utilisateur: 1, cohorte: 1 });
+
 export const CohorteUtilisateur = mongoose.model('CohorteUtilisateur', cohorteUtilisateurSchema);

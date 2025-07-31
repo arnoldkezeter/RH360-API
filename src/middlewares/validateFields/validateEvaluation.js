@@ -42,8 +42,7 @@ export const validateFieldsEchelle = [
 
 
 export const validateFieldsReponseEvaluation = [
-        check('formation', 'La formation est requise').not().isEmpty(),
         check('utilisateur', 'L\'utilisateur est requis').not().isEmpty(),
         check('modele', 'Le modèle est requis').not().isEmpty(),
-        check('reponses', 'Les réponses sont requises').isArray({ min: 1 })
+        check('rubriques', 'Les rubriques sont requises').isArray({ min: 1 })
 ];

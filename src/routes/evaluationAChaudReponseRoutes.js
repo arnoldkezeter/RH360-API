@@ -17,7 +17,11 @@ import {
     getQuestionDetails,
     getCommentaires,
     getComparaisonEvaluations,
-    exportEvaluationData
+    exportEvaluationData,
+    // saveDraftEvaluationAChaudReponse,
+    // getDraftEvaluationAChaudReponse,
+    // getUserDrafts,
+    getEvaluationsChaudByUtilisateurAvecEchelles
 } from '../controllers/evaluationAChaudReponseController.js';
 
 import { authentificate } from '../middlewares/auth.js';
@@ -26,8 +30,14 @@ import { validateFieldsReponseEvaluation } from '../middlewares/validateFields/v
 const router = express.Router();
 
 router.post('/', authentificate, validateFieldsReponseEvaluation, submitEvaluationAChaudReponse);
+// router.post('/draft', authentificate, saveDraftEvaluationAChaudReponse);
+// router.get('/brouillon/:utilisateur/:modele', authentificate, getDraftEvaluationAChaudReponse);
+router.get('/utilisateur/:utilisateurId', getEvaluationsChaudByUtilisateurAvecEchelles);
 
-router.get('/utilisateur/:utilisateurId', authentificate, getReponsesParUtilisateur);
+
+// router.get('/drafts/:utilisateur', authentificate, getUserDrafts);
+
+// router.get('/utilisateur/:utilisateurId', authentificate, getReponsesParUtilisateur);
 router.get('/session/:formationId', authentificate, getReponsesParSession);
 
 router.get('/stats/rubrique/:formationId', authentificate, getStatsParRubrique);

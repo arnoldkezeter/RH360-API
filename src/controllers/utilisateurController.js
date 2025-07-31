@@ -403,51 +403,52 @@ export const searchUtilisateurs = async (req, res) => {
             ]
         }).sort({nom : 1, prenom : 1})
         .populate([
-                { 
-                    path: 'service', 
-                    select: 'nomFr nomEn structure', 
+            { 
+                path: 'service', 
+                select: 'nomFr nomEn structure', 
+                options: { strictPopulate: false },
+                populate: {
+                    path: 'structure',
+                    select: 'nomFr nomEn',
+                    options: { strictPopulate: false }
+                }
+            },
+            { 
+                path: 'grade', 
+                select: 'nomFr nomEn', 
+                options: { strictPopulate: false },
+            },
+            { 
+                path: 'categorieProfessionnelle', 
+                select: 'nomFr nomEn', 
+                options: { strictPopulate: false },
+            },
+            { 
+                path: 'familleMetier',
+                select: 'nomFr nomEn',
+                options: { strictPopulate: false }
+            },
+            { 
+                path: 'posteDeTravail', 
+                select: 'nomFr nomEn', 
+                options: { strictPopulate: false },
+                
+            },
+            { 
+                path: 'commune', 
+                select: 'nomFr nomEn departement', 
+                options: { strictPopulate: false },
+                populate: {
+                    path: 'departement',
+                    select: 'nomFr nomEn region',
                     options: { strictPopulate: false },
                     populate: {
-                        path: 'structure',
+                        path: 'region',
                         select: 'nomFr nomEn',
                         options: { strictPopulate: false }
                     }
-                },
-                { 
-                    path: 'categorieProfessionnelle', 
-                    select: 'nomFr nomEn grade', 
-                    options: { strictPopulate: false },
-                    populate: {
-                        path: 'grade',
-                        select: 'nomFr nomEn',
-                        options: { strictPopulate: false }
-                    }
-                },
-                { 
-                    path: 'posteDeTravail', 
-                    select: 'nomFr nomEn familleMetier', 
-                    options: { strictPopulate: false },
-                    populate: {
-                        path: 'familleMetier',
-                        select: 'nomFr nomEn',
-                        options: { strictPopulate: false }
-                    }
-                },
-                { 
-                    path: 'commune', 
-                    select: 'nomFr nomEn departement', 
-                    options: { strictPopulate: false },
-                    populate: {
-                        path: 'departement',
-                        select: 'nomFr nomEn region',
-                        options: { strictPopulate: false },
-                        populate: {
-                            path: 'region',
-                            select: 'nomFr nomEn',
-                            options: { strictPopulate: false }
-                        }
-                    }
-                },
+                }
+            },
         ])
         .lean();
 

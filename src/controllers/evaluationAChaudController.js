@@ -3,6 +3,9 @@ import ThemeFormation from '../models/ThemeFormation.js'; // Import manquant
 import { validationResult } from 'express-validator';
 import mongoose from 'mongoose';
 import { t } from '../utils/i18n.js';
+import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
+import EvaluationAChaudReponse from '../models/EvaluationAChaudReponse.js';
+import { LieuFormation } from '../models/LieuFormation.js';
 
 // Créer un modèle d'évaluation à chaud
 export const createEvaluationAChaud = async (req, res) => {
@@ -345,3 +348,113 @@ export const getFilteredEvaluation = async (req, res) => {
         });
     }
 };
+
+
+
+export const getEvaluationsChaudByUtilisateur = async (req, res) => {
+  try {
+    const utilisateurId = req.params.utilisateurId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search?.trim();
+
+    // Étape 1 : Récupération des cohortes
+    const cohortesIds = await CohorteUtilisateur
+      .find({ utilisateur: utilisateurId })
+      .distinct('cohorte');
+
+    // Étape 2 : Récupération des themes via LieuFormation
+    const themeIds = await LieuFormation
+      .find({ cohortes: { $in: cohortesIds } })
+      .distinct('theme');
+
+    // Étape 3 : Filtrage + pagination des évaluations
+    const filter = {
+      theme: { $in: themeIds },
+      actif: true,
+      ...(search && {
+        $or: [
+          { titreFr: { $regex: search, $options: 'i' } },
+          { titreEn: { $regex: search, $options: 'i' } }
+        ]
+      })
+    };
+
+    const [total, evaluations] = await Promise.all([
+      EvaluationAChaud.countDocuments(filter),
+      EvaluationAChaud.find(filter)
+        .populate('theme', 'titreFr titreEn')
+        .populate({path:'rubriques.questions.echelles', options:{strictPopulate:false}})
+        .populate({path:'rubriques.questions.echelles.typeEchelle', select:"nomFr nomEn", options:{strictPopulate:false}})
+        .sort({ updatedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+    ]);
+
+    const evaluationIds = evaluations.map(e => e._id);
+
+    // Étape 4 : Récupération groupée des réponses avec populations
+    const reponses = await EvaluationAChaudReponse.find({
+      utilisateur: utilisateurId,
+      modele: { $in: evaluationIds }
+    })
+      
+      .lean();
+
+    const reponsesByModele = Object.fromEntries(
+      reponses.map(rep => [rep.modele.toString(), rep])
+    );
+
+    // Étape 5 : Calcul des progressions
+    for (let evaluation of evaluations) {
+      const reponse = reponsesByModele[evaluation._id.toString()];
+      
+      let totalQuestions = 0;
+      for (const rubrique of evaluation.rubriques || []) {
+        for (const question of rubrique.questions || []) {
+          totalQuestions += question.sousQuestions?.length || 1;
+        }
+      }
+
+      let totalRepondu = 0;
+      if (reponse) {
+        for (const rubriqueRep of reponse.rubriques || []) {
+          for (const questionRep of rubriqueRep.questions || []) {
+            if (questionRep.sousReponses?.length > 0) {
+              totalRepondu += questionRep.sousReponses.length;
+            } else if (questionRep.reponseEchelleId) {
+              totalRepondu += 1;
+            }
+          }
+        }
+      }
+
+      evaluation.progression = totalQuestions > 0
+        ? Math.round((totalRepondu / totalQuestions) * 100)
+        : 0;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        evaluationChauds: evaluations,
+        totalItems: total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        pageSize: limit
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur getEvaluationsChaudByUtilisateur:', error);
+    return res.status(500).json({ // Correction: ajout de return
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: err.message,
+    });
+  }
+};
+
+
+

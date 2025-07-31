@@ -16,5 +16,6 @@ const themeFormationSchema = new mongoose.Schema({
     nbTachesExecutees:{type:Number} //Enregistrer le nombre total de tache executée du thème
 }, { timestamps: true });
 
+themeFormationSchema.index({ 'lieux.cohortes': 1 });
 const ThemeFormation = mongoose.model('ThemeFormation', themeFormationSchema);
 export default ThemeFormation;

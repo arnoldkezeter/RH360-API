@@ -1,4 +1,4 @@
-//../models/EvaluationAChaud
+//models/EvaluationAChaud
 import mongoose from 'mongoose';
 
 

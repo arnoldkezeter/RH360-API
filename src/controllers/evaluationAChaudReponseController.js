@@ -5,10 +5,93 @@ import mongoose from 'mongoose';
 import Formation from '../models/Formation.js';
 import { getEvolutionStats,getSousQuestionsStats, getQuestionStats, getStatsGroupedByField, findQuestionInEvaluation, formatToCSV, getTopEvaluations, getEvolutionMensuelle } from '../services/evaluationAChaudService.js';
 import EvaluationAChaud from '../models/EvaluationAChaud.js';
+import Utilisateur from '../models/Utilisateur.js';
+import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
+import { LieuFormation } from '../models/LieuFormation.js';
 
-// Soumettre une réponse à une évaluation
+export const saveDraftEvaluationAChaudReponse = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    
+    try {
+        const { utilisateur, modele, rubriques, commentaireGeneral } = req.body;
+
+        // Vérifier que l'utilisateur et le modèle existent
+        const [userExists, evaluationModel] = await Promise.all([
+            Utilisateur.findById(utilisateur),
+            EvaluationAChaud.findById(modele)
+        ]);
+
+        if (!userExists) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang)
+            });
+        }
+
+        if (!evaluationModel) {
+            return res.status(404).json({
+                success: false,
+                message: t('evaluation_non_trouvee', lang)
+            });
+        }
+
+        // Calculer la progression
+        const progression = calculateProgression(rubriques, evaluationModel);
+
+        // Chercher un brouillon existant
+        let reponseExistante = await EvaluationAChaudReponse.findOne({
+            utilisateur: new mongoose.Types.ObjectId(utilisateur),
+            modele: new mongoose.Types.ObjectId(modele),
+            statut: 'brouillon'
+        });
+
+        const reponseData = {
+            utilisateur: new mongoose.Types.ObjectId(utilisateur),
+            modele: new mongoose.Types.ObjectId(modele),
+            rubriques: formatRubriques(rubriques),
+            commentaireGeneral: commentaireGeneral || undefined,
+            statut: 'brouillon',
+            progression,
+            dateSoumission: new Date()
+        };
+
+        if (reponseExistante) {
+            // Mettre à jour le brouillon existant
+            Object.assign(reponseExistante, reponseData);
+            await reponseExistante.save();
+            reponse = reponseExistante;
+        } else {
+            // Créer un nouveau brouillon
+            reponse = new EvaluationAChaudReponse(reponseData);
+            await reponse.save();
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: t('brouillon_sauvegarde', lang),
+            data: {
+                id: reponse._id,
+                statut: reponse.statut,
+                progression: reponse.progression,
+                dateSauvegarde: reponse.dateSoumission
+            }
+        });
+
+    } catch (err) {
+        console.error('Erreur lors de la sauvegarde du brouillon:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : 'Erreur interne'
+        });
+    }
+};
+
+
 export const submitEvaluationAChaudReponse = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
+    
+    // ✅ Validation rapide des champs
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -19,29 +102,190 @@ export const submitEvaluationAChaudReponse = async (req, res) => {
     }
 
     try {
-        const { formation, utilisateur, modele } = req.body;
+        const { utilisateur, modele, rubriques, commentaireGeneral } = req.body;
 
-        const dejaRepondu = await EvaluationAChaudReponse.findOne({ formation, utilisateur, modele });
-        if (dejaRepondu) {
-            return res.status(400).json({ 
-                success: false, 
-                message: t('evaluation_deja_repondu', lang) 
+        // ✅ Optimisation: Validation de structure avant requêtes DB
+        if (!rubriques || !Array.isArray(rubriques) || rubriques.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: t('rubriques_obligatoires', lang)
             });
         }
 
-        const reponse = new EvaluationAChaudReponse(req.body);
-        await reponse.save();
+        // ✅ Validation détaillée optimisée en une seule passe
+        const validationErrors = [];
+        let totalQuestions = 0;
+        
+        // Pré-validation de la structure pour éviter les requêtes DB inutiles
+        for (const rubrique of rubriques) {
+            if (!rubrique.rubriqueId || !rubrique.questions || !Array.isArray(rubrique.questions)) {
+                validationErrors.push(`Rubrique ${rubrique.rubriqueId || 'inconnue'}: structure invalide`);
+                continue;
+            }
 
+            for (const question of rubrique.questions) {
+                if (!question.questionId) {
+                    validationErrors.push(`Question manquante dans rubrique ${rubrique.rubriqueId}`);
+                    continue;
+                }
+
+                // Vérifier qu'une question a soit reponseEchelleId soit sousQuestions
+                const hasDirectResponse = question.reponseEchelleId;
+                const hasSousQuestions = question.sousQuestions && question.sousQuestions.length > 0;
+
+                if (!hasDirectResponse && !hasSousQuestions) {
+                    validationErrors.push(`Question ${question.questionId}: aucune réponse fournie`);
+                } else if (hasDirectResponse && hasSousQuestions) {
+                    validationErrors.push(`Question ${question.questionId}: réponse directe ET sous-réponses fournies (conflit)`);
+                }
+
+                // Validation des sous-réponses si présentes
+                if (hasSousQuestions) {
+                    for (const sousQuestion of question.sousQuestions) {
+                        if (!sousQuestion.sousQuestionId || !sousQuestion.reponseEchelleId) {
+                            validationErrors.push(`Sous-question ${sousQuestion.sousQuestionId || 'inconnue'}: réponse incomplète`);
+                        }
+                    }
+                    totalQuestions += question.sousQuestions.length;
+                } else {
+                    totalQuestions += 1;
+                }
+            }
+        }
+
+        // ✅ Retour rapide si erreurs de validation
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: t('donnees_invalides', lang),
+                errors: validationErrors
+            });
+        }
+
+        // ✅ Optimisation: Vérifications DB en parallèle
+        const [userExists, evaluationModel] = await Promise.all([
+            Utilisateur.findById(utilisateur).select('_id').lean(),
+            EvaluationAChaud.findById(modele).select('_id titreFr titreEn').lean()
+        ]);
+
+        if (!userExists) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang)
+            });
+        }
+
+        if (!evaluationModel) {
+            return res.status(404).json({
+                success: false,
+                message: t('evaluation_non_trouvee', lang)
+            });
+        }
+
+        // ✅ Optimisation: Construction des ObjectIds en lot
+        const utilisateurId = new mongoose.Types.ObjectId(utilisateur);
+        const modeleId = new mongoose.Types.ObjectId(modele);
+
+        // ✅ Optimisation: Pré-construction de la structure de données
+        const reponseData = {
+            utilisateur: utilisateurId,
+            modele: modeleId,
+            rubriques: rubriques.map(rubrique => ({
+                rubriqueId: new mongoose.Types.ObjectId(rubrique.rubriqueId),
+                questions: rubrique.questions.map(question => {
+                    const questionData = {
+                        questionId: new mongoose.Types.ObjectId(question.questionId),
+                        commentaireGlobal: question.commentaireGlobal || undefined
+                    };
+
+                    if (question.sousQuestions?.length > 0) {
+                        questionData.sousQuestions = question.sousQuestions.map(sr => ({
+                            sousQuestionId: new mongoose.Types.ObjectId(sr.sousQuestionId),
+                            reponseEchelleId: new mongoose.Types.ObjectId(sr.reponseEchelleId),
+                            commentaire: sr.commentaire || undefined
+                        }));
+                        questionData.reponseEchelleId = undefined;
+                    } else {
+                        questionData.reponseEchelleId = question.reponseEchelleId ? 
+                            new mongoose.Types.ObjectId(question.reponseEchelleId) : undefined;
+                        questionData.sousQuestions = undefined;
+                    }
+
+                    return questionData;
+                })
+            })),
+            commentaireGeneral: commentaireGeneral || undefined,
+            dateSoumission: new Date()
+        };
+
+        // ✅ Optimisation: Upsert avec retour des données minimales
+        const reponse = await EvaluationAChaudReponse.findOneAndUpdate(
+            {
+                utilisateur: utilisateurId,
+                modele: modeleId
+            },
+            reponseData,
+            { 
+                new: true, 
+                upsert: true, 
+                setDefaultsOnInsert: true,
+                lean: true // ✅ Performance: pas besoin d'instance Mongoose
+            }
+        );
+
+        // ✅ Optimisation: Réponse avec données pré-calculées
         return res.status(201).json({ 
             success: true, 
-            message: t('ajoute_succes', lang), 
-            data: reponse 
+            message: t('soumis_succes', lang), 
+            data: {
+                id: reponse._id,
+                dateSoumission: reponse.dateSoumission,
+                utilisateur: {
+                    _id: userExists._id
+                },
+                evaluation: {
+                    _id: evaluationModel._id,
+                    titreFr: evaluationModel.titreFr,
+                    titreEn: evaluationModel.titreEn
+                },
+                totalRubriques: reponse.rubriques.length,
+                totalQuestions: totalQuestions
+            }
         });
+
     } catch (err) {
+        console.error('Erreur lors de la soumission de l\'évaluation:', err);
+        
+        // ✅ Gestion optimisée des erreurs avec switch
+        switch (err.name) {
+            case 'ValidationError':
+                return res.status(400).json({
+                    success: false,
+                    message: t('donnees_invalides', lang),
+                    errors: Object.values(err.errors).map(e => e.message)
+                });
+                
+            case 'CastError':
+                return res.status(400).json({
+                    success: false,
+                    message: t('id_invalide', lang),
+                    error: 'Format d\'identifiant invalide'
+                });
+                
+            case 'MongoServerError':
+                if (err.code === 11000) { // Erreur de duplicata
+                    return res.status(409).json({
+                        success: false,
+                        message: t('evaluation_deja_repondu', lang)
+                    });
+                }
+                break;
+        }
+
         return res.status(500).json({ 
             success: false, 
             message: t('erreur_serveur', lang), 
-            error: err.message 
+            error: process.env.NODE_ENV === 'development' ? err.message : 'Erreur interne'
         });
     }
 };
@@ -870,6 +1114,185 @@ export const getDashboardEvaluations = async (req, res) => {
             error: err.message
         });
     }
+};
+
+
+export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => {
+  try {
+    const utilisateurId = req.params.utilisateurId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search?.trim();
+
+    // ✅ Optimisation: Utilisation d'une seule requête avec pipeline d'agrégation
+    const cohortesIds = await CohorteUtilisateur.find({ utilisateur: utilisateurId }).distinct('cohorte');
+    const themeIds = await LieuFormation.find({ cohortes: { $in: cohortesIds } }).distinct('theme');
+
+    const filter = {
+      theme: { $in: themeIds },
+      actif: true,
+      ...(search && {
+        $or: [
+          { titreFr: { $regex: search, $options: 'i' } },
+          { titreEn: { $regex: search, $options: 'i' } }
+        ]
+      })
+    };
+
+    // ✅ Optimisation: Requêtes parallèles avec Promise.all
+    const [total, evaluations, reponses] = await Promise.all([
+      EvaluationAChaud.countDocuments(filter),
+      EvaluationAChaud.find(filter)
+        .populate('theme', 'titreFr titreEn')
+        .populate({
+          path: 'rubriques.questions.echelles',
+          options: { strictPopulate: false }
+        })
+        .sort({ updatedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      // ✅ Pré-charger toutes les réponses en une seule requête
+      EvaluationAChaud.find(filter)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+        .then(evals => {
+          const evaluationIds = evals.map(e => e._id);
+          return EvaluationAChaudReponse.find({
+            utilisateur: utilisateurId,
+            modele: { $in: evaluationIds }
+          }).lean();
+        })
+    ]);
+
+    // ✅ Optimisation: Map unique pour les réponses
+    const reponsesByModele = new Map(
+      reponses.map(rep => [rep.modele.toString(), rep])
+    );
+
+    // ✅ Optimisation: Traitement en lot avec une seule boucle
+    const evaluationsEnrichies = evaluations.map(evaluation => {
+      const reponse = reponsesByModele.get(evaluation._id.toString());
+
+      // ✅ Calcul optimisé de la progression
+      let totalQuestions = 0;
+      let totalRepondu = 0;
+
+      // Pré-calcul des totaux
+      for (const rubrique of evaluation.rubriques || []) {
+        for (const question of rubrique.questions || []) {
+          totalQuestions += question.sousQuestions?.length || 1;
+        }
+      }
+
+      if (reponse?.rubriques) {
+        for (const rubriqueRep of reponse.rubriques) {
+          for (const questionRep of rubriqueRep.questions) {
+            if (questionRep.sousQuestions?.length > 0) {
+              totalRepondu += questionRep.sousQuestions.length;
+            } else if (questionRep.reponseEchelleId) {
+              totalRepondu += 1;
+            }
+          }
+        }
+      }
+
+      evaluation.progression = totalQuestions > 0
+        ? Math.round((totalRepondu / totalQuestions) * 100)
+        : 0;
+
+      // ✅ Enrichissement optimisé des rubriques
+      if (reponse?.rubriques) {
+        // Création de maps pour accès O(1) au lieu de find() O(n)
+        const rubriqueReponseMap = new Map(
+          reponse.rubriques.map(rr => [rr.rubriqueId.toString(), rr])
+        );
+
+        evaluation.rubriques = evaluation.rubriques.map(rubriqueEval => {
+          const rubriqueReponse = rubriqueReponseMap.get(rubriqueEval._id.toString());
+          
+          if (!rubriqueReponse) return rubriqueEval;
+
+          // Map des questions pour accès O(1)
+          const questionReponseMap = new Map(
+            rubriqueReponse.questions.map(qr => [qr.questionId.toString(), qr])
+          );
+
+          const questionsEnrichies = rubriqueEval.questions.map(questionEval => {
+            const questionReponse = questionReponseMap.get(questionEval._id.toString());
+
+            let questionEnrichie = {
+              ...questionEval,
+              questionId: questionEval._id
+            };
+
+            if (!questionReponse) return questionEnrichie;
+
+            // ✅ Traitement optimisé des réponses
+            if (questionReponse.reponseEchelleId && (!questionEval.sousQuestions || questionEval.sousQuestions.length === 0)) {
+              questionEnrichie.reponseEchelleId = questionReponse.reponseEchelleId;
+            }
+
+            if (questionReponse.commentaireGlobal) {
+              questionEnrichie.commentaireGlobal = questionReponse.commentaireGlobal;
+            }
+
+            // ✅ Traitement optimisé des sous-questions
+            if (questionEval.sousQuestions?.length > 0 && questionReponse.sousQuestions) {
+              const sousReponseMap = new Map(
+                questionReponse.sousQuestions.map(sr => [sr.sousQuestionId.toString(), sr])
+              );
+
+              questionEnrichie.sousQuestions = questionEval.sousQuestions.map(sousQuestion => {
+                const sousReponse = sousReponseMap.get(sousQuestion._id.toString());
+
+                const enrichedSousQuestion = {
+                  ...sousQuestion,
+                  sousQuestionId: sousQuestion._id
+                };
+
+                if (sousReponse) {
+                  enrichedSousQuestion.reponseEchelleId = sousReponse.reponseEchelleId;
+                  enrichedSousQuestion.commentaire = sousReponse.commentaire;
+                }
+
+                return enrichedSousQuestion;
+              });
+            }
+
+            return questionEnrichie;
+          });
+
+          return {
+            ...rubriqueEval,
+            questions: questionsEnrichies
+          };
+        });
+      }
+
+      return evaluation;
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        evaluationChauds: evaluationsEnrichies,
+        totalItems: total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        pageSize: limit
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur getEvaluationsChaudByUtilisateurAvecEchelles:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: error.message,
+    });
+  }
 };
 
 

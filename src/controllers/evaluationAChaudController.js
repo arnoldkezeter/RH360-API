@@ -9,7 +9,7 @@ import { LieuFormation } from '../models/LieuFormation.js';
 
 // Créer un modèle d'évaluation à chaud
 export const createEvaluationAChaud = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -88,7 +88,7 @@ export const createEvaluationAChaud = async (req, res) => {
 
 // Modifier un modèle d'évaluation
 export const updateEvaluationAChaud = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
     const {
         titreFr,
@@ -168,7 +168,7 @@ export const updateEvaluationAChaud = async (req, res) => {
 
 // Supprimer un modèle
 export const deleteEvaluationAChaud = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -202,7 +202,7 @@ export const deleteEvaluationAChaud = async (req, res) => {
 
 // Liste paginée
 export const listEvaluationAChaud = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
@@ -231,17 +231,33 @@ export const listEvaluationAChaud = async (req, res) => {
 };
 
 // Pour menus déroulants
-export const dropdownEvaluationAChaud = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr'; // Correction: déclaration de lang
+export const getEvaluationForDropdown = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr'; // Correction: déclaration de lang
+    const { themeId } = req.params;
     
     try {
-        const evaluations = await EvaluationAChaud.find({ actif: true })
+        if (!mongoose.Types.ObjectId.isValid(themeId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+        const evaluations = await EvaluationAChaud.find({theme:themeId, actif: true })
             .select('titreFr titreEn')
-            .sort({ titreFr: 1 });
+            .sort({ [sortField]: 1 })
+            .lean();
 
         return res.status(200).json({ 
             success: true, 
-            data: evaluations // Correction: formatage
+            data: {
+                evaluationChauds:evaluations,
+                totalItems:evaluations.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:evaluations.length 
+            
+            },
         });
     } catch (err) {
         return res.status(500).json({ 
@@ -254,7 +270,7 @@ export const dropdownEvaluationAChaud = async (req, res) => {
 
 // Récupérer une évaluation à chaud complète par ID
 export const getEvaluationAChaudById = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -290,13 +306,13 @@ export const getEvaluationAChaudById = async (req, res) => {
 };
 
 export const getFilteredEvaluation = async (req, res) => {
-    const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
+    const lang = req.headers['accept-language'] || 'fr';
     // const { themeId } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search?.trim();
     
-
+    
     // if (!mongoose.Types.ObjectId.isValid(themeId)) {
     //     return res.status(400).json({
     //         success: false,

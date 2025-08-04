@@ -3,8 +3,8 @@ import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
 import Formation from '../models/Formation.js';
-import { getEvolutionStats,getSousQuestionsStats, getQuestionStats, getStatsGroupedByField, findQuestionInEvaluation, formatToCSV, getTopEvaluations, getEvolutionMensuelle } from '../services/evaluationAChaudService.js';
-import EvaluationAChaud from '../models/EvaluationAChaud.js';
+import { getQuestionStats, getStatsGroupedByField, findQuestionInEvaluation, formatToCSV, getTopEvaluations, getEvolutionMensuelle, getEvolutionStatsSimple, getAdvancedEvaluationStats, debugEvaluationData, getSousQuestionsPipeline, getBasePipelineForStats } from '../services/evaluationAChaudService.js';
+import EvaluationChaud from '../models/EvaluationAChaud.js';
 import Utilisateur from '../models/Utilisateur.js';
 import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
 import { LieuFormation } from '../models/LieuFormation.js';
@@ -165,7 +165,7 @@ export const submitEvaluationAChaudReponse = async (req, res) => {
         // ✅ Optimisation: Vérifications DB en parallèle
         const [userExists, evaluationModel] = await Promise.all([
             Utilisateur.findById(utilisateur).select('_id').lean(),
-            EvaluationAChaud.findById(modele).select('_id titreFr titreEn').lean()
+            EvaluationChaud.findById(modele).select('_id titreFr titreEn').lean()
         ]);
 
         if (!userExists) {
@@ -482,11 +482,12 @@ export const getStatsParParticipant = async (req, res) => {
 export const getEvaluationStats = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { evaluationId } = req.params;
-    
+    const { participantsAttendus } = req.query; // Ajout du paramètre attendu
+
     try {
-        const evaluation = await EvaluationAChaud.findById(evaluationId)
+        const evaluation = await EvaluationChaud.findById(evaluationId)
             .populate('theme', 'nomFr nomEn');
-        
+
         if (!evaluation) {
             return res.status(404).json({
                 success: false,
@@ -494,114 +495,158 @@ export const getEvaluationStats = async (req, res) => {
             });
         }
 
-        const totalReponses = await EvaluationAChaudReponse.countDocuments({ 
-            modele: evaluationId
-        });
-
-        const totalParticipants = await EvaluationAChaudReponse.distinct('utilisateur', {
-            modele: evaluationId
-        }).length;
-
-        // Calcul de la moyenne globale avec votre structure
-        const pipeline = [
+        const statsPipeline = [
             { $match: { modele: new mongoose.Types.ObjectId(evaluationId) } },
-            { $unwind: '$rubriques' },
-            { $unwind: '$rubriques.questions' },
+            
             {
-                $lookup: {
-                    from: 'evaluationchauds',
-                    localField: 'modele',
-                    foreignField: '_id',
-                    as: 'evaluation'
-                }
-            },
-            { $unwind: '$evaluation' },
-            {
-                $addFields: {
-                    questionData: {
-                        $arrayElemAt: [
-                            {
-                                $filter: {
-                                    input: {
-                                        $reduce: {
-                                            input: '$evaluation.rubriques',
-                                            initialValue: [],
-                                            in: { $concatArrays: ['$value', '$this.questions'] }
-                                        }
-                                    },
-                                    cond: { $eq: ['$this._id', '$rubriques.questions.questionId'] }
+                $facet: {
+                    // Participants uniques
+                    participants: [
+                        { $group: { _id: '$utilisateur' } },
+                        { $count: 'total' }
+                    ],
+                    
+                    // Réponses complètes (documents)
+                    reponsesCompletes: [
+                        { $count: 'total' }
+                    ],
+                    
+                    // Commentaires (avec votre correction)
+                    commentaires: [
+                        // ... votre pipeline commentaires corrigé
+                    ],
+                    
+                    // Statistiques des réponses aux questions
+                    statistiquesQuestions: [
+                        { $unwind: '$rubriques' },
+                        { $unwind: '$rubriques.questions' },
+                        
+                        {
+                            $lookup: {
+                                from: 'evaluationchauds',
+                                localField: 'modele',
+                                foreignField: '_id',
+                                as: 'evaluation'
+                            }
+                        },
+                        { $unwind: '$evaluation' },
+                        
+                        {
+                            $addFields: {
+                                questionData: {
+                                    $arrayElemAt: [
+                                        {
+                                            $filter: {
+                                                input: {
+                                                    $reduce: {
+                                                        input: '$evaluation.rubriques',
+                                                        initialValue: [],
+                                                        in: { $concatArrays: ['$$value', '$$this.questions'] }
+                                                    }
+                                                },
+                                                cond: { $eq: ['$$this._id', '$rubriques.questions.questionId'] }
+                                            }
+                                        }, 0
+                                    ]
                                 }
-                            }, 0
-                        ]
-                    }
-                }
-            },
-            {
-                $addFields: {
-                    valeurNumerique: {
-                        $cond: {
-                            if: { $gt: [{ $size: '$rubriques.questions.sousReponses' }, 0] },
-                            then: {
-                                // Pour les questions avec sous-réponses, calculer la moyenne des sous-réponses
-                                $avg: {
-                                    $map: {
-                                        input: '$rubriques.questions.sousReponses',
-                                        as: 'sousRep',
-                                        in: {
-                                            $arrayElemAt: [
-                                                {
-                                                    $map: {
-                                                        input: '$questionData.echelle',
-                                                        as: 'echelle',
-                                                        in: {
-                                                            $cond: {
-                                                                if: { $eq: ['$echelle._id', '$sousRep.reponseEchelleId'] },
-                                                                then: '$echelle.ordre',
-                                                                else: null
-                                                            }
+                            }
+                        },
+                        
+                        {
+                            $lookup: {
+                                from: 'echellereponses',
+                                localField: 'questionData.echelles',
+                                foreignField: '_id',
+                                as: 'echelles'
+                            }
+                        },
+                        
+                        {
+                            $addFields: {
+                                valeurNumerique: {
+                                    $cond: {
+                                        if: { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
+                                        then: {
+                                            $avg: {
+                                                $map: {
+                                                    input: '$rubriques.questions.sousQuestions',
+                                                    as: 'sousRep',
+                                                    in: {
+                                                        $let: {
+                                                            vars: {
+                                                                echelle: {
+                                                                    $arrayElemAt: [
+                                                                        {
+                                                                            $filter: {
+                                                                                input: '$echelles',
+                                                                                cond: { $eq: ['$$this._id', '$$sousRep.reponseEchelleId'] }
+                                                                            }
+                                                                        }, 0
+                                                                    ]
+                                                                }
+                                                            },
+                                                            in: '$$echelle.ordre'
                                                         }
                                                     }
-                                                }, 0
-                                            ]
+                                                }
+                                            }
+                                        },
+                                        else: {
+                                            $let: {
+                                                vars: {
+                                                    echelle: {
+                                                        $arrayElemAt: [
+                                                            {
+                                                                $filter: {
+                                                                    input: '$echelles',
+                                                                    cond: { $eq: ['$$this._id', '$rubriques.questions.reponseEchelleId'] }
+                                                                }
+                                                            }, 0
+                                                        ]
+                                                    }
+                                                },
+                                                in: '$$echelle.ordre'
+                                            }
                                         }
                                     }
                                 }
-                            },
-                            else: {
-                                // Pour les questions simples, utiliser reponseEchelleId
-                                $arrayElemAt: [
-                                    {
-                                        $map: {
-                                            input: '$questionData.echelle',
-                                            as: 'echelle',
-                                            in: {
-                                                $cond: {
-                                                    if: { $eq: ['$echelle._id', '$rubriques.questions.reponseEchelleId'] },
-                                                    then: '$echelle.ordre',
-                                                    else: null
-                                                }
-                                            }
-                                        }
-                                    }, 0
-                                ]
+                            }
+                        },
+                        
+                        { $match: { valeurNumerique: { $ne: null, $exists: true } } },
+                        
+                        {
+                            $group: {
+                                _id: null,
+                                totalReponsesQuestions: { $sum: 1 },
+                                moyenneGlobale: { $avg: '$valeurNumerique' },
+                                minimum: { $min: '$valeurNumerique' },
+                                maximum: { $max: '$valeurNumerique' }
                             }
                         }
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    moyenneGlobale: { $avg: '$valeurNumerique' },
-                    totalReponses: { $sum: 1 }
+                    ]
                 }
             }
         ];
 
-        const [stats] = await EvaluationAChaudReponse.aggregate(pipeline);
+        const [statsResult] = await EvaluationAChaudReponse.aggregate(statsPipeline);
 
-        // Évolution sur les 4 derniers mois
-        const evolutionData = await getEvolutionStats(evaluation.theme._id, 4);
+        // Extraction sécurisée des résultats
+        const totalParticipants = statsResult?.participants?.[0]?.total || 0;
+        const totalCommentaires = statsResult?.commentaires?.[0]?.total || 0;
+        const totalReponsesCompletes = statsResult?.reponsesCompletes?.[0]?.total || 0;
+        const questionStats = statsResult?.statistiquesQuestions?.[0] || {};
+        
+        const totalReponsesQuestions = questionStats.totalReponsesQuestions || 0;
+        const moyenneGlobale = questionStats.moyenneGlobale ? 
+            parseFloat(questionStats.moyenneGlobale.toFixed(2)) : 0;
+        const minimum = questionStats.minimum || 0;
+        const maximum = questionStats.maximum || 0;
+
+        // Calcul du taux de réponse corrigé
+        const participantsAttendusParsed = parseInt(participantsAttendus) || totalParticipants;
+        const tauxReponse = participantsAttendusParsed > 0 ? 
+            parseFloat(((totalParticipants / participantsAttendusParsed) * 100).toFixed(1)) : 100;
 
         return res.status(200).json({
             success: true,
@@ -613,20 +658,24 @@ export const getEvaluationStats = async (req, res) => {
                     theme: lang === 'fr' ? evaluation.theme.nomFr : evaluation.theme.nomEn
                 },
                 statistiques: {
-                    totalReponses,
-                    totalParticipants,
-                    tauxReponse: totalParticipants > 0 ? ((totalReponses / totalParticipants) * 100).toFixed(1) : 0,
-                    moyenneGlobale: stats ? parseFloat(stats.moyenneGlobale.toFixed(2)) : 0
-                },
-                evolution: evolutionData
+                    nombreReponses: totalReponsesCompletes, // Nombre de réponses complètes
+                    nombreCommentaires: totalCommentaires,
+                    nombreParticipants: totalParticipants,
+                    nombreReponsesQuestions: totalReponsesQuestions, // Nouveau: nombre total de réponses aux questions
+                    maximum: maximum,
+                    minimum: minimum,
+                    moyenneGlobale: moyenneGlobale,
+                    tauxReponse: tauxReponse
+                }
             }
         });
 
     } catch (err) {
+        console.error('Erreur dans getEvaluationStats:', err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
-            error: err.message
+            error: process.env.NODE_ENV === 'development' ? err.message : 'Erreur interne'
         });
     }
 };
@@ -637,45 +686,123 @@ export const getResultatsByRubrique = async (req, res) => {
     const { evaluationId } = req.params;
     
     try {
-        const evaluation = await EvaluationAChaud.findById(evaluationId);
+        const evaluation = await EvaluationChaud.findById(evaluationId).populate({
+            path: 'rubriques.questions.echelles',
+            model: 'EchelleReponse'
+        });
+
         if (!evaluation) {
             return res.status(404).json({
                 success: false,
                 message: t('evaluation_non_trouvee', lang)
             });
         }
+        
+        const [statsRubriquesQuestions, sousQuestionsStats] = await Promise.all([
+            EvaluationAChaudReponse.aggregate([
+                ...getBasePipelineForStats(evaluationId),
+                {
+                    $group: {
+                        _id: '$questionId',
+                        rubriqueId: { $first: '$rubriqueId' },
+                        moyenne: { $avg: '$valeurNumerique' },
+                        ordres: { $push: '$ordresNumeriques' } 
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$rubriqueId',
+                        moyenne: { $avg: '$moyenne' },
+                        questions: { $push: { id: '$_id', moyenne: '$moyenne', ordres: '$ordres' } }
+                    }
+                },
+                { $sort: { '_id': 1 } }
+            ]),
+            EvaluationAChaudReponse.aggregate(getSousQuestionsPipeline(evaluationId))
+        ]);
 
-        const resultats = [];
-
-        for (const rubrique of evaluation.rubriques) {
-            const questionsStats = [];
+        const couleurs = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
+        
+        const rubriquesFinales = evaluation.rubriques.map(rubrique => {
+            const statsRubrique = statsRubriquesQuestions.find(s => s._id.toString() === rubrique._id.toString());
             
-            for (const question of rubrique.questions) {
-                const questionStats = await getQuestionStats(evaluationId, question._id, lang);
-                questionsStats.push(questionStats);
-            }
+            const questionsFinales = rubrique.questions.map(question => {
+                const statsQuestion = statsRubrique?.questions.find(q => q.id.toString() === question._id.toString());
+                
+                const ordresAplatit = statsQuestion ? statsQuestion.ordres.flat() : [];
+                
+                const repartitionMap = {};
+                ordresAplatit.forEach(val => {
+                    repartitionMap[val] = (repartitionMap[val] || 0) + 1;
+                });
+                
+                const repartitionFormatee = question.echelles
+                    .sort((a, b) => a.ordre - b.ordre)
+                    .map((echelle, index) => ({
+                        echelle: lang === 'fr' ? echelle.nomFr : echelle.nomEn,
+                        valeur: repartitionMap[echelle.ordre] || 0,
+                        couleur: couleurs[index] || '#6b7280'
+                    }));
 
-            // Moyenne de la rubrique
-            const moyenneRubrique = questionsStats.reduce((sum, q) => sum + q.moyenne, 0) / questionsStats.length;
+                const sousQuestionsFinales = question.sousQuestions.map(sousQ => {
+                    const statsSousQ = sousQuestionsStats.find(s => 
+                        s._id.sousQuestionId.toString() === sousQ._id.toString()
+                    );
+                    
+                    // Calcul de la répartition pour les sous-questions
+                    const sousQRepartitionMap = {};
+                    if (statsSousQ) {
+                        statsSousQ.ordres.forEach(val => {
+                            sousQRepartitionMap[val] = (sousQRepartitionMap[val] || 0) + 1;
+                        });
+                    }
+                    
+                    const sousQRepartitionFormatee = question.echelles
+                        .sort((a, b) => a.ordre - b.ordre)
+                        .map((echelle, index) => ({
+                            echelle: lang === 'fr' ? echelle.nomFr : echelle.nomEn,
+                            valeur: sousQRepartitionMap[echelle.ordre] || 0,
+                            couleur: couleurs[index] || '#6b7280'
+                        }));
+                    
+                    return {
+                        id: sousQ._id,
+                        libelle: lang === 'fr' ? sousQ.libelleFr : sousQ.libelleEn,
+                        // Ajout des nouvelles statistiques
+                        moyenne: statsSousQ ? parseFloat(statsSousQ.moyenne.toFixed(2)) : 0,
+                        min: statsSousQ ? statsSousQ.min : 0,
+                        max: statsSousQ ? statsSousQ.max : 0,
+                        count: statsSousQ ? statsSousQ.count : 0,
+                        repartition: sousQRepartitionFormatee
+                    };
+                });
+                
+                return {
+                    id: question._id,
+                    libelleFr: question.libelleFr,
+                    libelleEn: question.libelleEn,
+                    moyenne: statsQuestion ? parseFloat(statsQuestion.moyenne.toFixed(2)) : 0,
+                    repartition: repartitionFormatee,
+                    sousQuestions: sousQuestionsFinales
+                };
+            }).sort((a, b) => a.ordre - b.ordre);
 
-            resultats.push({
+            return {
                 id: rubrique._id,
-                titre: lang === 'fr' ? rubrique.titreFr : rubrique.titreEn,
-                ordre: rubrique.ordre,
-                moyenne: parseFloat(moyenneRubrique.toFixed(2)),
-                questions: questionsStats
-            });
-        }
-
-        // Tri par ordre
-        resultats.sort((a, b) => a.ordre - b.ordre);
+                titreFr: rubrique.titreFr,
+                titreEn: rubrique.titreEn,
+                moyenne: statsRubrique ? parseFloat(statsRubrique.moyenne.toFixed(2)) : 0,
+                questions: questionsFinales
+            };
+        }).sort((a, b) => a.ordre - b.ordre);
 
         return res.status(200).json({
             success: true,
-            data: resultats
+            data: rubriquesFinales
         });
 
     } catch (err) {
+        console.error("Erreur dans getResultatsAgreges:", err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -723,139 +850,189 @@ export const getQuestionDetails = async (req, res) => {
 };
 
 // 4. Commentaires d'une évaluation
-export const getCommentaires = async (req, res) => {
+export const getCommentairesByEvaluation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { evaluationId } = req.params;
-    const { page = 1, limit = 10, questionId } = req.query;
-    
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+
     try {
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-        
-        let matchCondition = { 
-            evaluationId: new mongoose.Types.ObjectId(evaluationId)
-        };
+        const pipeline = [
+            // Étape 1: Filtrer les documents par l'ID de l'évaluation
+            { $match: { modele: new mongoose.Types.ObjectId(evaluationId) } },
 
-        let pipeline;
+            // Étape 2: Décomposer les tableaux de rubriques et de questions
+            { $unwind: '$rubriques' },
+            { $unwind: '$rubriques.questions' },
 
-        if (questionId) {
-            // Commentaires pour une question spécifique
-            pipeline = [
-                { $match: { modele: new mongoose.Types.ObjectId(evaluationId) }},
-                { $unwind: '$rubriques' },
-                { $unwind: '$rubriques.questions' },
-                { $match: { 
-                    'rubriques.questions.questionId': new mongoose.Types.ObjectId(questionId),
-                    $or: [
-                        { 'rubriques.questions.commentaireGlobal': { $exists: true, $ne: '' }},
-                        { 'rubriques.questions.sousReponses.commentaire': { $exists: true, $ne: '' }}
-                    ]
-                }},
-                {
-                    $lookup: {
-                        from: 'utilisateurs',
-                        localField: 'utilisateur',
-                        foreignField: '_id',
-                        as: 'participant'
-                    }
-                },
-                { $unwind: '$participant' },
-                {
-                    $addFields: {
-                        commentaire: {
-                            $cond: {
-                                if: { $ne: ['$rubriques.questions.commentaireGlobal', ''] },
-                                then: '$rubriques.questions.commentaireGlobal',
-                                else: {
-                                    $arrayElemAt: [
-                                        {
-                                            $filter: {
-                                                input: '$rubriques.questions.sousReponses.commentaire',
-                                                cond: { $ne: ['$this', ''] }
-                                            }
-                                        }, 0
-                                    ]
+            // Étape 3: Créer un tableau de tous les commentaires d'une question
+            {
+                $project: {
+                    _id: 0,
+                    tousLesCommentaires: {
+                        $concatArrays: [
+                            {
+                                $cond: {
+                                    if: { $ne: ['$rubriques.questions.commentaire', ''] },
+                                    then: ['$rubriques.questions.commentaire'],
+                                    else: []
+                                }
+                            },
+                            {
+                                $cond: {
+                                    if: { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
+                                    then: '$rubriques.questions.sousQuestions.commentaire',
+                                    else: []
                                 }
                             }
-                        }
+                        ]
                     }
-                },
-                { $match: { commentaire: { $exists: true, $ne: '' }}},
-                {
-                    $project: {
-                        commentaire: 1,
-                        dateSoumission: 1,
-                        participant: {
-                            nom: '$participant.nom',
-                            prenom: '$participant.prenom'
-                        }
-                    }
-                },
-                { $sort: { dateSoumission: -1 }},
-                { $skip: skip },
-                { $limit: parseInt(limit) }
-            ];
-        } else {
-            // Commentaires globaux
-            pipeline = [
-                { $match: { 
-                    modele: new mongoose.Types.ObjectId(evaluationId),
-                    commentaireGeneral: { $exists: true, $ne: '' }
-                }},
-                {
-                    $lookup: {
-                        from: 'utilisateurs',
-                        localField: 'utilisateur',
-                        foreignField: '_id',
-                        as: 'participant'
-                    }
-                },
-                { $unwind: '$participant' },
-                {
-                    $project: {
-                        commentaire: '$commentaireGeneral',
-                        dateSoumission: 1,
-                        participant: {
-                            nom: '$participant.nom',
-                            prenom: '$participant.prenom'
-                        }
-                    }
-                },
-                { $sort: { dateSoumission: -1 }},
-                { $skip: skip },
-                { $limit: parseInt(limit) }
-            ];
+                }
+            },
+
+            // Étape 4: Décomposer le tableau de commentaires
+            { $unwind: '$tousLesCommentaires' },
+
+            // Étape 5: Filtrer les commentaires vides ou nuls
+            { $match: { tousLesCommentaires: { $nin: ['', null, undefined] } } },
+        ];
+
+        // Étape 6: Ajouter la limite si elle est spécifiée et valide
+        if (limit && limit > 0) {
+            pipeline.push({ $limit: limit });
         }
 
-        const commentaires = await EvaluationAChaudReponse.aggregate(pipeline);
-        
-        const totalCommentaires = questionId ? 
-            await EvaluationAChaudReponse.countDocuments({
-                modele: evaluationId,
-                $or: [
-                    { 'rubriques.questions.questionId': questionId, 'rubriques.questions.commentaireGlobal': { $exists: true, $ne: '' }},
-                    { 'rubriques.questions.questionId': questionId, 'rubriques.questions.sousReponses.commentaire': { $exists: true, $ne: '' }}
-                ]
-            }) :
-            await EvaluationAChaudReponse.countDocuments({
-                modele: evaluationId,
-                commentaireGeneral: { $exists: true, $ne: '' }
-            });
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                commentaires,
-                pagination: {
-                    currentPage: parseInt(page),
-                    totalPages: Math.ceil(totalCommentaires / parseInt(limit)),
-                    totalCommentaires,
-                    hasNext: skip + commentaires.length < totalCommentaires,
-                    hasPrev: parseInt(page) > 1
-                }
+        // Étape 7: Rassembler tous les commentaires uniques dans un seul tableau
+        pipeline.push({
+            $group: {
+                _id: null,
+                commentaires: { $addToSet: '$tousLesCommentaires' }
             }
         });
 
+        // Étape 8: Restructurer le résultat
+        pipeline.push({
+            $project: {
+                _id: 0,
+                commentaires: 1
+            }
+        });
+
+        const commentaires = await EvaluationAChaudReponse.aggregate(pipeline);
+
+        const commentairesFinal = commentaires.length > 0 ? commentaires[0].commentaires : [];
+
+        return res.status(200).json({
+            success: true,
+            data: commentairesFinal
+        });
+
     } catch (err) {
+        console.error("Erreur dans getCommentairesByEvaluationId:", err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};
+
+export const getCommentairesByQuestion = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { evaluationId } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+
+    try {
+        const pipeline = [
+            // Étape 1: Commencer par l'évaluation et filtrer par son ID
+            { $match: { _id: new mongoose.Types.ObjectId(evaluationId) } },
+            
+            // Étape 2: Décomposer les rubriques et questions
+            { $unwind: '$rubriques' },
+            { $unwind: '$rubriques.questions' },
+            
+            // Étape 3: Filtrer uniquement les questions avec commentaireGlobal = true
+            { $match: { 'rubriques.questions.commentaireGlobal': true } },
+
+            // Étape 4: Joindre les documents de réponses correspondants (EvaluationAChaudReponse)
+            {
+                $lookup: {
+                    from: 'evaluationachaudreponses',
+                    let: { questionId: '$rubriques.questions._id', evaluationId: '$_id' },
+                    pipeline: [
+                        { $match: { 
+                            $expr: {
+                                $and: [
+                                    { $eq: ['$modele', '$$evaluationId'] },
+                                    { $in: ['$$questionId', '$rubriques.questions.questionId'] }
+                                ]
+                            }
+                        }},
+                        // Extraire les commentaires de la réponse
+                        { $project: {
+                            _id: 0,
+                            commentairesReponse: {
+                                $concatArrays: [
+                                    {
+                                        $filter: {
+                                            input: '$rubriques.questions',
+                                            as: 'q',
+                                            cond: { $and: [
+                                                { $eq: ['$$q.questionId', '$$questionId'] },
+                                                { $ne: ['$$q.commentaire', ''] }
+                                            ]}
+                                        }
+                                    },
+                                    {
+                                        $filter: {
+                                            input: { $first: { $filter: { input: '$rubriques.questions', as: 'q', cond: { $eq: ['$$q.questionId', '$$questionId'] } } } }.sousQuestions,
+                                            as: 'sq',
+                                            cond: { $ne: ['$$sq.commentaire', ''] }
+                                        }
+                                    }
+                                ]
+                            }
+                        }}
+                    ],
+                    as: 'reponses'
+                }
+            },
+            
+            // Étape 5: Aplatir les résultats de la jointure
+            { $unwind: '$reponses' },
+            { $unwind: '$reponses.commentairesReponse' },
+            
+            // Étape 6: Regrouper les commentaires par question
+            {
+                $group: {
+                    _id: '$rubriques.questions._id',
+                    question: { $first: lang === 'fr' ? '$rubriques.questions.libelleFr' : '$rubriques.questions.libelleEn' },
+                    commentaires: { $addToSet: '$reponses.commentairesReponse.commentaire' }
+                }
+            },
+            
+            // Étape 7: Restructurer le résultat final
+            {
+                $project: {
+                    _id: 0,
+                    questionId: '$_id',
+                    question: '$question',
+                    commentaires: '$commentaires'
+                }
+            },
+
+            // Étape 8: Ajouter la limite si elle est spécifiée
+            { $limit: limit && limit > 0 ? limit : Number.MAX_SAFE_INTEGER }
+        ];
+        
+        const commentairesParQuestion = await EvaluationChaud.aggregate(pipeline);
+        
+        return res.status(200).json({
+            success: true,
+            data: commentairesParQuestion
+        });
+
+    } catch (err) {
+        console.error("Erreur dans getCommentairesByQuestion:", err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -978,7 +1155,7 @@ export const exportEvaluationData = async (req, res) => {
                     valeurEchelle: '$reponses.valeurEchelle',
                     commentaire: '$reponses.commentaire',
                     dateReponse: 1,
-                    sousReponses: '$reponses.sousReponses'
+                    sousQuestions: '$reponses.sousQuestions'
                 }
             }
         ];
@@ -1117,6 +1294,8 @@ export const getDashboardEvaluations = async (req, res) => {
 };
 
 
+
+
 export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => {
   try {
     const utilisateurId = req.params.utilisateurId;
@@ -1141,8 +1320,8 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
 
     // ✅ Optimisation: Requêtes parallèles avec Promise.all
     const [total, evaluations, reponses] = await Promise.all([
-      EvaluationAChaud.countDocuments(filter),
-      EvaluationAChaud.find(filter)
+      EvaluationChaud.countDocuments(filter),
+      EvaluationChaud.find(filter)
         .populate('theme', 'titreFr titreEn')
         .populate({
           path: 'rubriques.questions.echelles',
@@ -1153,7 +1332,7 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
         .limit(limit)
         .lean(),
       // ✅ Pré-charger toutes les réponses en une seule requête
-      EvaluationAChaud.find(filter)
+      EvaluationChaud.find(filter)
         .skip((page - 1) * limit)
         .limit(limit)
         .lean()

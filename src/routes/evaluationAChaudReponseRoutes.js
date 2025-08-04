@@ -15,13 +15,13 @@ import {
     getEvaluationStats,
     getResultatsByRubrique,
     getQuestionDetails,
-    getCommentaires,
     getComparaisonEvaluations,
     exportEvaluationData,
     // saveDraftEvaluationAChaudReponse,
     // getDraftEvaluationAChaudReponse,
     // getUserDrafts,
-    getEvaluationsChaudByUtilisateurAvecEchelles
+    getEvaluationsChaudByUtilisateurAvecEchelles,
+    getCommentairesByQuestion
 } from '../controllers/evaluationAChaudReponseController.js';
 
 import { authentificate } from '../middlewares/auth.js';
@@ -49,12 +49,13 @@ router.get('/stats/field/:formationId', authentificate, getStatsByField);
 router.get('/stats/utilisateur/:utilisateurId', authentificate, getReponsesUtilisateur);
 router.get('/stats/participant/:formationId/:utilisateurId', authentificate, getStatsParParticipant);
 
-router.get('/dashboard', getDashboardEvaluations);
+
 router.get('/:evaluationId/stats', getEvaluationStats);
 router.get('/:evaluationId/rubriques', getResultatsByRubrique);
 router.get('/:evaluationId/questions/:questionId', getQuestionDetails);
-router.get('/:evaluationId/commentaires', getCommentaires);
+router.get('/:evaluationId/commentaires', getCommentairesByQuestion);
 router.get('/:evaluationId/comparaison', getComparaisonEvaluations);
 router.get('/:evaluationId/export', exportEvaluationData);
+router.get('/dashboard', getDashboardEvaluations);
 
 export default router;

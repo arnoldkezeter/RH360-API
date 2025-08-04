@@ -7,9 +7,9 @@ import EchelleReponse from '../models/EchelleDeReponse.js';
 export const ajouterEchelleReponse = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const {typeId} = req.params;
-  const { nomFr, nomEn } = req.body;
+  const { nomFr, nomEn, ordre } = req.body;
   
-  if (!nomFr || !nomEn || !typeId) {
+  if (!nomFr || !nomEn || !typeId || !ordre) {
     return res.status(400).json({
       success: false,
       message: t('champs_obligatoires', lang),
@@ -32,7 +32,7 @@ export const ajouterEchelleReponse = async (req, res) => {
       });
     }
 
-    const nouvelEchelleReponse = await EchelleReponse.create({ nomFr, nomEn, typeEchelle: typeId });
+    const nouvelEchelleReponse = await EchelleReponse.create({ nomFr, nomEn, ordre, typeEchelle: typeId });
 
     return res.status(201).json({
       success: true,
@@ -52,7 +52,7 @@ export const ajouterEchelleReponse = async (req, res) => {
 export const modifierEchelleReponse = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { typeId, echelleReponseId } = req.params;
-  const { nomFr, nomEn } = req.body;
+  const { nomFr, nomEn, ordre } = req.body;
   if (!mongoose.Types.ObjectId.isValid(echelleReponseId)) {
     return res.status(400).json({
       success: false,
@@ -60,7 +60,7 @@ export const modifierEchelleReponse = async (req, res) => {
     });
   }
 
-  if (!nomFr || !nomEn || !typeId) {
+  if (!nomFr || !nomEn || !typeId || !ordre) {
     return res.status(400).json({
       success: false,
       message: t('champs_obligatoires', lang),
@@ -87,6 +87,7 @@ export const modifierEchelleReponse = async (req, res) => {
 
     echelleReponse.nomFr = nomFr;
     echelleReponse.nomEn = nomEn;
+    echelleReponse.ordre = ordre;
     echelleReponse.typeEchelle = typeId;
 
     await echelleReponse.save();
@@ -169,6 +170,7 @@ export const getEchelleReponsesByType = async (req, res) => {
     const total = await EchelleReponse.countDocuments(filter);
     const echelleReponses = await EchelleReponse.find(filter)
       .skip((page - 1) * limit)
+      .sort({["ordre"]:1})
       .limit(limit)
       .lean();
 
@@ -183,6 +185,7 @@ export const getEchelleReponsesByType = async (req, res) => {
       },
     });
   } catch (error) {
+    console.log(error)
     return res.status(500).json({
       success: false,
       message: t('erreur_serveur', lang),
@@ -227,6 +230,7 @@ export const getGroupedEchelleReponsesByType = async (req, res) => {
     // Récupérer toutes les échelles avec leur type
     const echelles = await EchelleReponse.find()
       .populate('typeEchelle', 'nomFr nomEn')
+      .sort({["ordre"]:1})
       .lean();
 
     // Regrouper les échelles par type
@@ -249,6 +253,7 @@ export const getGroupedEchelleReponsesByType = async (req, res) => {
       grouped[idType].echelles.push({
         idEchelle: echelle._id,
         nomEchelle: lang === 'en' ? echelle.nomEn : echelle.nomFr,
+        ordre:echelle.ordre
       });
     }
 

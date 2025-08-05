@@ -1,3 +1,4 @@
+// models/TacheFormation.js
 import mongoose from 'mongoose';
 const Schema = mongoose.Schema;
 
@@ -8,8 +9,11 @@ const TacheThemeFormationSchema = new Schema({
     dateFin: {type: Date},
     estExecutee: {type: Boolean, default: false},
     fichierJoint: {type: String},
-    donneesEnregistrees: {type: Schema.Types.Mixed},
+    donnees: {type: Schema.Types.Mixed}, // Pour stocker des données personnalisées (budget, uploads, etc.)
     dateExecution: {type: Date},
+    responsable: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' }, // Celui qui exécute
+    statut: {type: String, enum: ['EN_ATTENTE', 'EN_COURS', 'TERMINE'], default: 'EN_ATTENTE',},
+    commentaires: {type:String},
 }, {
   timestamps: true
 });
@@ -19,3 +23,7 @@ TacheThemeFormationSchema.index({ theme: 1, tache: 1 }, { unique: true });
 
 const TacheThemeFormation = mongoose.model('TacheThemeFormation', TacheThemeFormationSchema);
 export default TacheThemeFormation;
+
+
+
+

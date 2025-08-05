@@ -1,16 +1,19 @@
+// models/Tache.js
 import mongoose from 'mongoose';
 const Schema = mongoose.Schema;
 
 const TacheGeneriqueSchema = new Schema({
-    nomFr: {type: String, required: true, unique: true, trim: true},
-    nomEn: {type: String,required: true, unique: true, trim: true},
-    descriptionFr: {type: String, trim: true},
-    descriptionEn: {type: String, trim: true},
-    methodeValidation: {type: String, enum: ['MANUELLE', 'DONNEES', 'FICHIER', 'AUTOMATIQUE'], required: true},
+    code: { type: String, required: true, unique: true }, // ex: 'budget_elaboration'
+    nomFr: { type: String, required: true },
+    nomEn: { type: String, required: true },
+    descriptionFr: { type: String },
+    descriptionEn: { type: String },
+    type: {type: String, enum: ['form', 'checkbox', 'upload', 'autoGenerate', 'email', 'evaluation', 'table-form'], required: true,},
+    obligatoire: { type: Boolean, default: true },
+    actif: { type: Boolean, default: true },
 }, {
     timestamps: true
 });
 
 const TacheGenerique = mongoose.model('TacheGenerique', TacheGeneriqueSchema);
 export default TacheGenerique;
-

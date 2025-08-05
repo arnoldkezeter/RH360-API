@@ -6,7 +6,7 @@
     "connexion_reussie": "Connexion réussie",
     "token_manquant": "Token manquant ou invalide",
     "token_invalide": "Token invalide",
-    "acces_refuse": "Accès refusé",
+    "acces_refuse": "Accès refusé.",
     "erreur_serveur":"Erreur serveur",
     "champs_obligatoires":"Tous les champs obligatoires doivent être fournis",
     "ajouter_succes": "Ajouté avec succès",
@@ -14,7 +14,9 @@
     "modifier_succes": "Modifié avec succès",
     "identifiant_invalide":"Identifiant invalide",
     "nom_requis":"Le nom est requis pour la recherche",
-    "statut_invalide":"Statut invalide",
+    "statut_invalide":"Statut invalide.",
+    "type_tache_non_supporte":"Type de tâche non supporté",
+    "statut_modifie_succes":"Statut modifié avec succès",
     
     
     
@@ -159,7 +161,11 @@
     "donnees_validation_requises": "Les données de validation sont requises.",
     "fichier_validation_requis": "Le fichier de validation est requis.",
     "tache_executee_succes": "Tâche exécutée avec succès.",
-
+    "tache_auto":"Ce type de tâche est déclenché automatiquement.",
+    "tache_fichier_requis":"Un fichier est requis pour cette tâche.",
+    "donnees_requises":"Les données sont requises pour ce type de tâche.",
+    "tache_user_non_autorise":"Non autorisé à exécuter cette tâche.",
+    "tache_reinitialisee":"Tâche réinitialisée.",
 
     
     "programme_formation_existante": "Un programme de formation pour cette année existe déjà.",

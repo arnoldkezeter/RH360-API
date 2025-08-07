@@ -23,7 +23,3 @@ TacheThemeFormationSchema.index({ theme: 1, tache: 1 }, { unique: true });
 
 const TacheThemeFormation = mongoose.model('TacheThemeFormation', TacheThemeFormationSchema);
 export default TacheThemeFormation;
-
-
-
-

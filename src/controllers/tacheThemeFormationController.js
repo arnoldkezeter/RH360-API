@@ -126,7 +126,6 @@ export const getTachesParTheme = async (req, res) => {
   const estExecutee = req.query.estExecutee;
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
-  const sortField = lang === 'fr' ? 'tache.nomFr' : 'tache.nomEn';
 
   if (!validateObjectId(themeId)) {
     return res.status(400).json({
@@ -157,48 +156,73 @@ export const getTachesParTheme = async (req, res) => {
       query.estExecutee = estExecutee === 'true';
     }
 
-    // if (search) {
-    //   const field = lang === 'fr' ? 'tache.nomFr' : 'tache.nomEn';
-    //   query[field] = { $regex: new RegExp(search, 'i') };
-    // }
-
-     if (search && search.trim() !== '') {
-      filter.$or = [
-        { nomFr: { $regex: new RegExp(search, 'i') } },
-        { nomEn: { $regex: new RegExp(search, 'i') } },
-      ];
+    // Si on a une recherche, on doit d'abord chercher les tâches qui matchent
+    let tacheIds = null;
+    if (search && search.trim() !== '') {
+      const tachesMatching = await TacheGenerique.find({
+        $or: [
+          { nomFr: { $regex: new RegExp(search, 'i') } },
+          { nomEn: { $regex: new RegExp(search, 'i') } }
+        ]
+      }).select('_id');
+      
+      tacheIds = tachesMatching.map(t => t._id);
+      
+      // Si aucune tâche ne correspond à la recherche, retourner un résultat vide
+      if (tacheIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            tachesThemeFormation: [],
+            totalItems: 0,
+            currentPage: page,
+            totalPages: 0,
+            pageSize: limit,
+          },
+        });
+      }
+      
+      query.tache = { $in: tacheIds };
     }
-   
+
+    // Compter le total
     const total = await TacheThemeFormation.countDocuments(query);
 
-    const taches = await TacheThemeFormation.find(query)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .sort({ [sortField]: 1 })
+    // Récupérer TOUTES les tâches (sans pagination d'abord) pour pouvoir trier
+    const allTaches = await TacheThemeFormation.find(query)
       .populate({
         path: 'responsable',
-        select:'nom prenom email',
+        select: 'nom prenom email',
         options: { strictPopulate: false }
       })
       .populate({ 
         path: 'theme', 
-        select:'titreFr titreEn',
+        select: 'titreFr titreEn',
         options: { strictPopulate: false }
       })
       .populate({ 
         path: 'tache', 
-        select:'nomFr nomEn type obligatoire',
+        select: 'nomFr nomEn type obligatoire',
         options: { strictPopulate: false } 
       })
       .lean();
-    
 
-    
+    // Tri par ordre alphabétique sur le nom des tâches selon la langue
+    const sortedTaches = allTaches.sort((a, b) => {
+      const nameA = lang === 'fr' ? (a.tache?.nomFr || '') : (a.tache?.nomEn || '');
+      const nameB = lang === 'fr' ? (b.tache?.nomFr || '') : (b.tache?.nomEn || '');
+      return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' });
+    });
+
+    // Appliquer la pagination APRÈS le tri
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedTaches = sortedTaches.slice(startIndex, endIndex);
 
     return res.status(200).json({
       success: true,
       data: {
-        tachesThemeFormation:taches,
+        tachesThemeFormation: paginatedTaches,
         totalItems: total,
         currentPage: page,
         totalPages: Math.ceil(total / limit),

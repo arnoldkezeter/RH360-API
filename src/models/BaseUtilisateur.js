@@ -15,5 +15,6 @@ const BaseUtilisateurSchema = new mongoose.Schema({
     commune:{type: mongoose.Schema.Types.ObjectId, ref: 'Commune'},
 }, { timestamps: true, discriminatorKey: 'type' }); // DiscriminatorKey distingue les types d'utilisateur
 BaseUtilisateurSchema.index({ nom: 1, prenom: 1 });
+BaseUtilisateurSchema.index({ email: 1 }, { unique: true });
 const BaseUtilisateur = mongoose.model('BaseUtilisateur', BaseUtilisateurSchema);
 export default BaseUtilisateur;

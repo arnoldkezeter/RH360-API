@@ -8,8 +8,13 @@ const serviceSchema = new mongoose.Schema({
   descriptionEn: {type:String},
   chefService:{type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
   structure:{type: mongoose.Schema.Types.ObjectId, ref: 'Structure'},
-  nbPlaceStage:{type:Number, default:0}
+  nbPlaceStage:{type:Number, default:0},
+  nbPlaceStageOccupe:{type:Number, default:0}
 }, { timestamps: true });
+
+serviceSchema.index({ nomFr: 1 });
+serviceSchema.index({ nomEn: 1 });
+
 
 const Service = mongoose.model('Service', serviceSchema);
 export default Service;

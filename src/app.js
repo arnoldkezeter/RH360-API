@@ -45,6 +45,7 @@ import tacheStagiaireRoutes from './routes/tacheStagiaireRoutes.js';
 import chercheurRoutes from './routes/chercheurRoutes.js';
 import mandatRechercheRoutes from './routes/mandatRechercheRoutes.js';
 import importDataRoutes from './routes/importDataRoutes.js';
+import exportDocumentRoutes from './routes/exportRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -106,7 +107,8 @@ app.use('/api/v1/stages', stageRoutes);
 app.use('/api/v1/stagiaire/taches-stagiaire', tacheStagiaireRoutes);
 app.use('/api/v1/chercheurs', chercheurRoutes);
 app.use('/api/v1/mandats-recherche', mandatRechercheRoutes);
-app.use('/api/v1/import-export-data', importDataRoutes)
+app.use('/api/v1/import-export-data', importDataRoutes);
+app.use('/api/v1/export-document', exportDocumentRoutes)
 
 // Route racine
 app.get('/', (req, res) => {

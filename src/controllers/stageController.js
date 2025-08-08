@@ -5,841 +5,370 @@ import Stagiaire from '../models/Stagiaire.js';
 import { sendStageNotificationEmail } from '../utils/sendMailNotificatonStage.js';
 import { Groupe } from '../models/Groupe.js';
 import { Rotation } from '../models/Rotation.js';
+import { AffectationFinale } from '../models/AffectationFinale.js';
+import mongoose from 'mongoose';
 
-//Stage Individuel
-export const creerStage = async (req, res) => {
+const isValidDateRange = (start, end) => new Date(start) <= new Date(end);
+
+const isOverlapping = (start1, end1, start2, end2) => {
+  return new Date(start1) <= new Date(end2) && new Date(start2) <= new Date(end1);
+};
+
+const checkOverlaps = (items, idKey) => {
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (
+        items[i][idKey] &&
+        items[i][idKey].toString() === items[j][idKey].toString() &&
+        isOverlapping(items[i].dateDebut, items[i].dateFin, items[j].dateDebut, items[j].dateFin)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+export const createStage = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const {
+      type,
+      stagiaire,
+      groupes,
+      rotations,
+      affectationsFinales,
+      dateDebut,
+      dateFin,
+      anneeStage,
+      statut
+    } = req.body;
+
     const lang = req.headers['accept-language'] || 'fr';
 
-    // Validation des champs
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-            errors: errors.array().map((err) => err.msg),
-        });
+    if (!type || !dateDebut || !dateFin || !anneeStage || !statut) {
+      throw new Error('Champs obligatoires manquants (type, dateDebut, dateFin, anneeStage, statut)');
+    }
+    if (!isValidDateRange(dateDebut, dateFin)) {
+      throw new Error('dateDebut doit être antérieure ou égale à dateFin pour le stage');
     }
 
-    try {
-        const { stagiaires } = req.body;
+    if (type === 'INDIVIDUEL') {
+      if (!stagiaire) throw new Error('Stagiaire obligatoire pour stage individuel');
+      if (groupes && groupes.length > 0) throw new Error('Groupes non autorisés pour stage individuel');
+    } else if (type === 'GROUPE') {
+      if (!groupes || !Array.isArray(groupes) || groupes.length === 0)
+        throw new Error('Groupes obligatoires pour stage groupe');
+      if (stagiaire) throw new Error('Stagiaire non autorisé pour stage groupe');
+    } else {
+      throw new Error('Type de stage invalide');
+    }
 
-        // Vérification des stagiaires
-        const stagiairesPromises = stagiaires.map(async (stagiaire) => {
-            const stagiaireData = await Stagiaire.findById(stagiaire.stagiaire);
-            if (!stagiaireData) {
-                throw new Error(t('stagiaire_non_trouve', lang));
-            }
-            return {
-                ...stagiaire,
-                email: stagiaireData.email,
-                nom: stagiaireData.nom,
-                prenom: stagiaireData.prenom,
-            };
+    if (groupes) {
+      const stagiaireIds = new Set();
+      for (const grp of groupes) {
+        if (!grp.numero) throw new Error('Chaque groupe doit avoir un numéro');
+        if (!grp.stagiaires || !Array.isArray(grp.stagiaires))
+          throw new Error('Chaque groupe doit avoir un tableau stagiaires');
+        grp.stagiaires.forEach(id => {
+          if (stagiaireIds.has(id)) {
+            throw new Error(`Stagiaire ${id} apparaît dans plusieurs groupes`);
+          }
+          stagiaireIds.add(id);
         });
+      }
+    }
 
-        const validatedStagiaires = await Promise.all(stagiairesPromises);
+    if (rotations) {
+      if (!Array.isArray(rotations)) throw new Error('rotations doit être un tableau');
+      rotations.forEach((rot, idx) => {
+        if (!rot.service || !rot.superviseur || !rot.dateDebut || !rot.dateFin)
+          throw new Error(`Rotation #${idx + 1}: service, superviseur, dateDebut et dateFin obligatoires`);
+        if (!isValidDateRange(rot.dateDebut, rot.dateFin))
+          throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+        if (rot.stagiaire && rot.groupe)
+          throw new Error(`Rotation #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
+        if (!rot.stagiaire && !rot.groupe)
+          throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
+      });
 
-        // Création d'un stage unique avec plusieurs stagiaires
-        const stage = await Stage.create({
-            typeStage:'INDIVIDUEL',
-            stagiaires: validatedStagiaires.map((s) => ({
-                stagiaire: s.stagiaire,
-                servicesAffectes: s.servicesAffectes,
-            })),
-            statut: 'EN_ATTENTE',
+      if (checkOverlaps(rotations, 'stagiaire'))
+        throw new Error('Conflit de chevauchement détecté dans rotations (même stagiaire)');
+      if (checkOverlaps(rotations, 'groupe'))
+        throw new Error('Conflit de chevauchement détecté dans rotations (même groupe)');
+    }
+
+    if (affectationsFinales) {
+      if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
+      affectationsFinales.forEach((aff, idx) => {
+        if (!aff.service || !aff.dateDebut || !aff.dateFin)
+          throw new Error(`Affectation finale #${idx + 1}: service, dateDebut et dateFin obligatoires`);
+        if (!isValidDateRange(aff.dateDebut, aff.dateFin))
+          throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
+        if (aff.stagiaire && aff.groupe)
+          throw new Error(`Affectation finale #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
+        if (!aff.stagiaire && !aff.groupe)
+          throw new Error(`Affectation finale #${idx + 1}: stagiaire ou groupe doit être défini`);
+      });
+
+      if (checkOverlaps(affectationsFinales, 'stagiaire'))
+        throw new Error('Conflit de chevauchement détecté dans affectations finales (même stagiaire)');
+      if (checkOverlaps(affectationsFinales, 'groupe'))
+        throw new Error('Conflit de chevauchement détecté dans affectations finales (même groupe)');
+    }
+
+    // Création du stage
+    const stage = new Stage({ type, stagiaire, dateDebut, dateFin, anneeStage, statut });
+    await stage.save({ session });
+
+    if (type === 'GROUPE') {
+      const groupesIds = [];
+      for (const grp of groupes) {
+        const groupeDoc = new Groupe({
+          stage: stage._id,
+          numero: grp.numero,
+          stagiaires: grp.stagiaires || []
         });
+        await groupeDoc.save({ session });
+        groupesIds.push(groupeDoc._id);
+      }
+      stage.groupes = groupesIds;
+      await stage.save({ session });
+    }
 
+    if (rotations) {
+      for (const rot of rotations) {
+        const rotationDoc = new Rotation({
+          stage: stage._id,
+          service: rot.service,
+          superviseur: rot.superviseur,
+          dateDebut: rot.dateDebut,
+          dateFin: rot.dateFin,
+          stagiaire: rot.stagiaire || null,
+          groupe: rot.groupe || null
+        });
+        await rotationDoc.save({ session });
+      }
+    }
 
-        // Mise à jour des stagiaires pour ajouter l'ID du stage
-        const stagiaireUpdatePromises = validatedStagiaires.map(async (s) => {
-            await Stagiaire.findByIdAndUpdate(
-                s.stagiaire,
-                { $addToSet: { stages: stage._id } }, // Ajout sans duplication
-                { new: true }
+    if (affectationsFinales) {
+      for (const aff of affectationsFinales) {
+        const affDoc = new AffectationFinale({
+          stage: stage._id,
+          service: aff.service,
+          superviseur: aff.superviseur || null,
+          stagiaire: aff.stagiaire || null,
+          groupe: aff.groupe || null,
+          dateDebut: aff.dateDebut,
+          dateFin: aff.dateFin
+        });
+        await affDoc.save({ session });
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Envoi mail notification
+    if (type === 'INDIVIDUEL') {
+      const stagiaireDoc = await Stagiaire.findById(stagiaire);
+      if (stagiaireDoc && stagiaireDoc.email) {
+        sendStageNotificationEmail(
+          stagiaireDoc.email,
+          lang,
+          stagiaireDoc.nom,
+          stagiaireDoc.prenom
+        );
+      }
+    } else if (type === 'GROUPE') {
+      // Charge tous les stagiaires des groupes et envoie mail à chacun
+      const groupesDocs = await Groupe.find({ stage: stage._id }).populate('stagiaires');
+      for (const groupe of groupesDocs) {
+        for (const stagiaireDoc of groupe.stagiaires) {
+          if (stagiaireDoc.email) {
+            sendStageNotificationEmail(
+              stagiaireDoc.email,
+              lang,
+              stagiaireDoc.nom,
+              stagiaireDoc.prenom
             );
-        });
-
-        await Promise.all(stagiaireUpdatePromises);
-
-        // Envoi d'e-mails à chaque stagiaire
-        const emailPromises = validatedStagiaires.map((stagiaire) => 
-            sendStageNotificationEmail(
-                stagiaire.email,
-                lang,
-                stagiaire.nom,
-                stagiaire.prenom
-            )
-        );
-
-        await Promise.all(emailPromises);
-
-
-        return res.status(201).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            stage,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-
-//Stage en groupe
-export const creerStageGroupe = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-
-    // Validation des champs
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-            errors: errors.array().map((err) => err.msg),
-        });
+          }
+        }
+      }
     }
 
-    try {
-        const { typeStage, groupes, rotations } = req.body;
-
-        // Validation : typeStage doit être 'GROUPE'
-        if (typeStage !== 'GROUPE') {
-            return res.status(400).json({
-                success: false,
-                message: t('type_stage_invalide', lang),
-            });
-        }
-
-        // Création du stage
-        const stage = new Stage({
-            typeStage,
-            statut: 'EN_ATTENTE', // Par défaut
-        });
-
-        // Validation des groupes
-        const groupesPromises = groupes.map(async (groupeData) => {
-            const groupe = new Groupe({
-                stage: stage._id,
-                numero: groupeData.numero,
-                stagiaires: groupeData.stagiaires,
-                serviceFinal: groupeData.serviceFinal, // { service, superviseur, dateDebut, dateFin }
-            });
-            return await groupe.save();
-        });
-
-        const groupesEnregistres = await Promise.all(groupesPromises);
-
-        
-
-        // Validation des rotations
-        const rotationsPromises = rotations.map(async (rotationData) => {
-            const rotation = new Rotation({
-                stage: stage._id,
-                service: rotationData.service,
-                groupe: rotationData.groupe,
-                superviseur: rotationData.superviseur,
-                dateDebut: rotationData.dateDebut,
-                dateFin: rotationData.dateFin,
-            });
-            return await rotation.save();
-        });
-
-        const rotationsEnregistrees = await Promise.all(rotationsPromises);
-
-        // Mise à jour des groupes et des rotations dans le stage
-        stage.groupes = groupesEnregistres.map((groupe) => groupe._id);
-        stage.rotations = rotationsEnregistrees.map((rotation) => rotation._id);
-
-
-        // Enregistrement du stage
-        await stage.save();
-
-        // Récupérer la liste plate des stagiaires dans tous les groupes
-        const tousStagiairesIds = groupesEnregistres.flatMap(groupe => groupe.stagiaires);
-
-        // Mise à jour de la propriété "stage" pour tous les stagiaires (en parallèle)
-        const updatePromises = tousStagiairesIds.map(async stagiaireId =>
-            await Stagiaire.findByIdAndUpdate(
-                stagiaireId,
-                { $addToSet: { stages: stage._id } }, // Ajout sans duplication
-                { new: true }
-            )
-        );
-        await Promise.all(updatePromises);
-
-
-        // Charger tous les stagiaires mis à jour pour envoyer les emails
-        const stagiaires = await Stagiaire.find({ _id: { $in: tousStagiairesIds } });
-
-        // Envoi des emails en parallèle, avec gestion individuelle d'erreur
-       
-        const emailPromises = stagiaires.map((stagiaire) => 
-            sendStageNotificationEmail(
-                stagiaire.email,
-                lang,
-                stagiaire.nom,
-                stagiaire.prenom
-            )
-        );
-
-        await Promise.all(emailPromises);
-
-        return res.status(201).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            stage,
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-//Générer des groupes
-export const genererGroupes = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    try {
-        const { stagiaires, nombreGroupes } = req.body;
-
-        if (!stagiaires || !Array.isArray(stagiaires) || stagiaires.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: t('liste_stagiaire_requis', lang),
-            });
-        }
-
-        if (!nombreGroupes || typeof nombreGroupes !== "number" || nombreGroupes < 1) {
-            return res.status(400).json({
-                success: false,
-                message: t('nb_groupe_entier_positif', lang),
-            });
-        }
-
-        // Répartir les stagiaires dans les groupes
-        const groupes = [];
-        const tailleGroupe = Math.ceil(stagiaires.length / nombreGroupes);
-
-        for (let i = 0; i < nombreGroupes; i++) {
-            groupes.push({
-                numero: i + 1,
-                stagiaires: stagiaires.slice(i * tailleGroupe, (i + 1) * tailleGroupe),
-                serviceFinal: null, // Initialisé à null, sera défini plus tard
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            groupes,
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-//Générer période de rotations
-export const genererRotations = (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    try{
-        const { groupes, services, periodeRotation, dateDebut, dateFin } = req.body;
-
-        // Vérification des données d'entrée
-        if (!groupes || !services || !periodeRotation || !dateDebut || !dateFin) {
-            return res.status(400).json({
-                success: false,
-                message: t('donnee_imcomplete', lang)
-            });
-        }
-
-
-        if (!periodeRotation || typeof periodeRotation !== "number" || periodeRotation < 1) {
-            return res.status(400).json({
-                success: false,
-                message: t('periode_entier_positif', lang),
-            });
-        }
-
-        const dateDebutStage = new Date(dateDebut);
-        const dateFinStage = new Date(dateFin);
-
-        // Vérification des dates
-        if (dateDebutStage >= dateFinStage) {
-            return res.status(400).json({
-                success: false,
-                message: t('date_debut_anterieur_date_fin', lang),
-            });
-        }
-
-        const rotations = [];
-        const totalServices = services.length;
-
-        // Calculer le nombre de périodes de rotation disponibles
-        const dureeTotale = (dateFinStage - dateDebutStage) / (24 * 60 * 60 * 1000); // Durée totale en jours
-        const nombreDeRotations = Math.floor(dureeTotale / periodeRotation);
-
-        if (nombreDeRotations < totalServices) {
-            return res.status(400).json({
-                success: false,
-                message: t('ajuster_periode_durer', lang)        
-            });
-        }
-
-        // Génération des rotations pour chaque groupe
-        groupes.forEach((groupe, index) => {
-            let dateActuelle = new Date(dateDebutStage);
-
-            for (let rotationIndex = 0; rotationIndex < nombreDeRotations; rotationIndex++) {
-                const serviceIndex = (rotationIndex + index) % totalServices; // Répartir les services de manière cyclique
-
-                const dateDebutRotation = new Date(dateActuelle);
-                const dateFinRotation = new Date(
-                    dateActuelle.getTime() + periodeRotation * 24 * 60 * 60 * 1000
-                );
-
-                // Ajouter la rotation au tableau
-                rotations.push({
-                    groupe,
-                    service: services[serviceIndex],
-                    dateDebut: dateDebutRotation,
-                    dateFin: dateFinRotation,
-                    superviseur: services[serviceIndex].superviseur || null,
-                });
-
-                // Avancer la date pour la prochaine rotation
-                dateActuelle = new Date(dateFinRotation);
-
-                // Arrêter si on dépasse la date de fin du stage
-                if (dateActuelle >= dateFinStage) {
-                    break;
-                }
-            }
-        });
-
-        // Réponse avec les rotations générées
-        return res.status(200).json({
-            success: true,
-            rotations,
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-export const verifierStagiairesManquants = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { stageId } = req.params;
-
-    try {
-        // Récupérer tous les stagiaires liés au stage
-        const stagiaires = await Stagiaire.find({ stage: stageId });
-
-        // Récupérer les stagiaires déjà assignés à des groupes
-        const groupes = await Groupe.find({ stage: stageId }).populate('stagiaires');
-
-        const stagiairesAssignes = groupes.flatMap(groupe => groupe.stagiaires.map(stagiaire => stagiaire._id.toString()));
-
-        // Identifier les stagiaires non assignés
-        const stagiairesManquants = stagiaires.filter(stagiaire => !stagiairesAssignes.includes(stagiaire._id.toString()));
-
-        if (stagiairesManquants.length === 0) {
-            return res.status(200).json({
-                success: true,
-                message: t('stagiaires_deja_assignes', lang),
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: t('stagiaires_non_assignes', lang),
-            stagiairesManquants,
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-//Ajouter des stagiaires au groupe après création
-export const ajouterStagiairesAuxGroupes = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { stageId } = req.params;
-    const { stagiairesManquants } = req.body;
-
-    try {
-        // Attendre la récupération des groupes
-        const groupes = await Groupe.find({ stage: stageId });
-        if (!groupes || groupes.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: t('groupe_non_trouve', lang),
-            });
-        }
-
-        // Répartition des stagiaires manquants dans les groupes existants
-        let index = 0;
-        for (const stagiaire of stagiairesManquants) {
-            const groupeIndex = index % groupes.length; // Boucle dans les groupes
-            groupes[groupeIndex].stagiaires.push(stagiaire);
-            index++;
-        }
-
-        // Sauvegarder les modifications des groupes en base de données (en parallèle)
-        await Promise.all(groupes.map(groupe => 
-            Groupe.findByIdAndUpdate(groupe._id, { stagiaires: groupe.stagiaires })
-        ));
-
-        // Mise à jour en bloc des stagiaires
-        await Stagiaire.updateMany(
-            { _id: { $in: stagiairesManquants } },
-            { $addToSet: { stages: stageId } }
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            groupes,
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-//Créer nouveau groupe pour ajouter les stagiaires manquant
-export const creerNouveauxGroupesEtReorganiserRotations = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr'; // Gestion de la langue de l'utilisateur
-    const { stageId } = req.params;
-    const { stagiairesManquants, services, periodeRotation, dateDebut, dateFin } = req.body;
-
-    try {
-        // Étape 1 : Récupérer le stage, les groupes existants et les rotations
-        const groupesExistants = await Groupe.find({ stage: stageId });
-        const rotationsExistantes = await Rotation.find({ stage: stageId });
-
-        if (!rotationsExistantes) {
-            return res.status(404).json({
-                success: false,
-                message: t('rotation_non_trouvee', lang),
-            });
-        }
-
-        // Étape 2 : Créer de nouveaux groupes
-        // const nouveauxGroupes = [];
-        // let groupeNumero = groupesExistants.length + 1;
-
-        // for (let i = 0; i < stagiairesManquants.length; i++) {
-        //     const nouveauGroupe = new Groupe({
-        //         stage: stageId,
-        //         numero: groupeNumero,
-        //         stagiaires: [stagiairesManquants[i]],
-        //     });
-        //     await nouveauGroupe.save();
-        //     nouveauxGroupes.push(nouveauGroupe);
-        //     groupeNumero++;
-        // }
-
-        const nouveauxGroupes = stagiairesManquants.map((stagiaire, index) => ({
-            stage: stageId,
-            numero: groupesExistants.length + index + 1,
-            stagiaires: [stagiaire],
-        }));
-        const groupesInseres = await Groupe.insertMany(nouveauxGroupes);
-
-        // Mise à jour en bloc des stagiaires
-        await Stagiaire.updateMany(
-            { _id: { $in: stagiairesManquants } },
-            { $addToSet: { stages: stageId } }
-        );
-
-        // Étape 3 : Réorganiser les rotations
-        const tousLesGroupes = [...groupesExistants, ...groupesInseres];
-        const nouvellesRotations = [];
-        const dateActuelle = new Date(dateDebut);
-
-        for (let serviceIndex = 0; serviceIndex < services.length; serviceIndex++) {
-            for (let groupeIndex = 0; groupeIndex < tousLesGroupes.length; groupeIndex++) {
-                const dateRotationDebut = new Date(
-                    dateActuelle.getTime() + (serviceIndex * periodeRotation * 24 * 60 * 60 * 1000)
-                );
-                const dateRotationFin = new Date(
-                    dateRotationDebut.getTime() + periodeRotation * 24 * 60 * 60 * 1000
-                );
-
-                if (dateRotationDebut > new Date(dateFin)) break;
-
-                const nouvelleRotation = {
-                    stage: stageId,
-                    service: services[serviceIndex]._id,
-                    groupe: tousLesGroupes[groupeIndex]._id,
-                    dateDebut: dateRotationDebut,
-                    dateFin: dateRotationFin,
-                };
-                nouvellesRotations.push(nouvelleRotation);
-            }
-        }
-
-        // Supprimer les rotations existantes et enregistrer les nouvelles
-        await Rotation.deleteMany({ stage: stageId });
-        await Rotation.insertMany(nouvellesRotations);
-
-        return res.status(200).json({
-            success: true,
-            message: t('nouveaux_groupes_et_rotations_crees', lang),
-            nouveauxGroupes,
-            nouvellesRotations,
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_creation_groupes_rotations', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-//Modifier un groupe
-export const modifierGroupe = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr'; // Gestion de la langue
-    const { groupeId } = req.params; // ID du groupe à modifier
-    const { stagiaires, serviceFinal } = req.body; // Données à mettre à jour
-
-    try {
-        // Vérifier si le groupe existe
-        const groupe = await Groupe.findById(groupeId);
-
-        if (!groupe) {
-            return res.status(404).json({
-                success: false,
-                message: t('groupe_non_trouve', lang),
-            });
-        }
-
-        // Mettre à jour les champs autorisés
-        if (stagiaires) {
-            groupe.stagiaires = stagiaires;
-        }
-
-        if (serviceFinal) {
-            groupe.serviceFinal = {
-                service: serviceFinal.service || groupe.serviceFinal.service,
-                superviseur: serviceFinal.superviseur || groupe.serviceFinal.superviseur,
-                dateDebut: serviceFinal.dateDebut || groupe.serviceFinal.dateDebut,
-                dateFin: serviceFinal.dateFin || groupe.serviceFinal.dateFin,
-            };
-        }
-
-        // Sauvegarder les modifications
-        await groupe.save();
-
-        return res.status(200).json({
-            success: true,
-            message: t('modifier_succes', lang),
-            groupe,
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-//Supprimer un groupe
-export const supprimerGroupe = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr'; // Gestion de la langue
-    const { groupeId } = req.params; // ID du groupe à supprimer
-
-    try {
-        // Trouver le groupe à supprimer
-        const groupe = await Groupe.findById(groupeId);
-
-        if (!groupe) {
-            return res.status(404).json({
-                success: false,
-                message: t('groupe_non_trouve', lang),
-            });
-        }
-
-        // Supprimer les rotations associées à ce groupe
-        await Rotation.deleteMany({ groupe: groupeId });
-
-        // Supprimer la référence du groupe dans les stagiaires
-        await Stagiaire.updateMany(
-            { stages: groupe.stage },
-            { $pull: { stages: groupe.stage } }
-        );
-
-        // Supprimer le groupe lui-même
-        await groupe.deleteOne();
-
-        return res.status(200).json({
-            success: true,
-            message: t('supprimer_succes', lang),
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-
-//Suppression d'un stage
-export const supprimerStage = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr'; // Gestion de la langue
-    const { stageId } = req.params; // ID du stage à supprimer
-
-    try {
-        // Trouver le stage à supprimer
-        const stage = await Stage.findById(stageId);
-
-        if (!stage) {
-            return res.status(404).json({
-                success: false,
-                message: t('stage_non_trouve', lang),
-            });
-        }
-
-        // Si le stage est de type GROUPE, supprimer les groupes et rotations associés
-        if (stage.typeStage === 'GROUPE') {
-            await Groupe.deleteMany({ stage: stageId }); // Supprimer les groupes liés
-            await Rotation.deleteMany({ stage: stageId }); // Supprimer les rotations liées
-        }
-
-        // Supprimer la référence du stage dans les stagiaires
-        await Stagiaire.updateMany(
-            { stages: stageId },
-            { $pull: { stages: stageId } }
-        );
-
-        // Supprimer le stage lui-même
-        await stage.deleteOne();
-
-        return res.status(200).json({
-            success: true,
-            message: t('supprimer_succes', lang),
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-
-// Ajouter un serviceAffecte à un stagiaire dans un stage individuel
-export const ajouterServiceAffecte = async (req, res) => {
-    try {
-        const { stageId, stagiaireId } = req.params;
-        const { service, annee, dateDebut, dateFin, superviseurs } = req.body;
-
-        // Validation basique (à améliorer selon besoin)
-        if (!service || !annee || !dateDebut || !dateFin || !superviseurs || superviseurs.length === 0) {
-        return res.status(400).json({ message: "Tous les champs sont obligatoires" });
-        }
-
-        const stage = await Stage.findById(stageId);
-       if (!stage) {
-            return res.status(404).json({ 
-                success:false,
-                message: t('stage_non_trouve', lang)
-            });
-        }
-
-        if (stage.typeStage !== 'INDIVIDUEL'){
-            return res.status(400).json({ 
-                success:false,
-                message: t('operation_stage_individuel', lang)
-            })
-        };
-
-        const stagiaire = stage.stagiaires.id(stagiaireId);
-        if (!stagiaire) {
-            return res.status(404).json({
-                success:false,
-                message: t('stagiaire_non_trouve', lang) 
-            });
-        }
-
-        // Ajouter le nouveau service affecté
-        stagiaire.servicesAffectes.push({
-            service,
-            annee,
-            dateDebut,
-            dateFin,
-            superviseurs,
-        });
-
-        await stage.save();
-
-        // Récupérer le dernier élément ajouté
-        const nouveauService = stagiaire.servicesAffectes[stagiaire.servicesAffectes.length - 1];
-
-        return res.status(201).json({ 
-            success:true,
-            message: t('ajouter_succes', lang), 
-            serviceAffecte: nouveauService
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success:false,
-            message: t('erreur_serveur', lang), 
-            error:error.message
-        });
-    }
-};
-
-
-// Modifier un serviceAffecte d'un stagiaire dans un stage individuel
-export const modifierServiceAffecte = async (req, res) => {
-    try {
-        const { stageId, stagiaireId, serviceAffecteId } = req.params;
-        const updateData = req.body; // { service, annee, dateDebut, dateFin, superviseurs }
-
-        // Trouver le stage
-        const stage = await Stage.findById(stageId);
-        if (!stage) {
-            return res.status(404).json({ 
-                success:false,
-                message: t('stage_non_trouve', lang)
-            });
-        }
-
-        if (stage.typeStage !== 'INDIVIDUEL'){
-            return res.status(400).json({ 
-                success:false,
-                message: t('operation_stage_individuel', lang)
-            })
-        };
-
-        const stagiaire = stage.stagiaires.id(stagiaireId);
-        if (!stagiaire) {
-            return res.status(404).json({
-                success:false,
-                message: t('stagiaire_non_trouve', lang) 
-            });
-        }
-
-        const serviceAffecte = stagiaire.servicesAffectes.id(serviceAffecteId);
-        if (!serviceAffecte) {
-            return res.status(404).json({ 
-                success:false,
-                message: t('service_affecte_non_trouve', lang) 
-            });
-        }
-
-        // Mettre à jour les champs
-        Object.assign(serviceAffecte, updateData);
-
-        await stage.save();
-
-        return res.json({
-            success:true,
-            message:t('modifier_succes', lang),
-            serviceAffecte 
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success:false,
-            message: t('erreur_serveur', lang), 
-            error:error.message
-        });
-    }
-};
-
-
-// Supprimer un serviceAffecte d'un stagiaire dans un stage individuel
-export const supprimerServiceAffecte = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr'; // Gestion de la langue
-    try {
-        const { stageId, stagiaireId, serviceAffecteId } = req.params;
-
-        const stage = await Stage.findById(stageId);
-        if (!stage) {
-            return res.status(404).json({ 
-                success:false,
-                message: t('stage_non_trouve', lang)
-            });
-        }
-
-        if (stage.typeStage !== 'INDIVIDUEL'){
-            return res.status(400).json({ 
-                success:false,
-                message: t('operation_stage_individuel', lang)
-            })
-        };
-
-        const stagiaire = stage.stagiaires.id(stagiaireId);
-        if (!stagiaire) {
-            return res.status(404).json({
-                success:false,
-                message: t('stagiaire_non_trouve', lang) 
-            });
-        }
-
-        const serviceAffecte = stagiaire.servicesAffectes.id(serviceAffecteId);
-        if (!serviceAffecte) {
-            return res.status(404).json({ 
-                success:false,
-                message: t('service_affecte_non_trouve', lang) 
-            });
-        }
-
-        // Supprimer le service affecté
-        serviceAffecte.remove();
-
-        await stage.save();
-
-        return res.json({
-            success:true,
-            message: t('supprimer_succes') 
-        });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success:false,
-            message: t('erreur_serveur', lang), 
-            error:error.message
-        });
+    res.status(201).json({ success: true, data: stage });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
+export const getStageById = async (req, res) => {
+  try {
+    const stage = await Stage.findById(req.params.id)
+      .populate('stagiaire')
+      .populate({
+        path: 'groupes',
+        populate: { path: 'stagiaires' }
+      });
+    if (!stage) return res.status(404).json({ success: false, message: 'Stage non trouvé' });
+    res.json({ success: true, data: stage });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update partiel (attention, si modification groupes/rotations, gérer avec prudence)
+export const updateStage = async (req, res) => {
+  try {
+    const stage = await Stage.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!stage) return res.status(404).json({ success: false, message: 'Stage non trouvé' });
+    res.json({ success: true, data: stage });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteStage = async (req, res) => {
+  try {
+    const stage = await Stage.findByIdAndDelete(req.params.id);
+    if (!stage) return res.status(404).json({ success: false, message: 'Stage non trouvé' });
+    // Supprimer groupes, rotations, affectations liés ?
+    await Groupe.deleteMany({ stage: stage._id });
+    await Rotation.deleteMany({ stage: stage._id });
+    await AffectationFinale.deleteMany({ stage: stage._id });
+
+    res.json({ success: true, message: 'Stage et données associées supprimés' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateGroupe = async (req, res) => {
+  try {
+    const groupe = await Groupe.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!groupe) return res.status(404).json({ success: false, message: 'Groupe non trouvé' });
+    res.json({ success: true, data: groupe });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteGroupe = async (req, res) => {
+  try {
+    const groupe = await Groupe.findByIdAndDelete(req.params.id);
+    if (!groupe) return res.status(404).json({ success: false, message: 'Groupe non trouvé' });
+    res.json({ success: true, message: 'Groupe supprimé' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getGroupesByStage = async (req, res) => {
+  try {
+    const groupes = await Groupe.find({ stage: req.params.stageId }).populate('stagiaires');
+    res.json({ success: true, data: groupes });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getGroupeById = async (req, res) => {
+  try {
+    const groupe = await Groupe.findById(req.params.id).populate('stagiaires');
+    if (!groupe) return res.status(404).json({ success: false, message: 'Groupe non trouvé' });
+    res.json({ success: true, data: groupe });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getRotationsByStage = async (req, res) => {
+  try {
+    const rotations = await Rotation.find({ stage: req.params.stageId })
+      .populate('service superviseur stagiaire groupe');
+    res.json({ success: true, data: rotations });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getRotationById = async (req, res) => {
+  try {
+    const rotation = await Rotation.findById(req.params.id)
+      .populate('service superviseur stagiaire groupe');
+    if (!rotation) return res.status(404).json({ success: false, message: 'Rotation non trouvée' });
+    res.json({ success: true, data: rotation });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateRotation = async (req, res) => {
+  try {
+    const rotation = await Rotation.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!rotation) return res.status(404).json({ success: false, message: 'Rotation non trouvée' });
+    res.json({ success: true, data: rotation });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteRotation = async (req, res) => {
+  try {
+    const rotation = await Rotation.findByIdAndDelete(req.params.id);
+    if (!rotation) return res.status(404).json({ success: false, message: 'Rotation non trouvée' });
+    res.json({ success: true, message: 'Rotation supprimée' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getAffectationsByStage = async (req, res) => {
+  try {
+    const affectations = await AffectationFinale.find({ stage: req.params.stageId })
+      .populate('service superviseur stagiaire groupe');
+    res.json({ success: true, data: affectations });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getAffectationById = async (req, res) => {
+  try {
+    const aff = await AffectationFinale.findById(req.params.id)
+      .populate('service superviseur stagiaire groupe');
+    if (!aff) return res.status(404).json({ success: false, message: 'Affectation non trouvée' });
+    res.json({ success: true, data: aff });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateAffectation = async (req, res) => {
+  try {
+    const aff = await AffectationFinale.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!aff) return res.status(404).json({ success: false, message: 'Affectation non trouvée' });
+    res.json({ success: true, data: aff });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const deleteAffectation = async (req, res) => {
+  try {
+    const aff = await AffectationFinale.findByIdAndDelete(req.params.id);
+    if (!aff) return res.status(404).json({ success: false, message: 'Affectation non trouvée' });
+    res.json({ success: true, message: 'Affectation supprimée' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 
 //Liste des stages
@@ -851,10 +380,10 @@ export const listeStages = async (req, res) => {
         const stages = await Stage.aggregate([
             {
                 $lookup: {
-                    from: 'stagiaires',
+                    from: 'stages',
                     localField: '_id',
                     foreignField: 'stage',
-                    as: 'stagiaires',
+                    as: 'stages',
                 },
             },
             {
@@ -876,20 +405,20 @@ export const listeStages = async (req, res) => {
             {
                 $addFields: {
                     typeStage: '$typeStage',
-                    nombreStagiaires: { $size: '$stagiaires' },
+                    nombreStages: { $size: '$stages' },
                     nombreGroupes: { $size: '$groupes' },
                     dateDebut: {
                         $cond: [
                             { $eq: ['$typeStage', 'GROUPE'] },
                             { $min: '$rotations.dateDebut' },
-                            { $min: '$stagiaires.dateDebutAffectation' },
+                            { $min: '$stages.dateDebutAffectation' },
                         ],
                     },
                     dateFin: {
                         $cond: [
                             { $eq: ['$typeStage', 'GROUPE'] },
                             { $max: '$rotations.dateFin' },
-                            { $max: '$stagiaires.dateFinAffectation' },
+                            { $max: '$stages.dateFinAffectation' },
                         ],
                     },
                 },
@@ -908,7 +437,7 @@ export const listeStages = async (req, res) => {
                     _id: 1,
                     nom: 1,
                     typeStage: 1,
-                    nombreStagiaires: 1,
+                    nombreStages: 1,
                     nombreGroupes: 1,
                     dateDebut: 1,
                     dateFin: 1,
@@ -937,24 +466,24 @@ export const listeStages = async (req, res) => {
     }
 };
 
-//Liste des stagiaires par établissement
-export const listeStagiairesParEtablissement = async (req, res) => {
+//Liste des stages par établissement
+export const listeStagesParEtablissement = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { etablissementId } = req.params;
 
     try {
         const stagesIndividuels = await Stage.find({
             typeStage: 'INDIVIDUEL',
-            'stagiaires.stagiaire.etablissement': etablissementId,
-        }).populate('stagiaires.stagiaire', 'nom prenom etablissement');
+            'stages.stagiaire.etablissement': etablissementId,
+        }).populate('stages.stagiaire', 'nom prenom etablissement');
 
         const groupes = await Groupe.find({
-            'stagiaires.etablissement': etablissementId,
-        }).populate('stagiaires', 'nom prenom etablissement');
+            'stages.etablissement': etablissementId,
+        }).populate('stages', 'nom prenom etablissement');
 
         return res.status(200).json({
             success: true,
-            message: t('liste_stagiaires_succes', lang),
+            message: t('liste_stages_succes', lang),
             data: {
                 stagesIndividuels,
                 groupes,
@@ -1038,592 +567,264 @@ export const calendrierRotations = async (req, res) => {
     }
 };
 
-//Statistique sur stage
-//Nombre de stage enregistrer par établissement
-export const nombreStagiairesParEtablissement = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
 
-    try {
-        let matchFiltersStage = {};
-        let matchFiltersGroupe = {};
-
-        if (dateDebut && dateFin) {
-            // Filtrage par période uniquement
-            matchFiltersStage = {
-                'stagiaires.servicesAffectes.dateDebut': { $gte: new Date(dateDebut) },
-                'stagiaires.servicesAffectes.dateFin': { $lte: new Date(dateFin) },
-            };
-            matchFiltersGroupe = {
-                'serviceFinal.dateDebut': { $gte: new Date(dateDebut) },
-                'serviceFinal.dateFin': { $lte: new Date(dateFin) },
-            };
-        }
-        // Si aucun filtre n'est défini, matchFilters reste vide pour inclure tous les résultats.
-
-        // Stages individuels
-        const individuel = await Stage.aggregate([
-            { $match: matchFiltersStage },
-            { $unwind: '$stagiaires' },
-            { $unwind: '$stagiaires.servicesAffectes' },
-            {
-                $lookup: {
-                    from: 'stagiaires', // Collection stagiaires
-                    localField: 'stagiaires.stagiaire',
-                    foreignField: '_id',
-                    as: 'stagiaireDetails',
-                },
-            },
-            { $unwind: '$stagiaireDetails' },
-            {
-                $group: {
-                    _id: '$stagiaireDetails.parcours.etablissement',
-                    nombreStagiaires: { $sum: 1 },
-                },
-            },
-        ]);
-
-        // Stages en groupe
-        const groupe = await Groupe.aggregate([
-            { $match: matchFiltersGroupe },
-            { $unwind: '$stagiaires' },
-            {
-                $lookup: {
-                    from: 'stagiaires', // Collection stagiaires
-                    localField: 'stagiaires',
-                    foreignField: '_id',
-                    as: 'stagiaireDetails',
-                },
-            },
-            { $unwind: '$stagiaireDetails' },
-            {
-                $group: {
-                    _id: '$stagiaireDetails.parcours.etablissement',
-                    nombreStagiaires: { $sum: 1 },
-                },
-            },
-        ]);
-
-        // Fusion des résultats
-        const result = [...individuel, ...groupe].reduce((acc, item) => {
-            const existing = acc.find((i) => i._id?.toString() === item._id?.toString());
-            if (existing) {
-                existing.nombreStagiaires += item.nombreStagiaires;
-            } else {
-                acc.push(item);
-            }
-            return acc;
-        }, []);
-
-        return res.status(200).json({ success: true, data: result });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
-    }
-};
-
-
-//Nombre de stage accepté par établissement
-export const nombreStagiairesParStatutEtEtablissement = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { dateDebut, dateFin } = req.query;
-
-  try {
-    let matchFiltersStage = {};
-    let matchFiltersGroupe = {};
-
-    if (dateDebut && dateFin) {
-      // Filtrage par période uniquement
-      matchFiltersStage = {
-        'stagiaires.servicesAffectes.dateDebut': { $gte: new Date(dateDebut) },
-        'stagiaires.servicesAffectes.dateFin': { $lte: new Date(dateFin) },
-      };
-      matchFiltersGroupe = {
-        'serviceFinal.dateDebut': { $gte: new Date(dateDebut) },
-        'serviceFinal.dateFin': { $lte: new Date(dateFin) },
-      };
-    }
-
-    // Stages individuels acceptés
-    const individuelAccepte = await Stage.aggregate([
-      { $match: { ...matchFiltersStage, statut: 'ACCEPTE' } },
-      { $unwind: '$stagiaires' },
-      { $unwind: '$stagiaires.servicesAffectes' },
-      {
-        $lookup: {
-          from: 'stagiaires',
-          localField: 'stagiaires.stagiaire',
-          foreignField: '_id',
-          as: 'stagiaireDetails',
-        },
-      },
-      { $unwind: '$stagiaireDetails' },
-      {
-        $group: {
-          _id: '$stagiaireDetails.parcours.etablissement', // ici on a {nomFr, nomEn, _id}
-          nombreStagiaires: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Stages en groupe acceptés
-    const groupeAccepte = await Groupe.aggregate([
-      {
-        $lookup: {
-          from: 'stages',
-          localField: 'stage',
-          foreignField: '_id',
-          as: 'stageDetails',
-        },
-      },
-      { $unwind: '$stageDetails' },
-      { $match: { ...matchFiltersGroupe, 'stageDetails.statut': 'ACCEPTE' } },
-      { $unwind: '$stagiaires' },
-      {
-        $lookup: {
-          from: 'stagiaires',
-          localField: 'stagiaires',
-          foreignField: '_id',
-          as: 'stagiaireDetails',
-        },
-      },
-      { $unwind: '$stagiaireDetails' },
-      {
-        $group: {
-          _id: '$stagiaireDetails.parcours.etablissement',
-          nombreStagiaires: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Stages individuels refusés
-    const individuelRefuse = await Stage.aggregate([
-      { $match: { ...matchFiltersStage, statut: 'REFUSE' } },
-      { $unwind: '$stagiaires' },
-      { $unwind: '$stagiaires.servicesAffectes' },
-      {
-        $lookup: {
-          from: 'stagiaires',
-          localField: 'stagiaires.stagiaire',
-          foreignField: '_id',
-          as: 'stagiaireDetails',
-        },
-      },
-      { $unwind: '$stagiaireDetails' },
-      {
-        $group: {
-          _id: '$stagiaireDetails.parcours.etablissement',
-          nombreStagiaires: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Stages en groupe refusés
-    const groupeRefuse = await Groupe.aggregate([
-      {
-        $lookup: {
-          from: 'stages',
-          localField: 'stage',
-          foreignField: '_id',
-          as: 'stageDetails',
-        },
-      },
-      { $unwind: '$stageDetails' },
-      { $match: { ...matchFiltersGroupe, 'stageDetails.statut': 'REFUSE' } },
-      { $unwind: '$stagiaires' },
-      {
-        $lookup: {
-          from: 'stagiaires',
-          localField: 'stagiaires',
-          foreignField: '_id',
-          as: 'stagiaireDetails',
-        },
-      },
-      { $unwind: '$stagiaireDetails' },
-      {
-        $group: {
-          _id: '$stagiaireDetails.parcours.etablissement',
-          nombreStagiaires: { $sum: 1 },
-        },
-      },
-    ]);
-
-    // Fonction de fusion pour accepter/refuser
-    const mapEtablissements = new Map();
-
-    function mergeData(array, keyName) {
-      array.forEach(item => {
-        if (!item._id) return;
-        // Ici on suppose _id = { _id, nomFr, nomEn }
-        // Certaines bases Mongo peuvent stocker _id sous forme ObjectId ou objet, on gère les 2 cas :
-        const idStr = (item._id._id ? item._id._id.toString() : item._id.toString()) || 'unknown';
-
-        let obj = mapEtablissements.get(idStr);
-        if (!obj) {
-          obj = {
-            etablissement: {
-              nomFr: item._id.nomFr || '',
-              nomEn: item._id.nomEn || '',
-            },
-            acceptes: 0,
-            refuses: 0,
-          };
-          mapEtablissements.set(idStr, obj);
-        }
-        obj[keyName] += item.nombreStagiaires;
-      });
-    }
-
-    mergeData(individuelAccepte, 'acceptes');
-    mergeData(groupeAccepte, 'acceptes');
-    mergeData(individuelRefuse, 'refuses');
-    mergeData(groupeRefuse, 'refuses');
-
-    const mergedResult = Array.from(mapEtablissements.values());
-
-    return res.status(200).json({
-      success: true,
-      data: mergedResult,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: t('erreur_serveur', lang),
-      error: error.message,
-    });
-  }
-};
-
-
-
-// helpers/filters.js
-export const buildFilters = (query) => {
+// Helper pour construire les filtres
+const buildFilters = (query) => {
     const filters = {};
-
-    if (query.dateDebut || query.dateFin) {
-        filters.periode = {};
-        if (query.dateDebut) filters.periode.$gte = new Date(query.dateDebut);
-        if (query.dateFin) filters.periode.$lte = new Date(query.dateFin);
-    }
-
+    
+    if (query.dateDebut) filters.dateDebut = { $gte: new Date(query.dateDebut) };
+    if (query.dateFin) filters.dateFin = { $lte: new Date(query.dateFin) };
+    if (query.statut) filters.statut = query.statut;
+    if (query.anneeStage) filters.anneeStage = parseInt(query.anneeStage);
+    
     return filters;
 };
 
-// services/groupes.js
-export const getFilteredGroupes = async (filters) => {
-    const match = {};
-    if (filters.dateDebut) match['serviceFinal.dateDebut'] = filters.dateDebut;
-    if (filters.dateFin) match['serviceFinal.dateFin'] = filters.dateFin;
-    return await Groupe.find(match).exec();
-};
-
-// 1. Total des stagiaires (uniques) dans stages liés aux groupes filtrés
-export const totalStagiaires = async (req, res) => {
+/**
+ * Nombre de stages enregistrés par établissement
+ * GET /api/statistiques/stages-par-etablissement
+ */
+export const nombreStagesParEtablissement = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
+    
     try {
         const filters = buildFilters(req.query);
-
-        let groupesFiltres = [];
-
-        if (filters.superviseur || filters.dateDebut) {
-            groupesFiltres = await getFilteredGroupes(filters);
-        }
-
-        const stageIds = groupesFiltres.map(g => g.stage.toString());
-
-        const matchStage = {};
-        if (stageIds.length > 0) {
-            matchStage._id = { $in: stageIds.map(id => mongoose.Types.ObjectId(id)) };
-        }
-
-        const result = await Stage.aggregate([
-            { $match: matchStage },
-            { $unwind: '$stagiaires' },
-            { $group: { _id: null, uniqueStagiaires: { $addToSet: '$stagiaires.stagiaire' } } },
-            { $project: { total: { $size: '$uniqueStagiaires' } } }
+        
+        // Pipeline pour stages individuels
+        const stagesIndividuels = await Stage.aggregate([
+            { $match: { type: 'INDIVIDUEL', ...filters } },
+            {
+                $lookup: {
+                    from: 'stagiaires',
+                    localField: 'stagiaire',
+                    foreignField: '_id',
+                    as: 'stagiaireInfo'
+                }
+            },
+            { $unwind: '$stagiaireInfo' },
+            { $unwind: '$stagiaireInfo.parcours' },
+            {
+                $lookup: {
+                    from: 'etablissements',
+                    localField: 'stagiaireInfo.parcours.etablissement',
+                    foreignField: '_id',
+                    as: 'etablissement'
+                }
+            },
+            { $unwind: '$etablissement' },
+            {
+                $group: {
+                    _id: '$etablissement._id',
+                    etablissement: { $first: '$etablissement' },
+                    nombreStages: { $sum: 1 }
+                }
+            }
         ]);
 
-        return res.status(200).json({ 
-            success:true,
-            totalStagiaires: result[0]?.total || 0 
-        });
-    } catch (error) {
-        return res.status(500).json({ 
-            success:false,
-            message : t('erreur_serveur',lang),
-            error: error.message 
-        });
-    }
-};
+        // Pipeline pour stages en groupe
+        const stagesGroupes = await Stage.aggregate([
+            { $match: { type: 'GROUPE', ...filters } },
+            { $unwind: '$groupes' },
+            {
+                $lookup: {
+                    from: 'groupes',
+                    localField: 'groupes',
+                    foreignField: '_id',
+                    as: 'groupeInfo'
+                }
+            },
+            { $unwind: '$groupeInfo' },
+            { $unwind: '$groupeInfo.stagiaires' },
+            {
+                $lookup: {
+                    from: 'stagiaires',
+                    localField: 'groupeInfo.stagiaires',
+                    foreignField: '_id',
+                    as: 'stagiaireInfo'
+                }
+            },
+            { $unwind: '$stagiaireInfo' },
+            { $unwind: '$stagiaireInfo.parcours' },
+            {
+                $lookup: {
+                    from: 'etablissements',
+                    localField: 'stagiaireInfo.parcours.etablissement',
+                    foreignField: '_id',
+                    as: 'etablissement'
+                }
+            },
+            { $unwind: '$etablissement' },
+            {
+                $group: {
+                    _id: '$etablissement._id',
+                    etablissement: { $first: '$etablissement' },
+                    nombreStages: { $sum: 1 }
+                }
+            }
+        ]);
 
-// 2. Total des stages terminés (tous groupes ont dateFin serviceFinal < maintenant)
-export const totalStagesTermines = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        const filters = buildFilters(req.query);
-
-        const groupesFiltres = await getFilteredGroupes(filters);
-
-        // Regrouper groupes par stage
-        const groupesByStage = {};
-        groupesFiltres.forEach(g => {
-        const stageId = g.stage.toString();
-        if (!groupesByStage[stageId]) groupesByStage[stageId] = [];
-        groupesByStage[stageId].push(g);
-        });
-
-        const now = new Date();
-
-        // On ne compte que les stages dont tous les groupes ont dateFin < now
-        const stagesTermines = Object.entries(groupesByStage)
-        .filter(([_, groupes]) => groupes.every(g => g.serviceFinal.dateFin < now))
-        .map(([stageId]) => mongoose.Types.ObjectId(stageId));
-
-        return res.status(200).json({
-            success:true,
-            totalStagesTermines: stagesTermines.length 
-        });
-    } catch (error) {
-        return res.status(500).json({ 
-            success:false,
-            message:t('erreur_serveur', lang),
-            error: error.message 
-        });
-    }
-};
-
-// 3. Moyenne des stagiaires par superviseur
-export const moyenneStagiairesParSuperviseur = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        const filters = buildFilters(req.query);
-
-        const matchGroupe = {};
-        if (filters.dateDebut) matchGroupe['serviceFinal.dateDebut'] = filters.dateDebut;
-        if (filters.superviseur) matchGroupe['serviceFinal.superviseur'] = filters.superviseur;
-
-        // Trouver groupes filtrés
-        const groupes = await Groupe.find(matchGroupe).populate({
-            path: 'stage',
-            select: 'stagiaires',
-        }).exec();
-
-        // Map superviseur -> set stagiaires uniques
-        const superviseurMap = new Map();
-
-        groupes.forEach(g => {
-            const supId = g.serviceFinal.superviseur?.toString();
-            if (!supId) return;
-            if (!superviseurMap.has(supId)) superviseurMap.set(supId, new Set());
-
-            const stagiaires = g.stage?.stagiaires || [];
-            stagiaires.forEach(s => superviseurMap.get(supId).add(s.stagiaire.toString()));
+        // Fusion des résultats
+        const etablissementMap = new Map();
+        
+        [...stagesIndividuels, ...stagesGroupes].forEach(item => {
+            const idStr = item._id.toString();
+            if (etablissementMap.has(idStr)) {
+                etablissementMap.get(idStr).nombreStages += item.nombreStages;
+            } else {
+                etablissementMap.set(idStr, {
+                    _id: item._id,
+                    etablissement: item.etablissement,
+                    nombreStages: item.nombreStages
+                });
+            }
         });
 
-        if (superviseurMap.size === 0) return res.json({ moyenneStagiairesParSuperviseur: 0 });
-
-        // Calcul moyenne
-        let total = 0;
-        superviseurMap.forEach(setStagiaires => {
-            total += setStagiaires.size;
-        });
-        let moyenne = 0;
-        if(superviseurMap.size != 0)
-            moyenne = total / superviseurMap.size;
-
-        return res.status(200).json({ 
-            success :true,
-            moyenneStagiairesParSuperviseur: moyenne 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success : true,
-            message:t('erreur_serveur', lang),
-            error: error.message 
-        });
-    }
-};
-
-// 4. Durée moyenne des stages en mois (calculée sur dateDebut/dateFin serviceFinal des groupes et stages uniques)
-export const dureeMoyenneStages = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        const filters = buildFilters(req.query);
-
-        // Filtrer les groupes
-        const matchGroupe = {};
-        if (filters.dateDebut) matchGroupe['serviceFinal.dateDebut'] = filters.dateDebut;
-        if (filters.superviseur) matchGroupe['serviceFinal.superviseur'] = filters.superviseur;
-
-        const groupes = await Groupe.find(matchGroupe).exec();
-
-        // Filtrer les stages individuels
-        const matchStage = {};
-        if (filters.dateDebut) matchStage['stagiaires.servicesAffectes.dateDebut'] = filters.dateDebut;
-        if (filters.superviseur) matchStage['stagiaires.servicesAffectes.superviseurs'] = filters.superviseur;
-
-        const stagesIndividuels = await Stage.find(matchStage)
-            .select('stagiaires.servicesAffectes')
-            .exec();
-
-        // Calculer la durée totale pour les groupes
-        const totalMoisGroupes = groupes.reduce((acc, g) => {
-            const diffMs = g.serviceFinal.dateFin - g.serviceFinal.dateDebut;
-            const mois = diffMs / (1000 * 60 * 60 * 24 * 30);
-            return acc + mois;
-        }, 0);
-
-        // Calculer la durée totale pour les stages individuels
-        const totalMoisIndividuels = stagesIndividuels.reduce((acc, s) => {
-            const durees = s.stagiaires.flatMap(stagiaire =>
-                stagiaire.servicesAffectes.map(service => {
-                    const diffMs = service.dateFin - service.dateDebut;
-                    return diffMs / (1000 * 60 * 60 * 24 * 30);
-                })
-            );
-            return acc + durees.reduce((sum, mois) => sum + mois, 0);
-        }, 0);
-
-        // Nombre total de groupes et stages individuels
-        const totalGroupes = groupes.length;
-        const totalStagesIndividuels = stagesIndividuels.reduce(
-            (count, s) => count + s.stagiaires.length,
-            0
-        );
-
-        const totalMois = totalMoisGroupes + totalMoisIndividuels;
-        const totalStages = totalGroupes + totalStagesIndividuels;
-
-        const moyenne = totalStages > 0 ? totalMois / totalStages : 0;
+        const result = Array.from(etablissementMap.values());
 
         return res.status(200).json({
             success: true,
-            dureeMoyenneMois: moyenne.toFixed(2),
+            data: result
         });
+
     } catch (error) {
+        console.error('Erreur nombreStagesParEtablissement:', error);
         return res.status(500).json({
             success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
+            message: 'Erreur serveur',
+            error: error.message
         });
     }
 };
 
-
-// 5,6,7 Taux acceptation/refus/en attente
-export const tauxStatutStages = async (req, res) => {
+/**
+ * Nombre de stages par statut et établissement
+ * GET /api/statistiques/stages-statut-etablissement
+ */
+export const nombreStagesParStatutEtEtablissement = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-
+    
     try {
         const filters = buildFilters(req.query);
 
-        // Trouver stages via groupes filtrés
-        const groupes = await getFilteredGroupes(filters);
-        const stageIds = [...new Set(groupes.map(g => g.stage.toString()))];
-
-        const matchStage = {};
-        if (stageIds.length > 0) {
-            matchStage._id = { $in: stageIds.map(id => mongoose.Types.ObjectId(id)) };
-        }
-
-        const result = await Stage.aggregate([
-            { $match: matchStage },
-            {
-                $group: {
-                _id: '$statut',
-                count: { $sum: 1 }
-                }
-            }
-        ]);
-
-        const total = result.reduce((acc, cur) => acc + cur.count, 0);
-        const map = result.reduce((acc, cur) => {
-            acc[cur._id] = cur.count;
-            return acc;
-        }, {});
-
-        return res.status(200).json({
-            success : true,
-            tauxStatutStages:{
-                tauxAccepte: total > 0 ? (map.ACCEPTE || 0) / total : 0,
-                tauxRefuse: total > 0 ? (map.REFUSE || 0) / total : 0,
-                tauxEnAttente: total > 0 ? (map.EN_ATTENTE || 0) / total : 0,
-            }
-        });
-    } catch (error) {
-        return res.status(500).json({ 
-            success:false,
-            message:t('erreur_serveur', lang),
-            error: error.message 
-        });
-    }
-};
-
-// 8. Répartition stagiaires par service (servicesAffectes dans stagiaires)
-export const repartitionStagiairesParService = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        const filters = buildFilters(req.query);
-
-        // Récupérer les groupes filtrés
-        const groupes = await getFilteredGroupes(filters);
-        const stageIds = groupes.map(g => g.stage.toString());
-
-        // Préparer le filtre pour les stages
-        const matchStage = {};
-        if (stageIds.length > 0) {
-            matchStage._id = { $in: stageIds.map(id => mongoose.Types.ObjectId(id)) };
-        }
-
-        // Pipeline d'agrégation
         const pipeline = [
-            { $match: matchStage },
-            { $unwind: '$stagiaires' },
-            { $unwind: '$stagiaires.servicesAffectes' },
+            { $match: filters },
             {
-                $group: {
-                    _id: '$stagiaires.servicesAffectes.service',
-                    nombreStagiaires: { $sum: 1 }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'services', // Nom de la collection des services
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'serviceDetails'
-                }
-            },
-            { $unwind: '$serviceDetails' },
-            {
-                $project: {
-                    _id: 0,
-                    serviceId: '$_id',
-                    nombreStagiaires: 1,
-                    nomFr: '$serviceDetails.nomFr',
-                    nomEn: '$serviceDetails.nomEn'
+                $facet: {
+                    individuels: [
+                        { $match: { type: 'INDIVIDUEL' } },
+                        {
+                            $lookup: {
+                                from: 'stagiaires',
+                                localField: 'stagiaire',
+                                foreignField: '_id',
+                                as: 'stagiaireInfo'
+                            }
+                        },
+                        { $unwind: '$stagiaireInfo' },
+                        { $unwind: '$stagiaireInfo.parcours' },
+                        {
+                            $lookup: {
+                                from: 'etablissements',
+                                localField: 'stagiaireInfo.parcours.etablissement',
+                                foreignField: '_id',
+                                as: 'etablissement'
+                            }
+                        },
+                        { $unwind: '$etablissement' },
+                        {
+                            $group: {
+                                _id: {
+                                    etablissement: '$etablissement._id',
+                                    statut: '$statut'
+                                },
+                                etablissementInfo: { $first: '$etablissement' },
+                                count: { $sum: 1 }
+                            }
+                        }
+                    ],
+                    groupes: [
+                        { $match: { type: 'GROUPE' } },
+                        { $unwind: '$groupes' },
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupes',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: '$groupeInfo' },
+                        { $unwind: '$groupeInfo.stagiaires' },
+                        {
+                            $lookup: {
+                                from: 'stagiaires',
+                                localField: 'groupeInfo.stagiaires',
+                                foreignField: '_id',
+                                as: 'stagiaireInfo'
+                            }
+                        },
+                        { $unwind: '$stagiaireInfo' },
+                        { $unwind: '$stagiaireInfo.parcours' },
+                        {
+                            $lookup: {
+                                from: 'etablissements',
+                                localField: 'stagiaireInfo.parcours.etablissement',
+                                foreignField: '_id',
+                                as: 'etablissement'
+                            }
+                        },
+                        { $unwind: '$etablissement' },
+                        {
+                            $group: {
+                                _id: {
+                                    etablissement: '$etablissement._id',
+                                    statut: '$statut'
+                                },
+                                etablissementInfo: { $first: '$etablissement' },
+                                count: { $sum: 1 }
+                            }
+                        }
+                    ]
                 }
             }
         ];
 
-        // Exécuter l'agrégation
-        const result = await Stage.aggregate(pipeline);
+        const [result] = await Stage.aggregate(pipeline);
+        const merged = [...result.individuels, ...result.groupes];
 
-        return res.json({
-            success: true,
-            repartitionParService: result
+        // Regrouper par établissement
+        const etablissementMap = new Map();
+        
+        merged.forEach(item => {
+            const etablissementId = item._id.etablissement.toString();
+            if (!etablissementMap.has(etablissementId)) {
+                etablissementMap.set(etablissementId, {
+                    etablissement: {
+                        nomFr: item.etablissementInfo.nomFr,
+                        nomEn: item.etablissementInfo.nomEn
+                    },
+                    acceptes: 0,
+                    refuses: 0,
+                    enAttente: 0
+                });
+            }
+            
+            const etablissement = etablissementMap.get(etablissementId);
+            if (item._id.statut === 'ACCEPTE') etablissement.acceptes += item.count;
+            else if (item._id.statut === 'REFUSE') etablissement.refuses += item.count;
+            else if (item._id.statut === 'EN_ATTENTE') etablissement.enAttente += item.count;
         });
+
+        return res.status(200).json({
+            success: true,
+            data: Array.from(etablissementMap.values())
+        });
+
     } catch (error) {
+        console.error('Erreur nombreStagesParStatutEtEtablissement:', error);
         return res.status(500).json({
             success: false,
-            message: t('erreur_serveur', lang),
+            message: 'Erreur serveur',
             error: error.message
         });
     }
@@ -1631,197 +832,824 @@ export const repartitionStagiairesParService = async (req, res) => {
 
 
 
-// 9. Répartition stagiaires par superviseur (nombre groupes en cours et terminés + stages uniques)
-export const repartitionStagiairesParSuperviseur = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
+export const totalStagiairesSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
 
-  try {
-    const filters = buildFilters(req.query);
-
-    // Appliquer uniquement le filtrage par date
-    const matchGroupe = {};
-    const matchStageUnique = {};
-
-    if (filters.dateDebut && filters.dateFin) {
-      matchGroupe['serviceFinal.dateDebut'] = { $gte: new Date(filters.dateDebut) };
-      matchGroupe['serviceFinal.dateFin'] = { $lte: new Date(filters.dateFin) };
-
-      matchStageUnique.dateDebut = { $gte: new Date(filters.dateDebut) };
-      matchStageUnique.dateFin = { $lte: new Date(filters.dateFin) };
+    if (!dateDebut || !dateFin) {
+       return res.status(400).json({
+        success: false,
+        message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+        });
     }
 
-    // Récupérer les groupes et stages individuels avec les superviseurs
-    const groupes = await Groupe.find(matchGroupe)
-      .populate('serviceFinal.superviseur', 'nom prenom')
-      .exec();
+     try {
+    const dateDebutFilter = new Date(dateDebut);
+    const dateFinFilter = new Date(dateFin);
 
-    const stagesUniques = await Stage.find(matchStageUnique)
-      .populate('superviseur', 'nom prenom')
-      .exec();
+    // --- Stagiaires individuels à partir des Rotations ---
+    const stagiairesIndividuelsResult = await Rotation.aggregate([
+    {
+        $match: {
+        stagiaire: { $exists: true, $ne: null },
+        dateDebut: { $lte: dateFinFilter },
+        dateFin: { $gte: dateDebutFilter }
+        }
+    },
+    {
+        $group: {
+         _id: '$stagiaire'
+        }
+    }
+    ]);
+    const stagiairesIndividuelsSet = new Set(stagiairesIndividuelsResult.map(doc => doc._id.toString()));
 
-    const now = new Date();
-    const map = {};
 
-    // Traiter les groupes
-    groupes.forEach(g => {
-      const sup = g.serviceFinal?.superviseur;
-      if (!sup || !sup._id) return;
+    // --- Stagiaires de groupe à partir des Affectations Finales ---
+    const stagiairesGroupesResult = await AffectationFinale.aggregate([
+      {
+        $match: {
+          groupe: { $exists: true, $ne: null },
+          dateDebut: { $lte: dateFinFilter },
+          dateFin: { $gte: dateDebutFilter }
+        }
+      },
+      {
+        $lookup: {
+          from: 'groupes',
+          localField: 'groupe',
+          foreignField: '_id',
+          as: 'groupeInfo'
+        }
+      },
+      { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+      { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$groupeInfo.stagiaires'
+        }
+      }
+    ]);
+    const stagiairesGroupesSet = new Set(stagiairesGroupesResult.map(doc => doc._id.toString()));
 
-      const supId = sup._id.toString();
-      if (!map[supId]) {
-        map[supId] = {
-          superviseur: { nom: sup.nom, prenom: sup.prenom },
-          enCours: 0,
-          termines: 0
-        };
-      }
+    // Fusionner et compter
+    const tousStagiairesSet = new Set([...stagiairesIndividuelsSet, ...stagiairesGroupesSet]);
 
-      const dateFin = g.serviceFinal?.dateFin;
-      if (dateFin && dateFin < now) {
-        map[supId].termines++;
-      } else {
-        map[supId].enCours++;
-      }
-    });
+    return res.status(200).json({
+      success: true,
+      totalStagiaires: tousStagiairesSet.size
+    });
 
-    // Traiter les stages individuels
-    stagesUniques.forEach(stage => {
-      const sup = stage.superviseur;
-      if (!sup || !sup._id) return;
-
-      const supId = sup._id.toString();
-      if (!map[supId]) {
-        map[supId] = {
-          superviseur: { nom: sup.nom, prenom: sup.prenom },
-          enCours: 0,
-          termines: 0
-        };
-      }
-
-      const dateFin = stage.dateFin;
-      if (dateFin && dateFin < now) {
-        map[supId].termines++;
-      } else {
-        map[supId].enCours++;
-      }
-    });
-
-    // Retourner la structure demandée
-    return res.status(200).json({
-      success: true,
-      data: Object.values(map)
-    });
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      success: false,
-      message: t('erreur_serveur', lang),
-      error: error.message
-    });
-  }
+  } catch (error) {
+    console.error("Erreur dans totalStagiairesSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 
-export const getNombreStagesEnCours = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  try {
-    const now = new Date();
+export const totalStagiairesTerminesSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
 
-    // 1. Stages individuels : on compte les stagiaires dont au moins un service affecté est en cours (dateFin > now)
-    // On décompose en pipeline d'agrégation pour filtrer les stagiaires dans stages individuels
-    const individuelPipeline = [
-      { $match: { typeStage: 'INDIVIDUEL' } },
-      { $unwind: '$stagiaires' },
-      { $unwind: '$stagiaires.servicesAffectes' },
-      { $match: { 'stagiaires.servicesAffectes.dateFin': { $gt: now } } },
-      { $group: { _id: null, count: { $sum: 1 } } },
-    ];
-    const individuelResult = await Stage.aggregate(individuelPipeline);
-    const nombreIndividuel = individuelResult.length > 0 ? individuelResult[0].count : 0;
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
 
-    // 2. Stages en groupe : on trouve les groupes dont serviceFinal.dateFin > now
-    // puis on compte le nombre total de stagiaires dans ces groupes
-    const groupes = await Groupe.find({ 'serviceFinal.dateFin': { $gt: now } }).select('stagiaires').lean();
-    const nombreGroupe = groupes.reduce((acc, groupe) => acc + (groupe.stagiaires?.length || 0), 0);
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+        const now = new Date();
 
-    const totalStagesEnCours = nombreIndividuel + nombreGroupe;
+        // --- Stagiaires individuels à partir des Rotations ---
+        // On cherche les rotations qui se sont terminées DANS la période spécifiée
+        const stagiairesIndividuelsResult = await Rotation.aggregate([
+            {
+                $match: {
+                    stagiaire: { $exists: true, $ne: null },
+                    // On s'assure que la date de fin est dans la période et antérieure à aujourd'hui
+                    dateFin: { $gte: dateDebutFilter, $lte: dateFinFilter, $lt: now }
+                }
+            },
+            {
+                $group: {
+                    _id: '$stagiaire'
+                }
+            }
+        ]);
+        const stagiairesIndividuelsSet = new Set(stagiairesIndividuelsResult.map(doc => doc._id.toString()));
 
-    return res.status(200).json({
-      success: true,
-      data: totalStagesEnCours,
-    });
-  } catch (error) {
-    console.error('Erreur getNombreStagesEnCours:', error);
-    return res.status(500).json({
-      success: false,
-      message: t('erreur_serveur', lang),
-      error: error.message,
-    });
-  }
+        // --- Stagiaires de groupe à partir des Affectations Finales ---
+        // On cherche les affectations de groupe qui se sont terminées DANS la période
+        const stagiairesGroupesResult = await AffectationFinale.aggregate([
+            {
+                $match: {
+                    groupe: { $exists: true, $ne: null },
+                    // On s'assure que la date de fin est dans la période et antérieure à aujourd'hui
+                    dateFin: { $gte: dateDebutFilter, $lte: dateFinFilter, $lt: now }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'groupes',
+                    localField: 'groupe',
+                    foreignField: '_id',
+                    as: 'groupeInfo'
+                }
+            },
+            { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+            { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: '$groupeInfo.stagiaires'
+                }
+            }
+        ]);
+        const stagiairesGroupesSet = new Set(stagiairesGroupesResult.map(doc => doc._id.toString()));
+
+        // Fusionner et compter
+        const tousStagiairesSet = new Set([...stagiairesIndividuelsSet, ...stagiairesGroupesSet]);
+
+        return res.status(200).json({
+            success: true,
+            totalStagiairesTermines: tousStagiairesSet.size
+        });
+
+    } catch (error) {
+        console.error("Erreur dans totalStagiairesTerminesSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
 };
 
 
 
+export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
+
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
+
+        const pipeline = [
+            // Étape 1: Utiliser $facet pour lancer deux pipelines d'agrégation en parallèle
+            {
+                $facet: {
+                    // Pipeline pour les stagiaires individuels via les Rotations
+                    stagiairesIndividuels: [
+                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
+                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$stagiaire' } } }
+                    ],
+                    // Pipeline pour les stagiaires de groupe via les AffectationsFinales
+                    stagiairesGroupes: [
+                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupe',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: '$groupeInfo' },
+                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$groupeInfo.stagiaires' } } }
+                    ]
+                }
+            },
+            // Étape 2: Fusionner les résultats des deux pipelines
+            {
+                $project: {
+                    tousLesStagiaires: { $concatArrays: ['$stagiairesIndividuels', '$stagiairesGroupes'] }
+                }
+            },
+            { $unwind: '$tousLesStagiaires' },
+            // Étape 3: Regrouper à nouveau pour consolider les listes de stagiaires par superviseur
+            {
+                $group: {
+                    _id: '$tousLesStagiaires._id',
+                    stagiaires: {
+                        $addToSet: {
+                            $reduce: {
+                                input: '$tousLesStagiaires.stagiaires',
+                                initialValue: [],
+                                in: { $concatArrays: ['$$value', '$$this'] }
+                            }
+                        }
+                    }
+                }
+            },
+            // Étape 4: Calculer la taille de chaque liste de stagiaires
+            {
+                $project: {
+                    _id: 0,
+                    superviseurId: '$_id',
+                    nombreStagiaires: { $size: { $reduce: { input: '$stagiaires', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } } }
+                }
+            },
+            // Étape 5: Calculer la moyenne finale
+            {
+                $group: {
+                    _id: null,
+                    totalStagiaires: { $sum: '$nombreStagiaires' },
+                    totalSuperviseurs: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    moyenneStagiairesParSuperviseur: { $divide: ['$totalStagiaires', '$totalSuperviseurs'] }
+                }
+            }
+        ];
+
+        const result = await Rotation.aggregate(pipeline);
+        const moyenne = result[0]?.moyenneStagiairesParSuperviseur || 0;
+
+        return res.status(200).json({
+            success: true,
+            data: moyenne
+        });
+    } catch (error) {
+        console.error("Erreur dans moyenneStagiairesParSuperviseurSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
+
+
+export const dureeMoyenneStagesSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
+
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
+
+        // Pipeline pour les rotations individuelles
+        const dureesRotations = await Rotation.aggregate([
+            { $match: matchStage },
+            {
+                $project: {
+                    dureeEnJours: {
+                        $divide: [{ $subtract: ['$dateFin', '$dateDebut'] }, 1000 * 60 * 60 * 24]
+                    }
+                }
+            }
+        ]);
+
+        // Pipeline pour les affectations finales de groupe
+        const dureesAffectations = await AffectationFinale.aggregate([
+            { $match: matchStage },
+            {
+                $project: {
+                    dureeEnJours: {
+                        $divide: [{ $subtract: ['$dateFin', '$dateDebut'] }, 1000 * 60 * 60 * 24]
+                    }
+                }
+            }
+        ]);
+
+        // Fusionner et calculer les totaux
+        const toutesDurees = [...dureesRotations, ...dureesAffectations];
+
+        const totalJours = toutesDurees.reduce((sum, item) => sum + item.dureeEnJours, 0);
+        const totalStages = toutesDurees.length;
+
+        const moyenneEnMois = totalStages > 0 ? (totalJours / totalStages) / 30 : 0;
+
+        return res.status(200).json({
+            success: true,
+            dureeMoyenneMois: moyenneEnMois.toFixed(2)
+        });
+
+    } catch (error) {
+        console.error("Erreur dans dureeMoyenneStagesSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
+
+
+export const tauxStatutStagesSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
+
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
+
+        const result = await Stage.aggregate([
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: '$statut',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const totalStages = result.reduce((acc, cur) => acc + cur.count, 0);
+        const map = result.reduce((acc, cur) => {
+            acc[cur._id] = cur.count;
+            return acc;
+        }, {});
+
+        const tauxAccepte = totalStages > 0 ? (map.ACCEPTE || 0) / totalStages : 0;
+        const tauxRefuse = totalStages > 0 ? (map.REFUSE || 0) / totalStages : 0;
+        const tauxEnAttente = totalStages > 0 ? (map.EN_ATTENTE || 0) / totalStages : 0;
+
+        return res.status(200).json({
+            success: true,
+            tauxStatutStages: {
+                tauxAccepte: tauxAccepte,
+                tauxRefuse: tauxRefuse,
+                tauxEnAttente: tauxEnAttente,
+            }
+        });
+    } catch (error) {
+        console.error("Erreur dans tauxStatutStagesSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
+
+export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
+
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
+
+        const pipeline = [
+            {
+                $facet: {
+                    // Pipeline pour les stagiaires individuels, filtré par la période
+                    individuels: [
+                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
+                        {
+                            $group: {
+                                _id: '$service',
+                                stagiaires: { $addToSet: '$stagiaire' }
+                            }
+                        }
+                    ],
+                    // Pipeline pour les stagiaires de groupe, filtré par la période
+                    groupes: [
+                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupe',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: '$groupeInfo' },
+                        {
+                            $group: {
+                                _id: '$service',
+                                stagiaires: { $addToSet: '$groupeInfo.stagiaires' }
+                            }
+                        }
+                    ]
+                }
+            },
+            // Fusionner les résultats des deux pipelines
+            {
+                $project: {
+                    tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
+                }
+            },
+            { $unwind: '$tousLesStagiaires' },
+            // Regrouper par service pour consolider les listes de stagiaires
+            {
+                $group: {
+                    _id: '$tousLesStagiaires._id',
+                    stagiaires: { $addToSet: '$tousLesStagiaires.stagiaires' }
+                }
+            },
+            // Compter les stagiaires uniques par service
+            {
+                $project: {
+                    _id: 0,
+                    service: '$_id',
+                    nombreStagiaires: {
+                        $size: {
+                            $reduce: {
+                                input: '$stagiaires',
+                                initialValue: [],
+                                in: { $concatArrays: ['$$value', '$$this'] }
+                            }
+                        }
+                    }
+                }
+            }
+        ];
+
+        const repartition = await Rotation.aggregate(pipeline);
+
+        return res.status(200).json({
+            success: true,
+            data: repartition
+        });
+    } catch (error) {
+        console.error("Erreur dans repartitionStagiairesParServiceSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
+
+
+export const repartitionStagiairesParSuperviseurSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
+
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
+
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
+
+        const pipeline = [
+            // Étape 1: Traiter les stages individuels et de groupe en parallèle
+            {
+                $facet: {
+                    // Stagiaires individuels à partir des rotations
+                    individuels: [
+                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
+                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$stagiaire' } } }
+                    ],
+                    // Stagiaires de groupe à partir des affectations finales
+                    groupes: [
+                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupe',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: '$groupeInfo' },
+                        { $unwind: '$groupeInfo.stagiaires' },
+                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$groupeInfo.stagiaires' } } }
+                    ]
+                }
+            },
+            // Étape 2: Fusionner les résultats des deux pipelines
+            {
+                $project: {
+                    tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
+                }
+            },
+            { $unwind: '$tousLesStagiaires' },
+            // Étape 3: Consolider les stagiaires par superviseur et compter
+            {
+                $group: {
+                    _id: '$tousLesStagiaires._id',
+                    nombreStagiaires: { $sum: { $size: '$tousLesStagiaires.stagiaires' } }
+                }
+            },
+            // Étape 4: Joindre les informations des superviseurs
+            {
+                $lookup: {
+                    from: 'superviseurs', // Remplace 'superviseurs' par le nom de ta collection de superviseurs
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'superviseurInfo'
+                }
+            },
+            { $unwind: '$superviseurInfo' },
+            // Étape 5: Projetter le résultat final
+            {
+                $project: {
+                    _id: 0,
+                    superviseur: {
+                        _id: '$superviseurInfo._id',
+                        nom: '$superviseurInfo.nom',
+                        prenom: '$superviseurInfo.prenom'
+                    },
+                    nombreStagiaires: '$nombreStagiaires'
+                }
+            }
+        ];
+
+        const repartition = await Rotation.aggregate(pipeline);
+
+        return res.status(200).json({
+            success: true,
+            data: repartition
+        });
+    } catch (error) {
+        console.error("Erreur dans repartitionStagiairesParSuperviseurSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
 
 
 
+export const repartitionStagiairesParEtablissementSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
 
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
 
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
 
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter },
+            dateFin: { $gte: dateDebutFilter }
+        };
 
-// const genererGroupes = async (req, res) => {
-//     try {
-//         const { stagiaires, tailleGroupe } = req.body;
+        const pipeline = [
+            {
+                $facet: {
+                    // Pipeline pour les stagiaires individuels
+                    individuels: [
+                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
+                        {
+                            $lookup: {
+                                from: 'stagiaires',
+                                localField: 'stagiaire',
+                                foreignField: '_id',
+                                as: 'stagiaireInfo'
+                            }
+                        },
+                        { $unwind: '$stagiaireInfo' },
+                        {
+                            $group: {
+                                _id: '$stagiaireInfo.etablissement',
+                                stagiaires: { $addToSet: '$stagiaire' }
+                            }
+                        }
+                    ],
+                    // Pipeline pour les stagiaires de groupe
+                    groupes: [
+                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupe',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: '$groupeInfo' },
+                        { $unwind: '$groupeInfo.stagiaires' },
+                        {
+                            $lookup: {
+                                from: 'stagiaires',
+                                localField: 'groupeInfo.stagiaires',
+                                foreignField: '_id',
+                                as: 'stagiaireInfo'
+                            }
+                        },
+                        { $unwind: '$stagiaireInfo' },
+                        {
+                            $group: {
+                                _id: '$stagiaireInfo.etablissement',
+                                stagiaires: { $addToSet: '$stagiaireInfo._id' }
+                            }
+                        }
+                    ]
+                }
+            },
+            // Fusionner les résultats
+            {
+                $project: {
+                    tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
+                }
+            },
+            { $unwind: '$tousLesStagiaires' },
+            // Regrouper par établissement pour consolider les listes de stagiaires
+            {
+                $group: {
+                    _id: '$tousLesStagiaires._id',
+                    stagiaires: { $addToSet: '$tousLesStagiaires.stagiaires' }
+                }
+            },
+            // Compter les stagiaires uniques par établissement et joindre le nom de l'établissement
+            {
+                $project: {
+                    etablissementId: '$_id',
+                    nombreStagiaires: {
+                        $size: {
+                            $reduce: {
+                                input: '$stagiaires',
+                                initialValue: [],
+                                in: { $concatArrays: ['$$value', '$$this'] }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'etablissements', // Remplace par le nom de ta collection d'établissements
+                    localField: 'etablissementId',
+                    foreignField: '_id',
+                    as: 'etablissementInfo'
+                }
+            },
+            { $unwind: '$etablissementInfo' },
+            {
+                $project: {
+                    _id: 0,
+                    etablissement: {
+                        _id: '$etablissementInfo._id',
+                        nom: '$etablissementInfo.nom'
+                    },
+                    nombreStagiaires: 1
+                }
+            }
+        ];
 
-//         if (!stagiaires || !Array.isArray(stagiaires) || stagiaires.length === 0) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "La liste des stagiaires est requise.",
-//             });
-//         }
+        const repartition = await Rotation.aggregate(pipeline);
 
-//         if (!tailleGroupe || typeof tailleGroupe !== "number" || tailleGroupe < 1) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "La taille des groupes doit être un entier positif.",
-//             });
-//         }
+        return res.status(200).json({
+            success: true,
+            data: repartition
+        });
+    } catch (error) {
+        console.error("Erreur dans repartitionStagiairesParEtablissementSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};
 
-//         const groupes = [];
-//         let index = 0;
+export const nombreStagesEnCoursSurPeriode = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { dateDebut, dateFin } = req.query;
 
-//         while (index < stagiaires.length) {
-//             // Si les stagiaires restants sont inférieurs à la moitié de la taille du groupe
-//             if (stagiaires.length - index < Math.ceil(tailleGroupe / 2)) {
-//                 groupes[groupes.length - 1].stagiaires.push(...stagiaires.slice(index));
-//                 break;
-//             }
+    if (!dateDebut || !dateFin) {
+        return res.status(400).json({
+            success: false,
+            message: lang === 'fr'
+                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+                : 'dateDebut and dateFin parameters are required.'
+        });
+    }
 
-//             groupes.push({
-//                 numero: groupes.length + 1,
-//                 stagiaires: stagiaires.slice(index, index + tailleGroupe),
-//                 serviceFinal: null,
-//             });
+    try {
+        const dateDebutFilter = new Date(dateDebut);
+        const dateFinFilter = new Date(dateFin);
+        const now = new Date();
 
-//             index += tailleGroupe;
-//         }
+        const matchStage = {
+            dateDebut: { $lte: dateFinFilter, $lte: now },
+            dateFin: { $gte: dateDebutFilter, $gte: now }
+        };
 
-//         return res.status(200).json({
-//             success: true,
-//             message: "Groupes générés avec succès.",
-//             groupes,
-//         });
-//     } catch (error) {
-//         console.error(error);
-//         return res.status(500).json({
-//             success: false,
-//             message: "Erreur interne du serveur.",
-//             error: error.message,
-//         });
-//     }
-// };
+        const result = await Rotation.aggregate([
+            {
+                $facet: {
+                    // Compter les stages individuels en cours
+                    stagesIndividuels: [
+                        { $match: matchStage },
+                        { $count: 'total' }
+                    ],
+                    // Compter les stages de groupe en cours
+                    stagesGroupes: [
+                        { $match: matchStage },
+                        { $count: 'total' }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    totalStagesEnCours: {
+                        $sum: [
+                            { $ifNull: [{ $arrayElemAt: ['$stagesIndividuels.total', 0] }, 0] },
+                            { $ifNull: [{ $arrayElemAt: ['$stagesGroupes.total', 0] }, 0] }
+                        ]
+                    }
+                }
+            }
+        ]);
 
+        const totalStagesEnCours = result[0]?.totalStagesEnCours || 0;
 
-
-
+        return res.status(200).json({
+            success: true,
+            totalStagesEnCours: totalStagesEnCours
+        });
+    } catch (error) {
+        console.error("Erreur dans nombreStagesEnCoursSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
+    }
+};

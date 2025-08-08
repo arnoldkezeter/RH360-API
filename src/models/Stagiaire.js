@@ -15,6 +15,6 @@ const StagiaireSchema = new mongoose.Schema({
     actif: { type: Boolean, default: true },
     stages:[{type: mongoose.Schema.Types.ObjectId, ref: 'Stage'}]
 });
-
+StagiaireSchema.index({ "parcours.etablissement": 1 });
 const Stagiaire = BaseUtilisateur.discriminator('Stagiaire', StagiaireSchema);
 export default Stagiaire;

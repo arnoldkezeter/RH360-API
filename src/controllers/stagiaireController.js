@@ -410,6 +410,336 @@ export const getStagiaires = async (req, res) => {
 
 
 
+export const saveManyStagiaires = async (req, res) => {
+    try{
+        // data/stagiaires.js
+        const stagiairesData = [
+            {
+                nom: "Ngono",
+                prenom: "Jean",
+                email: "jean.ngono@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1999-05-14"),
+                lieuNaissance: "Yaoundé",
+                telephone: 670112233,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849be7de505d0efcdbb52cd",
+                filiere: "Informatique",
+                option: "Développement",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Mballa",
+                prenom: "Chantal",
+                email: "chantal.mballa@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2000-07-21"),
+                lieuNaissance: "Douala",
+                telephone: 690223344,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849bea4e505d0efcdbb52df",
+                filiere: "Comptabilité",
+                option: "Audit",
+                niveau: "Licence 2"
+                }]
+            },
+            {
+                nom: "Ewane",
+                prenom: "Marc",
+                email: "marc.ewane@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1998-03-10"),
+                lieuNaissance: "Bafoussam",
+                telephone: 699334455,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c47078b234748a4ef2dd",
+                filiere: "Gestion",
+                option: "Management",
+                niveau: "Master 1"
+                }]
+            },
+            {
+                nom: "Nana",
+                prenom: "Clarisse",
+                email: "clarisse.nana@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2001-01-30"),
+                lieuNaissance: "Yaoundé",
+                telephone: 655445566,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c59fde4d392fa3559617",
+                filiere: "Ressources Humaines",
+                option: "Formation",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Tchinda",
+                prenom: "Paul",
+                email: "paul.tchinda@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1997-12-15"),
+                lieuNaissance: "Ngaoundéré",
+                telephone: 678556677,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849be7de505d0efcdbb52cd",
+                filiere: "Electronique",
+                option: "Automatisme",
+                niveau: "Licence 2"
+                }]
+            },
+            {
+                nom: "Abena",
+                prenom: "Lucie",
+                email: "lucie.abena@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2000-09-05"),
+                lieuNaissance: "Bertoua",
+                telephone: 675667788,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849bea4e505d0efcdbb52df",
+                filiere: "Communication",
+                option: "Journalisme",
+                niveau: "Master 1"
+                }]
+            },
+            {
+                nom: "Ondoa",
+                prenom: "Samuel",
+                email: "samuel.ondoa@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1998-11-11"),
+                lieuNaissance: "Kribi",
+                telephone: 674778899,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c47078b234748a4ef2dd",
+                filiere: "Informatique",
+                option: "Réseaux",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Talla",
+                prenom: "Béatrice",
+                email: "beatrice.talla@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("1999-02-19"),
+                lieuNaissance: "Bamenda",
+                telephone: 679889900,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c59fde4d392fa3559617",
+                filiere: "Sciences Politiques",
+                option: "Relations Internationales",
+                niveau: "Licence 2"
+                }]
+            },
+            {
+                nom: "Fouda",
+                prenom: "Pierre",
+                email: "pierre.fouda@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("2001-06-25"),
+                lieuNaissance: "Yaoundé",
+                telephone: 691990011,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849be7de505d0efcdbb52cd",
+                filiere: "Mathématiques",
+                option: "Statistiques",
+                niveau: "Master 1"
+                }]
+            },
+            {
+                nom: "Nkoua",
+                prenom: "Estelle",
+                email: "estelle.nkoua@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("1997-10-07"),
+                lieuNaissance: "Douala",
+                telephone: 672112233,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849bea4e505d0efcdbb52df",
+                filiere: "Commerce",
+                option: "Marketing",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Kamdem",
+                prenom: "Alain",
+                email: "alain.kamdem@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("2000-08-12"),
+                lieuNaissance: "Garoua",
+                telephone: 677001122,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c59fde4d392fa3559617",
+                filiere: "Génie Civil",
+                option: "Bâtiment",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Mbarga",
+                prenom: "Sylvie",
+                email: "sylvie.mbarga@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("1999-11-29"),
+                lieuNaissance: "Ebolowa",
+                telephone: 676112233,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849be7de505d0efcdbb52cd",
+                filiere: "Sciences de l'Éducation",
+                option: "Pédagogie",
+                niveau: "Licence 2"
+                }]
+            },
+            {
+                nom: "Njiki",
+                prenom: "Hermann",
+                email: "hermann.njiki@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1998-04-16"),
+                lieuNaissance: "Maroua",
+                telephone: 675223344,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849bea4e505d0efcdbb52df",
+                filiere: "Informatique",
+                option: "Sécurité",
+                niveau: "Master 1"
+                }]
+            },
+            {
+                nom: "Essomba",
+                prenom: "Patricia",
+                email: "patricia.essomba@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2001-12-02"),
+                lieuNaissance: "Yaoundé",
+                telephone: 674334455,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c47078b234748a4ef2dd",
+                filiere: "Biologie",
+                option: "Microbiologie",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Ebene",
+                prenom: "Franck",
+                email: "franck.ebene@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1999-07-18"),
+                lieuNaissance: "Limbé",
+                telephone: 670889900,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c59fde4d392fa3559617",
+                filiere: "Chimie",
+                option: "Analyse",
+                niveau: "Licence 2"
+                }]
+            },
+            {
+                nom: "Mvondo",
+                prenom: "Aurélie",
+                email: "aurelie.mvondo@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2000-03-23"),
+                lieuNaissance: "Mbalmayo",
+                telephone: 673990011,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849be7de505d0efcdbb52cd",
+                filiere: "Lettres Modernes",
+                option: "Français",
+                niveau: "Master 1"
+                }]
+            },
+            {
+                nom: "Yondo",
+                prenom: "Christophe",
+                email: "christophe.yondo@example.com",
+                motDePasse: "password123",
+                genre: "M",
+                dateNaissance: new Date("1998-06-09"),
+                lieuNaissance: "Douala",
+                telephone: 672778899,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6849bea4e505d0efcdbb52df",
+                filiere: "Philosophie",
+                option: "Éthique",
+                niveau: "Licence 3"
+                }]
+            },
+            {
+                nom: "Ngassa",
+                prenom: "Mireille",
+                email: "mireille.ngassa@example.com",
+                motDePasse: "password123",
+                genre: "F",
+                dateNaissance: new Date("2001-05-01"),
+                lieuNaissance: "Yaoundé",
+                telephone: 676556677,
+                parcours: [{
+                annee: 2025,
+                etablissement: "6851c47078b234748a4ef2dd",
+                filiere: "Sciences Sociales",
+                option: "Sociologie",
+                niveau: "Licence 2"
+                }]
+            }
+        ];
+
+        await Stagiaire.insertMany(stagiairesData);
+        return res.status(200).json({
+            success: true,
+            message:"Stagiaires enregistrées" 
+        })
+    }catch(err){
+        console.log(err)
+        return res.status(500).json({
+            success: false,
+            message:"Erreur serveur" 
+        })
+    }
+    
+}
+
+
+
+
 
 
 

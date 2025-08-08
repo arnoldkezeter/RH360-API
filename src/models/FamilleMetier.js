@@ -10,6 +10,3 @@ const familleMetierSchema = new mongoose.Schema({
 
 const FamilleMetier = mongoose.model('FamilleMetier', familleMetierSchema);
 export default FamilleMetier;
-
-
-

@@ -19,24 +19,30 @@ export const sendStageNotificationEmail = async (to, lang, nom, prenom) => {
     const message = {
         from: process.env.EMAIL_USER,
         to,
-        subject: lang === 'fr' ? 'Notification de stage soumis' : 'Internship Request Submitted',
+        subject: lang === 'fr'
+            ? 'Notification de demande de stage reçue'
+            : 'Internship Application Received',
         html: `
-            <p><strong>${lang === 'fr' ? 'Bonjour' : 'Hello'}, ${prenom} ${nom},</strong></p>
+            <p><strong>${lang === 'fr' ? 'Bonjour M./Mme' : 'Hello Mr./Mrs'} ${prenom} ${nom},</strong></p>
             <p>${lang === 'fr'
-                ? 'Nous avons bien reçu votre demande de stage. Elle est actuellement en attente de traitement.'
-                : 'We have received your internship request. It is currently pending processing.'
+                ? 'Votre demande de stage académique ou professionnel a bien été reçue par la DGI.'
+                : 'We have successfully received your academic or professional internship application at the DGI.'
             }</p>
             <p>${lang === 'fr'
-                ? 'Merci de patienter pendant que nous examinons votre demande.'
-                : 'Thank you for your patience as we review your request.'
+                ? 'Cette demande est en cours de traitement.'
+                : 'Your application is currently under review.'
             }</p>
             <p>${lang === 'fr'
-                ? 'Cordialement,'
-                : 'Best regards,'
-            }<br/>
-            ${lang === 'fr' ? 'L\'équipe RH360' : 'The RH360 Team'}</p>
+                ? 'Vous serez informé(e) de toute évolution concernant votre demande.'
+                : 'You will be informed of any progress or updates regarding your application.'
+            }</p>
+            <p>${lang === 'fr'
+                ? 'La DGI vous remercie.'
+                : 'Thank you for your interest in working with the DGI.'
+            }</p>
         `,
     };
+
 
     await transporter.sendMail(message);
 };

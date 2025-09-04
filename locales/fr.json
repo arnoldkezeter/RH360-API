@@ -196,6 +196,7 @@
     "echelle_non_trouvee": "Echelle non trouvée.",
     "evaluation_deja_repondu":"Vous avez déjà répondu à cette évaluation.",
     "error_niveau":"Le niveau doit être entre 1 et 4.",
+    
     "evaluation_soumis":"Vous avez déjà soumis une évaluation pour ce besoin.",
     "auto_evaluation_non_trouvee":"Auto-évaluation non trouvée",
     "type_echelle_non_trouve":"Type échelle de réponse non trouvé.",
@@ -231,6 +232,17 @@
     "operation_stage_individuel": "Cette opération est réservée aux stages individuels",
     "service_affecte_non_trouve": "Service affecté non trouvé",
     "liste_stagiaires_succes": "Liste des stagiaires récupérée avec succès",
+    "stagiaire_obligatoire":"Stagiaire obligatoire pour stage individuel",
+    "groupe_non_autorise":"Groupes non autorisés pour stage individuel",
+    "groupe_obligatoire":"Groupes obligatoires pour stage groupe",
+    "stagiaire_non_autorise":"Stagiaire non autorisé pour stage groupe",
+    "invalide_type_stage":"Type de stage invalide",
+    "numero_groupe":"Chaque groupe doit avoir un numéro",
+    "groupe_tableau_stagiaire":"Chaque groupe doit avoir un tableau stagiaires",
+    "stagiaire_plusieurs_groupes":"Un même apparaît dans plusieurs groupes",
+    "rotation_tableau":"rotations doit être un tableau",
+    "conflit_chevauchement_rotation_stagiaire":"Conflit de chevauchement détecté dans rotations (même stagiaire)",
+    "conflit_chevauchement_rotation_groupe":"Conflit de chevauchement détecté dans rotations (même groupe)",
 
 
     

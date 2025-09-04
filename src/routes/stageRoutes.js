@@ -12,7 +12,10 @@ import {
     repartitionStagiairesParServiceSurPeriode,
     repartitionStagiairesParSuperviseurSurPeriode,
     repartitionStagiairesParEtablissementSurPeriode,
-    nombreStagesEnCoursSurPeriode
+    nombreStagesEnCoursSurPeriode,
+    deleteStage,
+    updateStage,
+    getStageByIdAndType
 } from '../controllers/stageController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateStage.js';
@@ -20,8 +23,11 @@ import { validateFields } from '../middlewares/validateFields/validateStage.js';
 
 const router = express.Router();
 // Définir les routes
-router.post('/', createStage); // Création d'un stage individuel
+router.post('/', authentificate, validateFields, createStage); // Création d'un stage
+router.put('/:id', authentificate, validateFields, updateStage); // modification d'un stage individuel
+router.delete('/:id', authentificate, deleteStage); // Suppression d'un stage
 
+router.get('/:id/:type', authentificate, getStageByIdAndType)
 router.get('/', authentificate, listeStages);// Liste des stages
 // router.get('/stagiaires/etablissement/:etablissementId', authentificate, listeStagiairesParEtablissement);// Liste des stagiaires par établissement
 router.get('/stats/stagiaires-par-etablissement', authentificate, nombreStagesParEtablissement);// Nombre de stagiaires par établissement

@@ -210,10 +210,19 @@
     "stagiaires_deja_assignes": "All trainees are already assigned to groups.",
     "stagiaires_non_assignes": "Some trainees are not yet assigned to groups.",
     "groupe_non_trouve": "No group was found for this stage.",
-    "stage_non_trouve": "Stage not found",
-    "operation_stage_individuel": "This operation is reserved for individual internships",
-    "service_affecte_non_trouve": "Assigned service not found",
-    "liste_stagiaires_succes": "Trainees list retrieved successfully",
+    "stage_non_trouve": "Stage not found",   
+    "stagiaire_obligatoire": "Trainee is mandatory for individual internship",
+    "groupe_non_autorise": "Groups are not allowed for individual internship",
+    "groupe_obligatoire": "Groups are mandatory for group internship",
+    "stagiaire_non_autorise": "Trainee not allowed for group internship",
+    "invalide_type_stage": "Invalid internship type",
+    "numero_groupe": "Each group must have a number",
+    "groupe_tableau_stagiaire": "Each group must have a trainees array",
+    "stagiaire_plusieurs_groupes": "The same trainee appears in multiple groups",
+    "rotation_tableau": "Rotations must be an array",
+    "conflit_chevauchement_rotation_stagiaire": "Overlap conflict detected in rotations (same trainee)",
+    "conflit_chevauchement_rotation_groupe": "Overlap conflict detected in rotations (same group)",
+
 
       
     "tache_verrouiller": "This task is locked and cannot be modified.",

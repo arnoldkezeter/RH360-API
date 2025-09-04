@@ -13,7 +13,7 @@ const affectationFinaleSchema = new mongoose.Schema({
   dateFin:{type:Date, required:true}
 }, { timestamps: true });
 
-affectationFinaleSchema.index({ stagiaire: 1, stage: 1 }, { unique: true, sparse: true });
+affectationFinaleSchema.index({ stagiaire: 1, stage: 1 });
 affectationFinaleSchema.index({ groupe: 1, stage: 1 }, { unique: true, sparse: true });
 affectationFinaleSchema.index({ service: 1 });
 

@@ -49,8 +49,6 @@ export const createStage = async (req, res) => {
         statut
     } = req.body;
 
-    
-
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -59,6 +57,7 @@ export const createStage = async (req, res) => {
             errors: errors.array().map(err => err.msg),
         });
     }
+    
     if (!isValidDateRange(dateDebut, dateFin)) {
         return res.status(400).json({
             success: false,
@@ -182,6 +181,9 @@ export const createStage = async (req, res) => {
     const stage = new Stage({ nomFr, nomEn, type, stagiaire, dateDebut, dateFin, anneeStage, statut });
     await stage.save({ session });
 
+    // Map pour associer numéro de groupe -> ObjectId
+    const groupeMapping = new Map();
+
     if (type === 'GROUPE') {
       const groupesIds = [];
       for (const grp of groupes) {
@@ -192,13 +194,27 @@ export const createStage = async (req, res) => {
         });
         await groupeDoc.save({ session });
         groupesIds.push(groupeDoc._id);
+        
+        // Créer le mapping : numéro -> ObjectId
+        groupeMapping.set(grp.numero, groupeDoc._id);
       }
       stage.groupes = groupesIds;
       await stage.save({ session });
     }
 
+    // Création des rotations avec les bons ObjectIds
     if (rotations) {
       for (const rot of rotations) {
+        let groupeObjectId = null;
+        
+        // Si la rotation concerne un groupe, récupérer son ObjectId
+        if (rot.groupe) {
+          groupeObjectId = groupeMapping.get(rot.groupe);
+          if (!groupeObjectId) {
+            throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
+          }
+        }
+
         const rotationDoc = new Rotation({
           stage: stage._id,
           service: rot.service,
@@ -206,20 +222,31 @@ export const createStage = async (req, res) => {
           dateDebut: rot.dateDebut,
           dateFin: rot.dateFin,
           stagiaire: rot.stagiaire || null,
-          groupe: rot.groupe || null
+          groupe: groupeObjectId // Utiliser l'ObjectId au lieu du numéro
         });
         await rotationDoc.save({ session });
       }
     }
 
+    // Création des affectations finales avec les bons ObjectIds
     if (affectationsFinales) {
       for (const aff of affectationsFinales) {
+        let groupeObjectId = null;
+        
+        // Si l'affectation concerne un groupe, récupérer son ObjectId
+        if (aff.groupe) {
+          groupeObjectId = groupeMapping.get(aff.groupe);
+          if (!groupeObjectId) {
+            throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation finale`);
+          }
+        }
+
         const affDoc = new AffectationFinale({
           stage: stage._id,
           service: aff.service,
           superviseur: aff.superviseur || null,
           stagiaire: aff.stagiaire || null,
-          groupe: aff.groupe || null,
+          groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
           dateDebut: aff.dateDebut,
           dateFin: aff.dateFin
         });
@@ -261,7 +288,7 @@ export const createStage = async (req, res) => {
     return res.status(201).json({
         success: true,
         message: t('ajouter_succes', lang),
-        data:stage,
+        data: stage,
     });
 
   } catch (err) {
@@ -397,13 +424,308 @@ export const getStageByIdAndType = async (req, res) => {
 };
 
 // Update partiel (attention, si modification groupes/rotations, gérer avec prudence)
+// export const updateStage = async (req, res) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+//   const lang = req.headers['accept-language'] || 'fr';
+//   const { id } = req.params;
+
+//   try {
+//     const {
+//         nomFr,
+//         nomEn,
+//         type,
+//         stagiaire,
+//         groupes,
+//         rotations,
+//         affectationsFinales,
+//         dateDebut,
+//         dateFin,
+//         anneeStage,
+//         statut
+//     } = req.body;
+
+//     // Vérifier que le stage existe
+//     const existingStage = await Stage.findById(id);
+//     if (!existingStage) {
+//         return res.status(404).json({
+//             success: false,
+//             message: t('stage_introuvable', lang),
+//         });
+//     }
+
+//     // Validation des champs
+//     const errors = validationResult(req);
+//     if (!errors.isEmpty()) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('champs_obligatoires', lang),
+//             errors: errors.array().map(err => err.msg),
+//         });
+//     }
+
+//     if (!isValidDateRange(dateDebut, dateFin)) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('date_debut_anterieur_date_fin', lang),
+//         });
+//     }
+
+//     // Validation du type et des participants
+//     if (type === 'INDIVIDUEL') {
+//         if (!stagiaire){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('stagiaire_obligatoire', lang),
+//             });
+//         }
+//         if (groupes && groupes.length > 0){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('groupe_non_autorise', lang),
+//             });
+//         } 
+//     } else if (type === 'GROUPE') {
+//         if (!groupes || !Array.isArray(groupes) || groupes.length === 0){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('groupe_obligatoire', lang),
+//             });
+//         }
+//         if (stagiaire){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('stagiaire_non_autorise', lang),
+//             });
+//         } 
+//     } else {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('invalide_type_stage', lang),
+//         });
+//     }
+
+//     // Validation des groupes (éviter les doublons de stagiaires)
+//     if (groupes) {
+//         const stagiaireIds = new Set();
+//         for (const grp of groupes) {
+//             if (!grp.numero){
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: t('numero_groupe', lang),
+//                 });
+//             } 
+//             if (!grp.stagiaires || !Array.isArray(grp.stagiaires)){
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: t('groupe_tableau_stagiaire', lang),
+//                 });
+//             }
+            
+//             for (const stagiaireId of grp.stagiaires) {
+//                 if (stagiaireIds.has(stagiaireId)) {
+//                     return res.status(400).json({
+//                         success: false,
+//                         message: t('stagiaire_plusieurs_groupes', lang),
+//                     });
+//                 }
+//                 stagiaireIds.add(stagiaireId);
+//             }
+//         }
+//     }
+
+//     // Validation des rotations
+//     if (rotations) {
+//         if (!Array.isArray(rotations)){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('rotation_tableau', lang),
+//             });
+//         } 
+//         rotations.forEach((rot, idx) => {
+//             if (!rot.service || !rot.superviseur || !rot.dateDebut || !rot.dateFin)
+//                 throw new Error(`Rotation #${idx + 1}: service, superviseur, dateDebut et dateFin obligatoires`);
+//             if (!isValidDateRange(rot.dateDebut, rot.dateFin))
+//                 throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+//             if (rot.stagiaire && rot.groupe)
+//                 throw new Error(`Rotation #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
+//             if (!rot.stagiaire && !rot.groupe)
+//              throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
+//         });
+
+//         if (checkOverlaps(rotations, 'stagiaire')){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('conflit_chevauchement_rotation_stagiaire', lang),
+//             });
+//         }
+//         if (checkOverlaps(rotations, 'groupe')){
+//             return res.status(400).json({
+//                 success: false,
+//                 message: t('conflit_chevauchement_rotation_groupe', lang),
+//             });
+//         }
+//     }
+
+//     // Validation des affectations finales
+//     if (affectationsFinales) {
+//       if (!Array.isArray(affectationsFinales)) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('affectation_finale_tableau', lang),
+//         });
+//       }
+      
+//       affectationsFinales.forEach((aff, idx) => {
+//         if (!aff.service || !aff.dateDebut || !aff.dateFin)
+//           throw new Error(`Affectation finale #${idx + 1}: service, dateDebut et dateFin obligatoires`);
+//         if (!isValidDateRange(aff.dateDebut, aff.dateFin))
+//           throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
+//         if (aff.stagiaire && aff.groupe)
+//           throw new Error(`Affectation finale #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
+//         if (!aff.stagiaire && !aff.groupe)
+//           throw new Error(`Affectation finale #${idx + 1}: stagiaire ou groupe doit être défini`);
+//       });
+
+//       if (checkOverlaps(affectationsFinales, 'stagiaire')) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('conflit_chevauchement_affectation_stagiaire', lang),
+//         });
+//       }
+//       if (checkOverlaps(affectationsFinales, 'groupe')) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('conflit_chevauchement_affectation_groupe', lang),
+//         });
+//       }
+//     }
+
+//     // Supprimer les anciennes données liées au stage
+//     await Groupe.deleteMany({ stage: id }, { session });
+//     await Rotation.deleteMany({ stage: id }, { session });
+//     await AffectationFinale.deleteMany({ stage: id }, { session });
+
+//     // Mise à jour du stage principal
+//     const updatedStage = await Stage.findByIdAndUpdate(
+//         id,
+//         {
+//             nomFr,
+//             nomEn,
+//             type,
+//             stagiaire: type === 'INDIVIDUEL' ? stagiaire : null,
+//             groupes: [], // Sera mis à jour après création des groupes
+//             dateDebut,
+//             dateFin,
+//             anneeStage,
+//             statut
+//         },
+//         { 
+//             new: true, 
+//             session,
+//             runValidators: true 
+//         }
+//     );
+
+//     // Recréer les groupes si type GROUPE
+//     if (type === 'GROUPE' && groupes) {
+//       const groupesIds = [];
+//       for (const grp of groupes) {
+//         const groupeDoc = new Groupe({
+//           stage: updatedStage._id,
+//           numero: grp.numero,
+//           stagiaires: grp.stagiaires || []
+//         });
+//         await groupeDoc.save({ session });
+//         groupesIds.push(groupeDoc._id);
+//       }
+//       updatedStage.groupes = groupesIds;
+//       await updatedStage.save({ session });
+//     }
+
+//     // Recréer les rotations
+//     if (rotations) {
+//       for (const rot of rotations) {
+//         const rotationDoc = new Rotation({
+//           stage: updatedStage._id,
+//           service: rot.service,
+//           superviseur: rot.superviseur,
+//           dateDebut: rot.dateDebut,
+//           dateFin: rot.dateFin,
+//           stagiaire: rot.stagiaire || null,
+//           groupe: rot.groupe || null
+//         });
+//         await rotationDoc.save({ session });
+//       }
+//     }
+
+//     // Recréer les affectations finales
+//     if (affectationsFinales) {
+//       for (const aff of affectationsFinales) {
+//         // // Vérifier les conflits pour les affectations finales
+//         // const conflicts = await AffectationFinale.checkConflicts({
+//         //   stagiaire: aff.stagiaire,
+//         //   groupe: aff.groupe,
+//         //   service: aff.service,
+//         //   dateDebut: aff.dateDebut,
+//         //   dateFin: aff.dateFin
+//         // });
+
+//         // if (conflicts.length > 0) {
+//         //   throw new Error(`Conflit détecté pour l'affectation finale dans le service ${aff.service}`);
+//         // }
+
+//         const affDoc = new AffectationFinale({
+//           stage: updatedStage._id,
+//           service: aff.service,
+//           superviseur: aff.superviseur || null,
+//           stagiaire: aff.stagiaire || null,
+//           groupe: aff.groupe || null,
+//           dateDebut: aff.dateDebut,
+//           dateFin: aff.dateFin
+//         });
+//         await affDoc.save({ session });
+//       }
+//     }
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     // Récupérer le stage complet avec toutes les relations
+//     const stageComplet = await Stage.findById(updatedStage._id)
+//       .populate('stagiaire')
+//       .populate({
+//         path: 'groupes',
+//         populate: {
+//           path: 'stagiaires'
+//         }
+//       });
+
+//     return res.status(200).json({
+//         success: true,
+//         message: t('modifier_succes', lang),
+//         data: stageComplet,
+//     });
+
+//   } catch (err) {
+//     console.error('Erreur lors de la modification du stage:', err);
+//     await session.abortTransaction();
+//     session.endSession();
+//     return res.status(500).json({
+//         success: false,
+//         message: t('erreur_serveur', lang),
+//         error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+//     });
+//   }
+// };
+
 export const updateStage = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   const lang = req.headers['accept-language'] || 'fr';
-  const { id } = req.params;
 
   try {
+    const stageId = req.params.stageId;
     const {
         nomFr,
         nomEn,
@@ -419,7 +741,7 @@ export const updateStage = async (req, res) => {
     } = req.body;
 
     // Vérifier que le stage existe
-    const existingStage = await Stage.findById(id);
+    const existingStage = await Stage.findById(stageId);
     if (!existingStage) {
         return res.status(404).json({
             success: false,
@@ -427,7 +749,6 @@ export const updateStage = async (req, res) => {
         });
     }
 
-    // Validation des champs
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -436,7 +757,7 @@ export const updateStage = async (req, res) => {
             errors: errors.array().map(err => err.msg),
         });
     }
-
+    
     if (!isValidDateRange(dateDebut, dateFin)) {
         return res.status(400).json({
             success: false,
@@ -444,7 +765,6 @@ export const updateStage = async (req, res) => {
         });
     }
 
-    // Validation du type et des participants
     if (type === 'INDIVIDUEL') {
         if (!stagiaire){
             return res.status(400).json({
@@ -478,7 +798,6 @@ export const updateStage = async (req, res) => {
         });
     }
 
-    // Validation des groupes (éviter les doublons de stagiaires)
     if (groupes) {
         const stagiaireIds = new Set();
         for (const grp of groupes) {
@@ -495,19 +814,18 @@ export const updateStage = async (req, res) => {
                 });
             }
             
-            for (const stagiaireId of grp.stagiaires) {
-                if (stagiaireIds.has(stagiaireId)) {
+            grp.stagiaires.forEach(id => {
+                if (stagiaireIds.has(id)) {
                     return res.status(400).json({
                         success: false,
                         message: t('stagiaire_plusieurs_groupes', lang),
                     });
                 }
-                stagiaireIds.add(stagiaireId);
-            }
+                stagiaireIds.add(id);
+            });
         }
     }
 
-    // Validation des rotations
     if (rotations) {
         if (!Array.isArray(rotations)){
             return res.status(400).json({
@@ -540,15 +858,8 @@ export const updateStage = async (req, res) => {
         }
     }
 
-    // Validation des affectations finales
     if (affectationsFinales) {
-      if (!Array.isArray(affectationsFinales)) {
-        return res.status(400).json({
-            success: false,
-            message: t('affectation_finale_tableau', lang),
-        });
-      }
-      
+      if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
       affectationsFinales.forEach((aff, idx) => {
         if (!aff.service || !aff.dateDebut || !aff.dateFin)
           throw new Error(`Affectation finale #${idx + 1}: service, dateDebut et dateFin obligatoires`);
@@ -560,100 +871,110 @@ export const updateStage = async (req, res) => {
           throw new Error(`Affectation finale #${idx + 1}: stagiaire ou groupe doit être défini`);
       });
 
-      if (checkOverlaps(affectationsFinales, 'stagiaire')) {
-        return res.status(400).json({
-            success: false,
-            message: t('conflit_chevauchement_affectation_stagiaire', lang),
-        });
-      }
-      if (checkOverlaps(affectationsFinales, 'groupe')) {
-        return res.status(400).json({
-            success: false,
-            message: t('conflit_chevauchement_affectation_groupe', lang),
-        });
-      }
+      if (checkOverlaps(affectationsFinales, 'stagiaire'))
+        throw new Error('Conflit de chevauchement détecté dans affectations finales (même stagiaire)');
+      if (checkOverlaps(affectationsFinales, 'groupe'))
+        throw new Error('Conflit de chevauchement détecté dans affectations finales (même groupe)');
     }
 
-    // Supprimer les anciennes données liées au stage
-    await Groupe.deleteMany({ stage: id }, { session });
-    await Rotation.deleteMany({ stage: id }, { session });
-    await AffectationFinale.deleteMany({ stage: id }, { session });
+    // SUPPRESSION DES DONNÉES EXISTANTES
+    
+    // Supprimer les anciens groupes
+    await Groupe.deleteMany({ stage: stageId }, { session });
+    
+    // Supprimer les anciennes rotations
+    await Rotation.deleteMany({ stage: stageId }, { session });
+    
+    // Supprimer les anciennes affectations finales
+    await AffectationFinale.deleteMany({ stage: stageId }, { session });
 
-    // Mise à jour du stage principal
+    // MISE À JOUR DU STAGE
     const updatedStage = await Stage.findByIdAndUpdate(
-        id,
-        {
-            nomFr,
-            nomEn,
-            type,
-            stagiaire: type === 'INDIVIDUEL' ? stagiaire : null,
-            groupes: [], // Sera mis à jour après création des groupes
-            dateDebut,
-            dateFin,
-            anneeStage,
-            statut
-        },
-        { 
-            new: true, 
-            session,
-            runValidators: true 
-        }
+      stageId,
+      { 
+        nomFr, 
+        nomEn, 
+        type, 
+        stagiaire: type === 'INDIVIDUEL' ? stagiaire : null,
+        dateDebut, 
+        dateFin, 
+        anneeStage, 
+        statut,
+        groupes: [] // Sera mis à jour plus bas si nécessaire
+      },
+      { new: true, session }
     );
 
-    // Recréer les groupes si type GROUPE
-    if (type === 'GROUPE' && groupes) {
+    // RECRÉATION DES NOUVELLES DONNÉES
+    
+    // Map pour associer numéro de groupe -> ObjectId
+    const groupeMapping = new Map();
+
+    if (type === 'GROUPE') {
       const groupesIds = [];
       for (const grp of groupes) {
         const groupeDoc = new Groupe({
-          stage: updatedStage._id,
+          stage: stageId,
           numero: grp.numero,
           stagiaires: grp.stagiaires || []
         });
         await groupeDoc.save({ session });
         groupesIds.push(groupeDoc._id);
+        
+        // Créer le mapping : numéro -> ObjectId
+        groupeMapping.set(grp.numero, groupeDoc._id);
       }
+      
+      // Mettre à jour le stage avec les nouveaux groupes
       updatedStage.groupes = groupesIds;
       await updatedStage.save({ session });
     }
 
-    // Recréer les rotations
+    // Création des nouvelles rotations avec les bons ObjectIds
     if (rotations) {
       for (const rot of rotations) {
+        let groupeObjectId = null;
+        
+        // Si la rotation concerne un groupe, récupérer son ObjectId
+        if (rot.groupe) {
+          groupeObjectId = groupeMapping.get(rot.groupe);
+          if (!groupeObjectId) {
+            throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
+          }
+        }
+
         const rotationDoc = new Rotation({
-          stage: updatedStage._id,
+          stage: stageId,
           service: rot.service,
           superviseur: rot.superviseur,
           dateDebut: rot.dateDebut,
           dateFin: rot.dateFin,
           stagiaire: rot.stagiaire || null,
-          groupe: rot.groupe || null
+          groupe: groupeObjectId // Utiliser l'ObjectId au lieu du numéro
         });
         await rotationDoc.save({ session });
       }
     }
 
-    // Recréer les affectations finales
+    // Création des nouvelles affectations finales avec les bons ObjectIds
     if (affectationsFinales) {
       for (const aff of affectationsFinales) {
-        // // Vérifier les conflits pour les affectations finales
-        // const conflicts = await AffectationFinale.checkConflicts({
-        //   stagiaire: aff.stagiaire,
-        //   groupe: aff.groupe,
-        //   service: aff.service,
-        //   dateDebut: aff.dateDebut,
-        //   dateFin: aff.dateFin
-        // });
-
-        // if (conflicts.length > 0) {
-        //   throw new Error(`Conflit détecté pour l'affectation finale dans le service ${aff.service}`);
-        // }
+        let groupeObjectId = null;
+        
+        // Si l'affectation concerne un groupe, récupérer son ObjectId
+        if (aff.groupe) {
+          groupeObjectId = groupeMapping.get(aff.groupe);
+          if (!groupeObjectId) {
+            throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation finale`);
+          }
+        }
 
         const affDoc = new AffectationFinale({
-          stage: updatedStage._id,
+          stage: stageId,
           service: aff.service,
           superviseur: aff.superviseur || null,
           stagiaire: aff.stagiaire || null,
-          groupe: aff.groupe || null,
+          groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
           dateDebut: aff.dateDebut,
           dateFin: aff.dateFin
         });
@@ -664,30 +985,51 @@ export const updateStage = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    // Récupérer le stage complet avec toutes les relations
-    const stageComplet = await Stage.findById(updatedStage._id)
-      .populate('stagiaire')
-      .populate({
-        path: 'groupes',
-        populate: {
-          path: 'stagiaires'
+    // Envoi mail notification (optionnel pour les modifications)
+    // Vous pouvez commenter cette section si vous ne voulez pas d'emails lors des modifications
+    /*
+    if (type === 'INDIVIDUEL') {
+      const stagiaireDoc = await Stagiaire.findById(stagiaire);
+      if (stagiaireDoc && stagiaireDoc.email) {
+        sendStageUpdateNotificationEmail(
+          stagiaireDoc.email,
+          lang,
+          stagiaireDoc.nom,
+          stagiaireDoc.prenom
+        );
+      }
+    } else if (type === 'GROUPE') {
+      // Charge tous les stagiaires des groupes et envoie mail à chacun
+      const groupesDocs = await Groupe.find({ stage: stageId }).populate('stagiaires');
+      for (const groupe of groupesDocs) {
+        for (const stagiaireDoc of groupe.stagiaires) {
+          if (stagiaireDoc.email) {
+            sendStageUpdateNotificationEmail(
+              stagiaireDoc.email,
+              lang,
+              stagiaireDoc.nom,
+              stagiaireDoc.prenom
+            );
+          }
         }
-      });
+      }
+    }
+    */
 
     return res.status(200).json({
         success: true,
         message: t('modifier_succes', lang),
-        data: stageComplet,
+        data: updatedStage,
     });
 
   } catch (err) {
-    console.error('Erreur lors de la modification du stage:', err);
+    console.log(err)
     await session.abortTransaction();
     session.endSession();
     return res.status(500).json({
         success: false,
         message: t('erreur_serveur', lang),
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        error: err.message,
     });
   }
 };

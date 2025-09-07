@@ -7,7 +7,7 @@ import nodemailer from 'nodemailer';
  * @param {string} nom - Nom du chercheur.
  * @param {string} prenom - Prénom du chercheur.
  */
-export const sendMandatNotificationEmail = async (to, lang, nom, prenom) => {
+export const sendStageRechercheNotificationEmail = async (to, lang, nom, prenom) => {
     const transporter = nodemailer.createTransport({
         service: 'gmail', // Utilisez votre service SMTP préféré
         auth: {
@@ -17,24 +17,29 @@ export const sendMandatNotificationEmail = async (to, lang, nom, prenom) => {
     });
 
     const message = {
-        from: process.env.EMAIL_USER,
+       from: process.env.EMAIL_USER,
         to,
-        subject: lang === 'fr' ? 'Nouveau mandat de recherche' : 'New Research Mandate',
+        subject: lang === 'fr'
+            ? 'Notification de demande de stage reçue'
+            : 'Internship Application Received',
         html: `
-            <p><strong>${lang === 'fr' ? 'Bonjour' : 'Hello'}, ${prenom} ${nom},</strong></p>
+            <p><strong>${lang === 'fr' ? 'Bonjour M./Mme' : 'Hello Mr./Mrs'}, ${prenom} ${nom},</strong></p>
             <p>${lang === 'fr'
-                ? 'Nous avons bien reçu votre demande. Elle est actuellement en attente de traitement.'
-                : 'We have received your request. It is currently pending processing.'
+                ? 'Votre demande de stage de recherche a bien été reçue par la DGI.'
+                : 'We have successfully received your academic or professional internship application at the DGI.'
             }</p>
             <p>${lang === 'fr'
-                ? 'Merci de patienter pendant que nous examinons votre demande.'
-                : 'Thank you for your patience as we review your request.'
+                ? 'Cette demande est en cours de traitement.'
+                : 'Your application is currently under review.'
             }</p>
             <p>${lang === 'fr'
-                ? 'Cordialement,'
-                : 'Best regards,'
-            }<br/>
-            ${lang === 'fr' ? 'L\'équipe RH360' : 'The RH360 Team'}</p>
+                ? 'Vous serez informé(e) de toute évolution concernant votre demande.'
+                : 'You will be informed of any progress or updates regarding your application.'
+            }</p>
+            <p>${lang === 'fr'
+                ? 'La DGI vous remercie.'
+                : 'Thank you for your interest in working with the DGI.'
+            }</p>
         `,
     };
 

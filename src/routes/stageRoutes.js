@@ -24,7 +24,7 @@ import { validateFields } from '../middlewares/validateFields/validateStage.js';
 const router = express.Router();
 // Définir les routes
 router.post('/', authentificate, validateFields, createStage); // Création d'un stage
-router.put('/:id', authentificate, validateFields, updateStage); // modification d'un stage individuel
+router.put('/:stageId', authentificate, validateFields, updateStage); // modification d'un stage individuel
 router.delete('/:id', authentificate, deleteStage); // Suppression d'un stage
 
 router.get('/:id/:type', authentificate, getStageByIdAndType)

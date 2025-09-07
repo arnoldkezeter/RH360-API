@@ -12,10 +12,10 @@ const rotationSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Empêche un stagiaire d'avoir deux rotations qui se chevauchent dans des services différents
-rotationSchema.index(
-  { stagiaire: 1, dateDebut: 1, dateFin: 1 },
-  { unique: true, partialFilterExpression: { stagiaire: { $exists: true } } }
-);
+// rotationSchema.index(
+//   { stagiaire: 1, dateDebut: 1, dateFin: 1 },
+//   { unique: true, partialFilterExpression: { stagiaire: { $exists: true } } }
+// );
 
 // Empêche un groupe d'avoir deux rotations qui se chevauchent dans des services différents
 rotationSchema.index(

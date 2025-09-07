@@ -41,9 +41,9 @@ import echelleReponseRoutes from './routes/echelleDeReponseRoutes.js';
 import typeEchelleReponseRoutes from './routes/typeEchelleDeReponseRoutes.js';
 import stagiaireRoutes from './routes/stagiaireRoutes.js';
 import stageRoutes from './routes/stageRoutes.js';
+import stageRechercheRoutes from './routes/stageRechercheRoutes.js';
 import tacheStagiaireRoutes from './routes/tacheStagiaireRoutes.js';
 import chercheurRoutes from './routes/chercheurRoutes.js';
-import mandatRechercheRoutes from './routes/mandatRechercheRoutes.js';
 import importDataRoutes from './routes/importDataRoutes.js';
 import exportDocumentRoutes from './routes/exportRoutes.js';
 import { authentificate } from './middlewares/auth.js';
@@ -104,9 +104,9 @@ app.use('/api/v1/type-echelle-reponse/echelles-reponses', echelleReponseRoutes);
 app.use('/api/v1/types-echelles-reponses', typeEchelleReponseRoutes);
 app.use('/api/v1/stagiaires', stagiaireRoutes);
 app.use('/api/v1/stages', stageRoutes);
+app.use('/api/v1/stages-recherche', stageRechercheRoutes);
 app.use('/api/v1/stagiaire/taches-stagiaire', tacheStagiaireRoutes);
 app.use('/api/v1/chercheurs', chercheurRoutes);
-app.use('/api/v1/mandats-recherche', mandatRechercheRoutes);
 app.use('/api/v1/import-export-data', importDataRoutes);
 app.use('/api/v1/export-document', exportDocumentRoutes)
 

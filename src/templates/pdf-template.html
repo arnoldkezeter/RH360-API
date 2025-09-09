@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{{documentTitle}}</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; }
+        
+        /* Styles de l'en-tête */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .header-left, .header-right {
+            width: 30%;
+            font-size: 12px;
+            color: #475569;
+        }
+        .header-center {
+            text-align: center;
+            width: 40%;
+        }
+        .header-center img {
+            max-width: 120px;
+        }
+
+        /* Styles du corps du document */
+        .body-content {
+            padding: 40px 60px;
+        }
+        .document-title {
+            text-align: center;
+            font-size: 24px;
+            color: #0f172a;
+            margin-bottom: 30px;
+        }
+
+        /* Styles des tableaux */
+        .document-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .document-table th, .document-table td {
+            border: 1px solid #d1d5db;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .document-table th {
+            background-color: #f1f5f9;
+            color: #1e293b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">{{headerLeftText}}</div>
+        <div class="header-center">
+            <img src="{{logoUrl}}" alt="Logo de l'entreprise">
+        </div>
+        <div class="header-right">{{headerRightText}}</div>
+    </div>
+    
+    <div class="body-content">
+        <h1 class="document-title">{{documentTitle}}</h1>
+        
+        {{documentBody}}
+    </div>
+</body>
+</html>

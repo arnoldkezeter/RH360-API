@@ -47,6 +47,7 @@ import tacheStagiaireRoutes from './routes/tacheStagiaireRoutes.js';
 import chercheurRoutes from './routes/chercheurRoutes.js';
 import importDataRoutes from './routes/importDataRoutes.js';
 import exportDocumentRoutes from './routes/exportRoutes.js';
+import generatePDFRoutes from './routes/generatePDFRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -111,7 +112,8 @@ app.use('/api/v1/stages-recherche', stageRechercheRoutes);
 app.use('/api/v1/stagiaire/taches-stagiaire', tacheStagiaireRoutes);
 app.use('/api/v1/chercheurs', chercheurRoutes);
 app.use('/api/v1/import-export-data', importDataRoutes);
-app.use('/api/v1/export-document', exportDocumentRoutes)
+app.use('/api/v1/export-document', exportDocumentRoutes);
+app.use('/api/v1/generate-document', generatePDFRoutes)
 
 // Route racine
 app.get('/', (req, res) => {

@@ -412,7 +412,6 @@ export const getAvailableParticipants = async (req, res) => {
 // Ajouter un message
 export const addMessage = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  console.log(req.content)
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -477,7 +476,7 @@ export const addMessage = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: t('message_envoye_succes', lang),
+      // message: t('message_envoye_succes', lang),
       data: populatedMessage,
     });
 
@@ -496,8 +495,7 @@ export const markMessagesAsRead = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
 
   try {
-    const { chatId } = req.params;
-    const userId = req.user.id;
+    const { chatId, userId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
       return res.status(400).json({

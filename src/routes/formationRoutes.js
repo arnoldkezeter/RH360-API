@@ -26,14 +26,38 @@ import {
   getCoutsFormations,
   getCoutReelEtPrevuTTCParFormation,
   getCoutReelTTCParFormation,
+  invitation,
+  uploadFile
   
 } from '../controllers/formationController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateFormation.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 
 const router = express.Router();
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadsDir = path.join(process.cwd(), 'public/uploads', 'fichiers_tache_executee');
+    // Création du dossier à chaque upload si nécessaire
+    console.log('création du dossier')
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+const upload = multer({ storage });
+
+router.get('/invitation/:formationId', authentificate, invitation);
+router.post('/upload-file', upload.single('fichier'), authentificate,  uploadFile);
 // CRUD
 router.post('/', authentificate, validateFields, createFormation);
 router.put('/:id', authentificate, validateFields, updateFormation);

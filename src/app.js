@@ -63,6 +63,7 @@ app.use(morgan('dev'));
 
 //middleware pour servir les supports de formations
 app.use('/files/supports', express.static(path.join(process.cwd(), 'public/uploads/supports')));
+app.use('/files/fichiers_tache_executee', express.static(path.join(process.cwd(), 'public/uploads/fichiers_tache_executee')));
 
 connectDB();
 

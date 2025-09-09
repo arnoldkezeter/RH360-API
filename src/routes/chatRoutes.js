@@ -42,7 +42,7 @@ router.post('/:chatId/:senderId/messages', validateFieldsMessage, addMessage);
 router.get('/:chatId/:userId/messages', getChatMessages);
 
 // 9. Marquer les messages comme lus
-router.patch('/:chatId/messages/read', markMessagesAsRead);
+router.patch('/:chatId/messages/read/:userId', markMessagesAsRead);
 
 // GESTION DU CHAT
 

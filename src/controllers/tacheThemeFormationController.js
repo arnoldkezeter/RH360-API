@@ -195,14 +195,18 @@ export const getTachesParTheme = async (req, res) => {
         select: 'nom prenom email',
         options: { strictPopulate: false }
       })
-      .populate({ 
-        path: 'theme', 
-        select: 'titreFr titreEn',
-        options: { strictPopulate: false }
+      .populate({
+          path: 'theme',
+          select: 'titreFr titreEn formation',
+          options: { strictPopulate: false },
+          populate: {
+              path: 'formation',
+              select: 'titreFr titreEn'
+          }
       })
       .populate({ 
         path: 'tache', 
-        select: 'nomFr nomEn type obligatoire',
+        select: 'nomFr nomEn type obligatoire code',
         options: { strictPopulate: false } 
       })
       .lean();
@@ -349,72 +353,106 @@ export const executerTache = async (req, res) => {
 };
 
 export const changerStatutTache = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { tacheFormationId } = req.params;
-  const { statut } = req.body;
-  const currentUser = req.user;
-
-  // Validation du statut
-  const statutsValides = ['EN_ATTENTE', 'EN_COURS', 'TERMINE'];
-  if (!statutsValides.includes(statut)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: t('statut_invalide', lang),
-      statutsValides 
-    });
-  }
-
-  if (!validateObjectId(tacheFormationId)) {
-    return res.status(400).json({
-      success: false,
-      message: t('identifiant_invalide', lang)
-    });
-  }
-
-  try {
-    const tache = await TacheThemeFormation.findById(tacheFormationId);
-    
-    if (!tache) {
-      return res.status(404).json({ 
+    const lang = req.headers['accept-language'] || 'fr';
+    const { tacheFormationId, currentUser } = req.params;
+    const {statut, donnees=""}=req.body
+    // Validation du statut
+    const statutsValides = ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'];
+    if (!statutsValides.includes(statut)) {
+      return res.status(400).json({ 
         success: false, 
-        message: t('tache_non_trouvee', lang) 
+        message: t('statut_invalide', lang),
+        statutsValides 
       });
     }
 
-    // Vérification des autorisations
-    if (!checkUserPermission(currentUser, tache, 'update')) {
-      return res.status(403).json({
-        success: false,
-        message: t('acces_refuse', lang)
-      });
-    }
-
-    // Logique métier pour les changements de statut
-    if (statut === 'TERMINE' && !tache.estExecutee) {
+    if (!validateObjectId(tacheFormationId)) {
       return res.status(400).json({
         success: false,
-        message: t('tache_non_executee', lang)
+        message: t('identifiant_invalide', lang)
       });
     }
 
-    if (statut === 'EN_COURS') {
-      tache.dateDebut = tache.dateDebut || new Date();
+    try {
+      const tache = await TacheThemeFormation.findById(tacheFormationId);
+      
+      if (!tache) {
+        return res.status(404).json({ 
+          success: false, 
+          message: t('tache_non_trouvee', lang) 
+        });
+      }
+
+      // Vérification des autorisations
+      // if (!checkUserPermission(currentUser, tache, 'update')) {
+      //   return res.status(403).json({
+      //     success: false,
+      //     message: t('acces_refuse', lang)
+      //   });
+      // }
+
+      // Logique métier pour les changements de statut
+      if (statut === 'TERMINE' && !tache.estExecutee) {
+        return res.status(400).json({
+          success: false,
+          message: t('tache_non_executee', lang)
+        });
+      }
+
+      if (statut === 'EN_ATTENTE') {
+        tache.dateDebut = tache.dateDebut || new Date();
+      }
+
+      if (statut === 'EN_COURS') {
+        tache.dateDebut = tache.dateDebut || new Date();
+      }
+
+      if (statut === 'TERMINE') {
+        tache.dateFin = new Date();
+      }
+
+      tache.statut = statut;
+      tache.donnees = donnees;
+      await tache.save();
+
+      return res.json({ 
+        success: true, 
+        message: t('statut_modifie_succes', lang),
+        data: tache 
+      });
+    } catch (err) {
+      console.error('Erreur changerStatutTache:', err);
+      return res.status(500).json({
+        success: false,
+        message: t('erreur_serveur', lang),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      });
     }
+};
 
-    if (statut === 'TERMINE') {
-      tache.dateFin = new Date();
-    }
+export const reinitialiserToutesLesTaches = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
 
-    tache.statut = statut;
-    await tache.save();
+  try {
+    // Mettre à jour toutes les tâches en BD
+    const result = await TacheThemeFormation.updateMany(
+      {}, // filtre vide = toutes les tâches
+      { 
+        $set: { 
+          statut: 'A_FAIRE',
+          dateDebut: null,
+          dateFin: null 
+        } 
+      }
+    );
 
-    return res.json({ 
-      success: true, 
-      message: t('statut_modifie_succes', lang),
-      data: tache 
+    return res.json({
+      success: true,
+      message: t('toutes_taches_reinitialisees', lang),
+      modifiedCount: result.modifiedCount
     });
   } catch (err) {
-    console.error('Erreur changerStatutTache:', err);
+    console.error('Erreur reinitialiserToutesLesTaches:', err);
     return res.status(500).json({
       success: false,
       message: t('erreur_serveur', lang),
@@ -422,6 +460,7 @@ export const changerStatutTache = async (req, res) => {
     });
   }
 };
+
 
 export const reinitialiserTache = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
@@ -750,6 +789,71 @@ export const getUserTaches = async (req, res) => {
       });
     }
 }
+
+
+export const getTacheProgressionByTheme = async (req, res) => {
+    const { themeId } = req.params; // Récupère le themeId depuis les paramètres de la route
+    const lang = req.headers['accept-language'] || 'fr';
+    
+    // Validation de l'ID du thème
+    if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        // Préparer le filtre pour toutes les requêtes
+        const filter = { theme: themeId };
+        
+        // Obtenir le nombre total de tâches pour ce thème
+        const totalTaches = await TacheThemeFormation.countDocuments(filter);
+        
+        // Si aucune tâche n'est trouvée pour ce thème, retourner 0% de progression
+        if (totalTaches === 0) {
+            return res.status(200).json({
+                success: true,
+                // message: t('aucune_tache_trouvee', lang),
+                progressionExecutee: 0,
+                progressionEnAttente: 0,
+            });
+        }
+        
+        // Compter les tâches exécutées pour ce thème
+        const tachesExecutees = await TacheThemeFormation.countDocuments({
+            ...filter,
+            estExecutee: true
+        });
+        
+        // Compter les tâches en attente pour ce thème
+        const tachesEnAttente = await TacheThemeFormation.countDocuments({
+            ...filter,
+            statut: 'EN_ATTENTE'
+        });
+        
+        // Calculer la progression en pourcentage
+        const progressionExecutee = (tachesExecutees / totalTaches) * 100;
+        const progressionEnAttente = (tachesEnAttente / totalTaches) * 100;
+        
+        return res.status(200).json({
+            success: true,
+            message: t('progression_taches_succes', lang),
+            data: {
+                progressionExecutee: Math.round(progressionExecutee),
+                progressionEnAttente: Math.round(progressionEnAttente)
+            }
+        });
+        
+    } catch (err) {
+        console.error("Erreur lors de la récupération de la progression des tâches par thème:", err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
 
 export const statsTaches = async (req, res) => {
     try {

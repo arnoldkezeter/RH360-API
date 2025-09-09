@@ -15,6 +15,9 @@ import CategorieProfessionnelle from '../models/CategorieProfessionnelle.js';
 import AxeStrategique from '../models/AxeStrategique.js';
 import { LieuFormation } from '../models/LieuFormation.js';
 import { Formateur } from '../models/Formateur.js';
+import { sendMailFormation } from '../utils/sendMailFormation.js';
+import path from 'path';
+import fs from 'fs';
 
 
 // Ajouter
@@ -98,6 +101,36 @@ export const createFormation = async (req, res) => {
             error: err.message,
         });
     }
+};
+
+// Votre contrôleur `createSupportFormation`
+export const uploadFile = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+
+    // La logique d'upload a déjà été gérée par un middleware (par ex. Multer)
+    // à ce stade, `req.file` est déjà disponible.
+
+    // Première validation: s'assurer qu'un fichier a bien été uploadé
+    if (!req.file) {
+        return res.status(400).json({
+            success: false,
+            message: t('fichier_requis', lang),
+        });
+    }
+
+    // Le reste de la logique du contrôleur, comme la validation et la sauvegarde en DB,
+    // n'est pas inclus selon votre demande.
+    // Cette partie du code se concentre uniquement sur la réception du fichier.
+
+    // A ce point, le fichier a été uploadé et est accessible via `req.file`.
+    // Ses propriétés, comme `req.file.filename` ou `req.file.size` sont prêtes à être utilisées.
+    
+    // Exemple de réponse pour confirmer que l'upload a fonctionné
+    return res.status(200).json({
+        success: true,
+        filePath: `/uploads/fichiers_tache_executee/${req.file.filename}`,
+        fileSize: req.file.size,
+    });
 };
 
 // Modifier
@@ -228,6 +261,98 @@ export const deleteFormation = async (req, res) => {
             success: false,
             message: t('erreur_serveur', lang),
             error: err.message,
+        });
+    }
+};
+
+
+export const invitation = async (req, res) => {
+    const { formationId } = req.params;
+    const { content, subject } = req.query;
+    const participantQuery = req.query.participant; // Récupérez la variable 'participant'
+    const lang = req.headers['accept-language'] || 'fr';
+
+    // Convertir la chaîne en booléen. Par défaut, on suppose qu'on envoie aux participants.
+    const toParticipants = participantQuery ? participantQuery.toLowerCase() === 'true' : true;
+
+    if (!formationId || !content || !subject) {
+        return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+    }
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(formationId)) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+        }
+
+        // Étape 1 : Récupérer les ID des thèmes
+        const themes = await ThemeFormation.find({ formation: formationId }).select('_id').lean();
+        const themeIds = themes.map(t => t._id);
+
+        if (themeIds.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_theme_trouve', lang) });
+        }
+
+        let userEmails = [];
+
+        if (toParticipants) {
+            // Logique pour les PARTICIPANTS
+            // Étape 2 : Récupérer les ID des cohortes
+            const lieux = await LieuFormation.find({ theme: { $in: themeIds } }).select('cohortes').lean();
+            const cohorteIds = lieux.flatMap(lieu => lieu.cohortes?.map(id => id.toString()) || []);
+
+            if (cohorteIds.length === 0) {
+                return res.status(404).json({ success: false, message: t('aucune_cohorte_trouve', lang) });
+            }
+
+            // Étape 3 : Récupérer les e-mails des utilisateurs
+            const cohortesUtilisateurs = await CohorteUtilisateur.find({ cohorte: { $in: cohorteIds } })
+                .populate({
+                    path: 'utilisateur',
+                    select: 'email'
+                })
+                .lean();
+
+            userEmails = cohortesUtilisateurs
+                .map(cu => cu.utilisateur?.email)
+                .filter(email => email);
+
+        } else {
+            // Logique pour les FORMATEURS
+            // Étape 2 : Récupérer les e-mails des formateurs
+            const formateurs = await Formateur.find({ theme: { $in: themeIds } })
+                .populate({
+                    path: 'utilisateur',
+                    select: 'email'
+                })
+                .lean();
+
+            userEmails = formateurs
+                .map(f => f.utilisateur?.email)
+                .filter(email => email);
+        }
+
+        if (userEmails.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_destinataire_trouve', lang) });
+        }
+
+        // Étape finale : Envoyer les e-mails en parallèle
+        const emailPromises = userEmails.map(email => sendMailFormation(email, subject, content));
+        await Promise.all(emailPromises);
+
+        // Envoyer une réponse de succès
+        res.status(200).json({
+            success: true,
+            message: t('emails_envoyes_succes', lang),
+            count: userEmails.length,
+            destinataires: toParticipants ? 'participants' : 'formateurs'
+        });
+
+    } catch (err) {
+        console.error('Erreur lors de l\'envoi des invitations:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
         });
     }
 };

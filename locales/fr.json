@@ -263,7 +263,10 @@
     "formateur_non_trouve":"Formateur non trouve",
     "lieu_existant":"Ce lieu a déjà été enregistré pour cette formation",
     "aucun_utilisateur_fournis":"Aucun utilisateur fourni",
-    "ressource_non_trouvee":"Ressource non trouvée"
+    "ressource_non_trouvee":"Ressource non trouvée",
+    "emails_envoyes_succes":"Mail envoyé avec succès",
+    "aucun_destinataire_trouve": "Aucun destinataire trouvé",
+    "participants_ajoutes":"Participant ajouté."
 
     
     

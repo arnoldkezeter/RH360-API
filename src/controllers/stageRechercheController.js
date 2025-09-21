@@ -37,7 +37,6 @@ export const createStageRecherche = async (req, res) => {
         nomEn,
         chercheur,
         superviseur,
-        structure,
         dateDebut,
         dateFin,
         anneeStage,
@@ -63,7 +62,7 @@ export const createStageRecherche = async (req, res) => {
     
 
     // Création du stageRecherche
-    const stageRecherche = new StageRecherche({ nomFr, nomEn, chercheur,superviseur, structure, dateDebut, dateFin, anneeStage, statut });
+    const stageRecherche = new StageRecherche({ nomFr, nomEn, chercheur,superviseur, dateDebut, dateFin, anneeStage, statut });
     await stageRecherche.save({ session });  
 
     await session.commitTransaction();
@@ -124,10 +123,6 @@ export const getStageRechercheById = async (req, res) => {
             path: 'superviseur',
             select: 'nom prenom'
         })
-        .populate({
-            path: 'structure',
-            select: 'nomFr nomEn'
-        });
 
     const stageRecherche = await query.exec();
 
@@ -175,7 +170,6 @@ export const updateStageRecherche = async (req, res) => {
         nomEn,
         chercheur,
         superviseur,
-        structure,
         dateDebut,
         dateFin,
         anneeStage,
@@ -216,7 +210,6 @@ export const updateStageRecherche = async (req, res) => {
         nomEn, 
         chercheur,
         superviseur,
-        structure,
         dateDebut, 
         dateFin, 
         anneeStage, 
@@ -642,227 +635,247 @@ export const nombreStageRecherchesParStatutEtEtablissement = async (req, res) =>
 };
 
 export const totalChercheursSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-       return res.status(400).json({
-        success: false,
-        message: lang === 'fr'
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
         ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
         : 'dateDebut and dateFin parameters are required.'
-        });
-    }
+    });
+  }
 
-     try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+  try {
+    const dateDebutFilter = new Date(dateDebut);
+    const dateFinFilter = new Date(dateFin);
 
-        // Chercheurs individuels à partir des Rotations
-        const chercheursIndividuelsResult = await Rotation.aggregate([
-            {
-                $match: {
-                    chercheur: { $exists: true, $ne: null },
-                    dateDebut: { $lte: dateFinFilter },
-                    dateFin: { $gte: dateDebutFilter }
-                }
-            },
-            {
-                $group: {
-                    _id: '$chercheur'
-                }
-            }
-        ]);
+    // Agrégation pour compter les chercheurs distincts
+    const chercheursIndividuelsResult = await StageRecherche.aggregate([
+      {
+        $match: {
+          chercheur: { $exists: true, $ne: null },
+          dateDebut: { $lte: dateFinFilter },
+          dateFin: { $gte: dateDebutFilter }
+        }
+      },
+      {
+        $group: {
+          _id: '$chercheur' // Grouper par chercheur (distinct)
+        }
+      }
+    ]);
 
-        const totalChercheurs = chercheursIndividuelsResult.length;
+    const totalChercheurs = chercheursIndividuelsResult.length;
 
-        return res.status(200).json({
-            success: true,
-            totalChercheurs: totalChercheurs
-        });
+    return res.status(200).json({
+      success: true,
+      totalChercheurs
+    });
 
-    } catch (error) {
-        console.error("Erreur dans totalChercheursSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
-    }
+  } catch (error) {
+    console.error("Erreur dans totalChercheursSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 export const totalChercheursTerminesSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-        return res.status(400).json({
-            success: false,
-            message: lang === 'fr'
-                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-                : 'dateDebut and dateFin parameters are required.'
-        });
-    }
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+    });
+  }
 
-    try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
-        const now = new Date();
+  try {
+    const dateDebutFilter = new Date(dateDebut);
+    const dateFinFilter = new Date(dateFin);
+    const now = new Date();
 
-        // Chercheurs individuels à partir des Rotations
-        const chercheursIndividuelsResult = await Rotation.aggregate([
-            {
-                $match: {
-                    chercheur: { $exists: true, $ne: null },
-                    dateFin: { $gte: dateDebutFilter, $lte: dateFinFilter, $lt: now }
-                }
-            },
-            {
-                $group: {
-                    _id: '$chercheur'
-                }
-            }
-        ]);
+    // Agrégation pour trouver les chercheurs dont le stage est terminé
+    const chercheursIndividuelsResult = await StageRecherche.aggregate([
+      {
+        $match: {
+          chercheur: { $exists: true, $ne: null },
+          dateFin: { 
+            $gte: dateDebutFilter,   // fini après début période
+            $lte: dateFinFilter,     // fini avant fin période
+            $lt: now                 // déjà terminé (sécurité si dateFin > aujourd’hui)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: '$chercheur' // Chercheurs distincts
+        }
+      }
+    ]);
 
-        const totalChercheursTermines = chercheursIndividuelsResult.length;
+    const totalChercheursTermines = chercheursIndividuelsResult.length;
 
-        return res.status(200).json({
-            success: true,
-            totalChercheursTermines: totalChercheursTermines
-        });
+    return res.status(200).json({
+      success: true,
+      totalChercheursTermines
+    });
 
-    } catch (error) {
-        console.error("Erreur dans totalChercheursTerminesSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
-    }
+  } catch (error) {
+    console.error("Erreur dans totalChercheursTerminesSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 export const moyenneChercheursParSuperviseurSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-        return res.status(400).json({
-            success: false,
-            message: lang === 'fr'
-                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-                : 'dateDebut and dateFin parameters are required.'
-        });
-    }
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+    });
+  }
 
-    try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+  try {
+    const dateDebutFilter = new Date(dateDebut);
+    const dateFinFilter = new Date(dateFin);
 
-        const pipeline = [
-            {
-                $match: {
-                    chercheur: { $exists: true, $ne: null },
-                    dateDebut: { $lte: dateFinFilter },
-                    dateFin: { $gte: dateDebutFilter }
-                }
-            },
-            {
-                $group: {
-                    _id: '$superviseur',
-                    chercheurs: { $addToSet: '$chercheur' }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    superviseurId: '$_id',
-                    nombreChercheurs: { $size: '$chercheurs' }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalChercheurs: { $sum: '$nombreChercheurs' },
-                    totalSuperviseurs: { $sum: 1 }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    moyenneChercheursParSuperviseur: { $divide: ['$totalChercheurs', '$totalSuperviseurs'] }
-                }
-            }
-        ];
+    const pipeline = [
+      {
+        $match: {
+          chercheur: { $exists: true, $ne: null },
+          superviseur: { $exists: true, $ne: null },
+          dateDebut: { $lte: dateFinFilter },
+          dateFin: { $gte: dateDebutFilter }
+        }
+      },
+      {
+        $group: {
+          _id: '$superviseur',
+          chercheurs: { $addToSet: '$chercheur' } // chercheurs uniques par superviseur
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          superviseurId: '$_id',
+          nombreChercheurs: { $size: '$chercheurs' }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalChercheurs: { $sum: '$nombreChercheurs' },
+          totalSuperviseurs: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          moyenneChercheursParSuperviseur: {
+            $cond: [
+              { $eq: ['$totalSuperviseurs', 0] },
+              0,
+              { $divide: ['$totalChercheurs', '$totalSuperviseurs'] }
+            ]
+          }
+        }
+      }
+    ];
 
-        const result = await Rotation.aggregate(pipeline);
-        const moyenne = result[0]?.moyenneChercheursParSuperviseur || 0;
+    const result = await StageRecherche.aggregate(pipeline);
+    const moyenne = result[0]?.moyenneChercheursParSuperviseur || 0;
 
-        return res.status(200).json({
-            success: true,
-            data: moyenne
-        });
-    } catch (error) {
-        console.error("Erreur dans moyenneChercheursParSuperviseurSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
-    }
+    return res.status(200).json({
+      success: true,
+      data: moyenne
+    });
+  } catch (error) {
+    console.error("Erreur dans moyenneChercheursParSuperviseurSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 export const dureeMoyenneStageRecherchesSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-        return res.status(400).json({
-            success: false,
-            message: lang === 'fr'
-                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-                : 'dateDebut and dateFin parameters are required.'
-        });
-    }
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+    });
+  }
 
-    try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+  try {
+    const dateDebutFilter = new Date(dateDebut);
+    const dateFinFilter = new Date(dateFin);
 
-        const matchStageRecherche = {
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
+    const pipeline = [
+      {
+        $match: {
+          dateDebut: { $lte: dateFinFilter },
+          dateFin: { $gte: dateDebutFilter }
+        }
+      },
+      {
+        $project: {
+          dureeEnJours: {
+            $divide: [
+              { $subtract: ['$dateFin', '$dateDebut'] },
+              1000 * 60 * 60 * 24 // conversion ms → jours
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          dureeMoyenneJours: { $avg: '$dureeEnJours' }
+        }
+      }
+    ];
 
-        // Pipeline pour les rotations individuelles uniquement
-        const dureesRotations = await Rotation.aggregate([
-            { $match: matchStageRecherche },
-            {
-                $project: {
-                    dureeEnJours: {
-                        $divide: [{ $subtract: ['$dateFin', '$dateDebut'] }, 1000 * 60 * 60 * 24]
-                    }
-                }
-            }
-        ]);
+    const result = await StageRecherche.aggregate(pipeline);
+    const dureeMoyenneJours = result[0]?.dureeMoyenneJours || 0;
 
-        const totalJours = dureesRotations.reduce((sum, item) => sum + item.dureeEnJours, 0);
-        const totalStageRecherches = dureesRotations.length;
+    // Conversion en mois approximatifs (30 jours)
+    const dureeMoyenneMois = dureeMoyenneJours / 30;
 
-        const moyenneEnMois = totalStageRecherches > 0 ? (totalJours / totalStageRecherches) / 30 : 0;
-
-        return res.status(200).json({
-            success: true,
-            dureeMoyenneMois: moyenneEnMois.toFixed(2)
-        });
-
-    } catch (error) {
-        console.error("Erreur dans dureeMoyenneStageRecherchesSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
-    }
+    return res.status(200).json({
+      success: true,
+      dureeMoyenneJours: dureeMoyenneJours.toFixed(2),
+      dureeMoyenneMois: dureeMoyenneMois.toFixed(2)
+    });
+  } catch (error) {
+    console.error("Erreur dans dureeMoyenneStageRecherchesSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 export const tauxStatutStageRecherchesSurPeriode = async (req, res) => {
@@ -996,13 +1009,32 @@ export const repartitionChercheursParSuperviseurSurPeriode = async (req, res) =>
         const dateDebutFilter = new Date(dateDebut);
         const dateFinFilter = new Date(dateFin);
 
+        if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
+            return res.status(400).json({
+                success: false,
+                message: lang === 'fr'
+                    ? 'Les dates fournies ne sont pas valides.'
+                    : 'The provided dates are not valid.'
+            });
+        }
+
+        if (dateDebutFilter > dateFinFilter) {
+            return res.status(400).json({
+                success: false,
+                message: lang === 'fr'
+                    ? 'La date de début doit être antérieure à la date de fin.'
+                    : 'The start date must be earlier than the end date.'
+            });
+        }
+
         const matchStageRecherche = {
             chercheur: { $exists: true, $ne: null },
+            superviseur: { $exists: true, $ne: null },
             dateDebut: { $lte: dateFinFilter },
             dateFin: { $gte: dateDebutFilter }
         };
 
-        const repartition = await Rotation.aggregate([
+        const repartition = await StageRecherche.aggregate([
             { $match: matchStageRecherche },
             {
                 $group: {
@@ -1012,20 +1044,21 @@ export const repartitionChercheursParSuperviseurSurPeriode = async (req, res) =>
             },
             {
                 $lookup: {
-                    from: 'superviseurs',
+                    from: 'utilisateurs', // collection liée au modèle Utilisateur
                     localField: '_id',
                     foreignField: '_id',
                     as: 'superviseurInfo'
                 }
             },
-            { $unwind: '$superviseurInfo' },
+            { $unwind: { path: '$superviseurInfo', preserveNullAndEmptyArrays: true } },
             {
                 $project: {
                     _id: 0,
                     superviseur: {
                         _id: '$superviseurInfo._id',
                         nom: '$superviseurInfo.nom',
-                        prenom: '$superviseurInfo.prenom'
+                        prenom: '$superviseurInfo.prenom',
+                        email: '$superviseurInfo.email'
                     },
                     nombreChercheurs: { $size: '$chercheurs' }
                 }
@@ -1034,8 +1067,9 @@ export const repartitionChercheursParSuperviseurSurPeriode = async (req, res) =>
 
         return res.status(200).json({
             success: true,
-            data: repartition
+            data: repartition.length > 0 ? repartition : []
         });
+
     } catch (error) {
         console.error("Erreur dans repartitionChercheursParSuperviseurSurPeriode:", error);
         return res.status(500).json({
@@ -1045,6 +1079,7 @@ export const repartitionChercheursParSuperviseurSurPeriode = async (req, res) =>
         });
     }
 };
+
 
 export const repartitionChercheursParEtablissementSurPeriode = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -1063,23 +1098,41 @@ export const repartitionChercheursParEtablissementSurPeriode = async (req, res) 
         const dateDebutFilter = new Date(dateDebut);
         const dateFinFilter = new Date(dateFin);
 
+        if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
+            return res.status(400).json({
+                success: false,
+                message: lang === 'fr'
+                    ? 'Les dates fournies ne sont pas valides.'
+                    : 'The provided dates are not valid.'
+            });
+        }
+
+        if (dateDebutFilter > dateFinFilter) {
+            return res.status(400).json({
+                success: false,
+                message: lang === 'fr'
+                    ? 'La date de début doit être antérieure à la date de fin.'
+                    : 'The start date must be earlier than the end date.'
+            });
+        }
+
         const matchStageRecherche = {
             chercheur: { $exists: true, $ne: null },
             dateDebut: { $lte: dateFinFilter },
             dateFin: { $gte: dateDebutFilter }
         };
 
-        const repartition = await Rotation.aggregate([
+        const repartition = await StageRecherche.aggregate([
             { $match: matchStageRecherche },
             {
                 $lookup: {
-                    from: 'chercheurs',
+                    from: 'chercheurs', // collection liée au modèle Chercheur
                     localField: 'chercheur',
                     foreignField: '_id',
                     as: 'chercheurInfo'
                 }
             },
-            { $unwind: '$chercheurInfo' },
+            { $unwind: { path: '$chercheurInfo', preserveNullAndEmptyArrays: true } },
             {
                 $group: {
                     _id: '$chercheurInfo.etablissement',
@@ -1088,13 +1141,13 @@ export const repartitionChercheursParEtablissementSurPeriode = async (req, res) 
             },
             {
                 $lookup: {
-                    from: 'etablissements',
+                    from: 'etablissements', // collection liée au modèle Etablissement
                     localField: '_id',
                     foreignField: '_id',
                     as: 'etablissementInfo'
                 }
             },
-            { $unwind: '$etablissementInfo' },
+            { $unwind: { path: '$etablissementInfo', preserveNullAndEmptyArrays: true } },
             {
                 $project: {
                     _id: 0,
@@ -1109,8 +1162,9 @@ export const repartitionChercheursParEtablissementSurPeriode = async (req, res) 
 
         return res.status(200).json({
             success: true,
-            data: repartition
+            data: repartition.length > 0 ? repartition : []
         });
+
     } catch (error) {
         console.error("Erreur dans repartitionChercheursParEtablissementSurPeriode:", error);
         return res.status(500).json({

@@ -242,7 +242,25 @@
     "formateur_non_trouve":"Trainer not found",
     "lieu_existant":"This location has already been registered for this training",
     "aucun_utilisateur_fournis":"No user provided",
-    "ressource_non_trouvee":"Resource not found"
+    "ressource_non_trouvee":"Resource not found",
+
+    "matricule": "Registration ID",
+    "nom": "Last Name",
+    "prenom": "First Name",
+    "email": "Email",
+    "telephone": "Phone",
+    "service": "Service",
+    "grade": "Grade",
+    "famille_metier": "Job Family",
+    "poste_de_travail": "Job Title",
+    "categorie_professionnelle": "Professional Category",
+    "region": "Region",
+    "departement": "Department",
+    "commune": "Commune",
+    "role": "Role",
+    "rapport_utilisateurs": "Users Report",
+    "liste_utilisateurs": "Users List",
+    "genere_le": "Generated on"
 
 }
   

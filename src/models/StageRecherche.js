@@ -8,7 +8,6 @@ const StageRechercheSchema = new mongoose.Schema({
     chercheur: {type: mongoose.Schema.Types.ObjectId, ref: 'Chercheur', required: true,},
     statut: {type: String,enum: ['EN_ATTENTE', 'ACCEPTE', 'REFUSE'], default: 'EN_ATTENTE'},
     superviseur: {type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
-    structure: {type: mongoose.Schema.Types.ObjectId, ref: 'Structure', required: true},
     dateDebut: {type: Date},
     dateFin: {type: Date},
     anneeStage: { type: Number, required: true },
@@ -16,7 +15,6 @@ const StageRechercheSchema = new mongoose.Schema({
 }, { timestamps: true }); // Inclut createdAt et updatedAt automatiquement
 
 StageRechercheSchema.index({ chercheur: 1 });
-StageRechercheSchema.index({ structure: 1 });
 StageRechercheSchema.index({ statut: 1 });
 
 const StageRecherche = mongoose.model('StageRecherche', StageRechercheSchema);

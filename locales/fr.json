@@ -266,7 +266,25 @@
     "ressource_non_trouvee":"Ressource non trouvée",
     "emails_envoyes_succes":"Mail envoyé avec succès",
     "aucun_destinataire_trouve": "Aucun destinataire trouvé",
-    "participants_ajoutes":"Participant ajouté."
+    "participants_ajoutes":"Participant ajouté.",
+
+    "matricule": "Matricule",
+    "nom": "Nom",
+    "prenom": "Prénom",
+    "email": "Email",
+    "telephone": "Téléphone",
+    "service": "Service",
+    "grade": "Grade",
+    "famille_metier": "Famille de Métier",
+    "poste_de_travail": "Poste de Travail",
+    "categorie_professionnelle": "Catégorie Professionnelle",
+    "region": "Région",
+    "departement": "Département",
+    "commune": "Commune",
+    "role": "Rôle",
+    "rapport_utilisateurs": "Rapport des Utilisateurs",
+    "liste_utilisateurs": "Liste des Utilisateurs",
+    "genere_le": "Généré le"
 
     
     

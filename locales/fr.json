@@ -109,7 +109,8 @@
     "objectif_theme_existante_en": "Un objectif avec ce nom anglais existe déjà pour ce thème.",
     "objectif_theme_non_trouve": "Objectif thème non trouvé.",
     "theme_required": "Le thème est requis.",
-
+    "participant_deja_ajoute":"Le participant a déjà été ajouté.",
+    "participant_non_trouve":"Participant non trouvé.",
 
     "fichier_requis": "Le fichier est requis.",
     "titre_fr_obligatoire": "Le titre en français est obligatoire.",

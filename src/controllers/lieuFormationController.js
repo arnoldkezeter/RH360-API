@@ -7,12 +7,19 @@ import { LieuFormation } from '../models/LieuFormation.js';
 export const ajouterLieuFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
-  const { lieu, cohortes } = req.body;
+  const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
 
-  if (!lieu || !Array.isArray(cohortes) || cohortes.length === 0) {
+  // Vérif des champs obligatoires
+  if (
+    !lieu ||
+    (
+      (!Array.isArray(cohortes) || cohortes.length === 0) &&
+      (!Array.isArray(participants) || participants.length === 0)
+    )
+  ) {
     return res.status(400).json({
       success: false,
-      message: t('champs_obligatoires', lang),
+      message: t('champs_obligatoires', lang) + ' (participants ou cohortes requis)',
     });
   }
 
@@ -32,18 +39,21 @@ export const ajouterLieuFormation = async (req, res) => {
       });
     }
 
-
     const nouveauLieu = new LieuFormation({
       lieu,
-      cohortes,
+      cohortes: cohortes || [],
+      participants: participants || [],
+      dateDebut: dateDebut || null,
+      dateFin: dateFin || null,
       theme: themeId,
     });
 
     await nouveauLieu.save();
 
     const lieuFormationPopule = await LieuFormation.findById(nouveauLieu._id)
-    .populate('cohortes')
-    .lean(); 
+      .populate('cohortes')
+      .populate('participants')
+      .lean();
 
     return res.status(201).json({
       success: true,
@@ -63,12 +73,19 @@ export const ajouterLieuFormation = async (req, res) => {
 export const modifierLieuFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { lieuId } = req.params;
-  const { lieu, cohortes } = req.body;
+  const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
 
-  if (!lieu || !Array.isArray(cohortes) || cohortes.length === 0) {
+  // Vérif des champs obligatoires
+  if (
+    !lieu ||
+    (
+      (!Array.isArray(cohortes) || cohortes.length === 0) &&
+      (!Array.isArray(participants) || participants.length === 0)
+    )
+  ) {
     return res.status(400).json({
       success: false,
-      message: t('champs_obligatoires', lang),
+      message: t('champs_obligatoires', lang) + ' (participants ou cohortes requis)',
     });
   }
 
@@ -88,17 +105,18 @@ export const modifierLieuFormation = async (req, res) => {
       });
     }
 
-    
-
-
     lieuFormation.lieu = lieu;
-    lieuFormation.cohortes = cohortes;
+    lieuFormation.cohortes = cohortes || [];
+    lieuFormation.participants = participants || [];
+    lieuFormation.dateDebut = dateDebut || null;
+    lieuFormation.dateFin = dateFin || null;
 
     await lieuFormation.save();
 
     const lieuFormationPopule = await LieuFormation.findById(lieuFormation._id)
-    .populate('cohortes')
-    .lean(); 
+      .populate('cohortes')
+      .populate('participants')
+      .lean();
 
     return res.status(200).json({
       success: true,
@@ -113,6 +131,7 @@ export const modifierLieuFormation = async (req, res) => {
     });
   }
 };
+
 
 // Supprimer un lieu de formation
 export const supprimerLieuFormation = async (req, res) => {

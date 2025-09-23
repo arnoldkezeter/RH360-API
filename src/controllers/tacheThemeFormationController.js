@@ -190,18 +190,17 @@ export const getTachesParTheme = async (req, res) => {
 
     // Récupérer TOUTES les tâches (sans pagination d'abord) pour pouvoir trier
     const allTaches = await TacheThemeFormation.find(query)
-      .populate({
-        path: 'responsable',
-        select: 'nom prenom email',
-        options: { strictPopulate: false }
-      })
-      .populate({
+    .populate({
           path: 'theme',
-          select: 'titreFr titreEn formation',
+          select: 'titreFr titreEn formation responsable',
           options: { strictPopulate: false },
           populate: {
               path: 'formation',
               select: 'titreFr titreEn'
+          },
+          populate: {
+              path: 'responsable',
+              select: 'nom prenom'
           }
       })
       .populate({ 

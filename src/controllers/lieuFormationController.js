@@ -8,7 +8,6 @@ export const ajouterLieuFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId } = req.params;
   const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
-
   // Vérif des champs obligatoires
   if (
     !lieu ||
@@ -51,13 +50,23 @@ export const ajouterLieuFormation = async (req, res) => {
     await nouveauLieu.save();
 
     const lieuFormationPopule = await LieuFormation.findById(nouveauLieu._id)
-      .populate('cohortes')
-      .populate('participants')
+      .populate({
+          path: 'cohortes',
+          select: 'nomFr nomEn participants',
+      })
+      .populate({
+          path: 'participants',
+          select: 'participant',
+          populate:{
+            path:'participant',
+            select:'nom prenom email'
+          }
+      })
       .lean();
 
     return res.status(201).json({
       success: true,
-      message: t('ajouter_sucess', lang),
+      message: t('ajouter_succes', lang),
       data: lieuFormationPopule,
     });
   } catch (error) {
@@ -73,7 +82,7 @@ export const ajouterLieuFormation = async (req, res) => {
 export const modifierLieuFormation = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { lieuId } = req.params;
-  const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
+  const { lieu, cohortes, participants, dateDebut, dateFin, dateDebutEffective, dateFinEffective } = req.body;
 
   // Vérif des champs obligatoires
   if (
@@ -110,12 +119,24 @@ export const modifierLieuFormation = async (req, res) => {
     lieuFormation.participants = participants || [];
     lieuFormation.dateDebut = dateDebut || null;
     lieuFormation.dateFin = dateFin || null;
+    lieuFormation.dateDebutEffective = dateDebutEffective || null;
+    lieuFormation.dateFinEffective = dateFinEffective || null;
 
     await lieuFormation.save();
 
     const lieuFormationPopule = await LieuFormation.findById(lieuFormation._id)
-      .populate('cohortes')
-      .populate('participants')
+      .populate({
+          path: 'cohortes',
+          select: 'nomFr nomEn participants',
+      })
+      .populate({
+          path: 'participants',
+          select: 'participant',
+          populate:{
+            path:'participant',
+            select:'nom prenom email'
+          }
+      })
       .lean();
 
     return res.status(200).json({
@@ -191,18 +212,29 @@ export const getLieuxFormation = async (req, res) => {
                 theme: themeId,
                 lieu: { $regex: new RegExp(query, 'i') }
             })
-            .populate('cohortes')
+            .populate({
+                path: 'cohortes',
+                select: 'nomFr nomEn participants',
+            })
+            .populate({
+                path: 'participants',
+                select: 'participant',
+                populate:{
+                  path:'participant',
+                  select:'nom prenom email'
+                }
+            })
             .lean();
 
             // Retourner le tableau, vide si pas de résultat
             return res.status(200).json({
                 success: true,
                 data: {
-                lieuFormations: lieuxTrouves,
-                totalItems: lieuxTrouves.length,
-                currentPage: 1,
-                totalPages: 1,
-                pageSize: lieuxTrouves.length,
+                  lieuFormations: lieuxTrouves,
+                  totalItems: lieuxTrouves.length,
+                  currentPage: 1,
+                  totalPages: 1,
+                  pageSize: lieuxTrouves.length,
                 },
             });
         } else {
@@ -213,6 +245,14 @@ export const getLieuxFormation = async (req, res) => {
                 .populate({
                     path: 'cohortes',
                     select: 'nomFr nomEn participants',
+                })
+                .populate({
+                    path: 'participants',
+                    select: 'participant',
+                    populate:{
+                      path:'participant',
+                      select:'nom prenom email'
+                    }
                 })
                 .skip((page - 1) * limit)
                 .limit(limit)

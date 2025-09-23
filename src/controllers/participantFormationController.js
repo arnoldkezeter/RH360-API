@@ -221,7 +221,13 @@ export const rechercherParticipantTheme = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: participants
+            data: {
+                participantFormations:participants,
+                totalItems: participants.lenght,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize:participants.lenght
+            }
         });
     } catch (error) {
         return res.status(500).json({

@@ -49,12 +49,16 @@ import chercheurRoutes from './routes/chercheurRoutes.js';
 import importDataRoutes from './routes/importDataRoutes.js';
 import exportDocumentRoutes from './routes/exportRoutes.js';
 import generatePDFRoutes from './routes/generatePDFRoutes.js';
+import noteServiceRoutes from './routes/noteServiceRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 
@@ -62,6 +66,10 @@ app.use(express.json());
 app.use(cors());
 app.use(helmet());
 app.use(morgan('dev'));
+
+//gerer les documents avec ejs
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
 //middleware pour servir les supports de formations
 app.use('/files/supports', express.static(path.join(process.cwd(), 'public/uploads/supports')));
@@ -116,6 +124,7 @@ app.use('/api/v1/chercheurs', chercheurRoutes);
 app.use('/api/v1/import-export-data', importDataRoutes);
 app.use('/api/v1/export-document', exportDocumentRoutes);
 app.use('/api/v1/generate-document', generatePDFRoutes)
+app.use('/api/v1/notes-service', noteServiceRoutes)
 
 // Route racine
 app.get('/', (req, res) => {

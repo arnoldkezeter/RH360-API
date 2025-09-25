@@ -285,9 +285,12 @@
     "role": "Rôle",
     "rapport_utilisateurs": "Rapport des Utilisateurs",
     "liste_utilisateurs": "Liste des Utilisateurs",
-    "genere_le": "Généré le"
+    "genere_le": "Généré le",
 
-    
+    "ref_mandat_requis":"Référence du mandat requise pour une note de service de type mandat",
+    "ref_stage_requis":"Référence du stage requise pour une note de service d'acceptation de stage",
+    "ref_theme_requis":"Référence du thème requise pour une note de service de convocation",
+    "type_note_invalide":"Type de note invalide"
     
 }
   

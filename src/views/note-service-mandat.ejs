@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title><%= documentTitle %></title>
+    <style>
+        @page {
+            margin: 2cm 2cm 2cm 2cm;
+            size: A4;
+        }
+        
+        body { 
+            font-family: 'Times New Roman', serif; 
+            margin: 0; 
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        /* Styles de l'en-tête */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 0;
+            margin-bottom: 40px;
+            min-height: 120px;
+        }
+        
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.2;
+        }
+        
+        .header-center {
+            text-align: center;
+            width: 20%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .header-center img {
+            max-width: 100px;
+            height: auto;
+            align-items: center;
+        }
+        
+        /* Ligne de séparation dans l'en-tête */
+        .separator {
+            margin: 3px 0;
+            color: #000;
+        }
+        
+        
+        /* Titre de la note */
+        .note-title {
+            text-align: center;
+            margin: 50px 0 10px 0;
+        }
+        
+        .document-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #000;
+            /* margin-bottom: 5px; */
+            text-decoration: underline;
+            text-transform: uppercase;
+        }
+
+        /* Corps du document */
+        .body-content {
+            text-align: justify;
+            line-height: 1.8;
+            margin: 0 1cm;
+        }
+        
+        .body-content p {
+            /* margin-bottom: 2px; */
+            text-indent: 1.5cm;
+        }
+        
+        .body-content p:first-child {
+            text-indent: 1.5cm;
+        }
+
+        /* Signature */
+        .signature-section {
+            margin-top: 80px;
+            margin-right: 1cm;
+        }
+        
+        .signature-container {
+            display: flex;
+            justify-content: flex-end;
+        }
+        
+        .signature-block {
+            text-align: center;
+            width: 300px;
+        }
+        
+        .signature-title {
+            font-weight: bold;
+            margin-bottom: 60px;
+            font-size: 12px;
+        }
+        
+        .signature-name {
+            font-weight: bold;
+            margin-top: 20px;
+            font-size: 11px;
+            border-top: 1px solid #000;
+            padding-top: 10px;
+        }
+
+        /* Section copie */
+        .copie-section {
+            margin-top: 60px;
+            margin-left: 1cm;
+            page-break-inside: avoid;
+        }
+        
+        .copie-title {
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .copie-list {
+            margin-left: 20px;
+            line-height: 1.6;
+            font-size: 11px;
+        }
+
+
+        /* Styles pour l'impression */
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .page-break {
+                page-break-before: always;
+            }
+        }
+
+        /* Mise en forme spéciale */
+        .highlight {
+            font-weight: bold;
+        }
+        
+        .theme-text {
+            font-style: italic;
+            font-weight: bold;
+        }
+        
+        /* Espacement spécial pour les sections de l'en-tête */
+        .header-section {
+            margin-bottom: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- En-tête officiel -->
+    <div class="header">
+        <div class="header-left">
+            <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
+            <div class="header-section">Paix-Travail-Patrie</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTERE DES FINANCES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
+            <div class="header-section">LA FORMATION CONTINUE</div>
+            <div class="separator">----------------------</div>
+            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
+        </div>
+        
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+            <% } %>
+        </div>
+        
+        <div class="header-right">
+            <div class="header-section">REPUBLIC OF CAMEROON</div>
+            <div class="header-section">Peace-Work-Fatherland</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTRY OF FINANCE</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+            <div class="separator">----------------------</div>
+            <div class="date-line">Yaoundé, le _______________</div>
+        </div>
+    </div>
+   
+    <!-- Titre du document -->
+    <div class="note-title">
+        <h3 class="document-title">MANDAT DE RECHERCHE</h3>
+    </div>
+
+    <!-- Corps du document -->
+    <div class="body-content">        
+        <p>
+            Le Directeur Général des Impôts, soussigné, donne mandat à 
+            <span class="highlight"><%= userSexe %> <%= userFullName %></span>, 
+            <%= inscrit %> en Doctorat/Ph.D en <span class="highlight"><%= userDoctorat %></span> 
+            à l'<span class="highlight"><%= userUniversity %></span>, de mener une réflexion sur le thème : <span class="theme-text">
+            « <%= userTheme %> »</span>.
+        </p>
+        
+        <p>
+            L'intéressé(e), autorisé(e) à solliciter toute personne ressource de la Direction Générale des Impôts 
+            susceptible de lui fournir des informations utiles, fera à terme des propositions et recommandations 
+            qu'il/elle nous présentera, après validation par un jury de soutenance.
+        </p>
+        
+        <p>
+            <span class="highlight"><%= userSupervisorSexe %> <%= userSupervisorFullName %></span>, 
+            <%= userSupervisorPoste %> à/au <%= userSupervisorStructure %>, est chargé(e) d'assurer 
+            l'encadrement des travaux de l'intéressé(e).
+        </p>
+        
+        <p>
+            Le présent mandat prend effet à compter de la date de signature de la présente note de service.
+        </p>
+    </div>
+
+    <!-- Section copie -->
+    <div class="copie-section">
+        <div class="copie-title">Copie pour information :</div>
+        <div class="copie-list">
+            <% if (mandatCopie && mandatCopie.length > 0) { %>
+                <% mandatCopie.forEach(function(copie) { %>
+                    <% if (copie.trim()) { %>
+                        - <%= copie.trim() %><br>
+                    <% } %>
+                <% }); %>
+            <% } else { %>
+                - Intéressé(e)<br>
+                - Archives/Chrono.
+            <% } %>
+        </div>
+    </div>
+
+    
+</body>
+</html>

@@ -3,6 +3,7 @@ import express from 'express';
 import { 
     creerNoteService, 
     creerNoteServiceStage, 
+    creerNoteServiceStageGroupe, 
     genererPDFNote, 
     obtenirNotesService, 
     validerNoteService } from '../controllers/noteServiceController.js';
@@ -18,6 +19,8 @@ const router = express.Router();
  * @returns PDF file download
  */
 router.post('/note-service/stage', authentificate, creerNoteServiceStage);
+router.post('/note-service/stage/groupe', authentificate, creerNoteServiceStageGroupe);
+
 router.post('/', authentificate, creerNoteService);
 
 /**

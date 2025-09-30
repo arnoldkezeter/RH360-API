@@ -8,9 +8,13 @@ const noteServiceSchema = new mongoose.Schema({
     typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat"]},
     titreFr:{type:String},
     titreEn:{type:String},
+    descriptionFr:{type:String},
+    descriptionEn:{type:String},
     copieA: {type:String},
     designationTuteur:{type:String},
     miseEnOeuvre:{type:String},
+    dispositions:{type:String},
+    personnesResponsables:{type:String},
     fichierJoint :  {type:String},// note signée scannée
     creePar:{type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
     valideParDG: {type:Boolean}

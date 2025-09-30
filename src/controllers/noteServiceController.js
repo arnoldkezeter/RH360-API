@@ -12,6 +12,7 @@ import { getLogoBase64 } from '../utils/logoBase64.js';
 import { AffectationFinale } from '../models/AffectationFinale.js';
 import Stage from '../models/Stage.js';
 import Utilisateur from '../models/Utilisateur.js';
+import { Rotation } from '../models/Rotation.js';
 
 
 
@@ -339,6 +340,166 @@ export const creerNoteServiceStage = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service stage:', error);
+
+        await session.abortTransaction();
+        session.endSession();
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+/**
+ * Crée une note de service pour un stage de groupe
+ */
+export const creerNoteServiceStageGroupe = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const {
+            stage,
+            titreFr,
+            titreEn,
+            descriptionFr,
+            descriptionEn,
+            copieA,
+            creePar,
+            dispositions,
+            personnesResponsables,
+            miseEnOeuvre
+        } = req.body;
+
+        // Validation
+        if (!stage) {
+            return res.status(400).json({
+                success: false,
+                message: t('ref_stage_requis', lang)
+            });
+        }
+
+        // Vérifier que le stage existe et est de type GROUPE
+        const stageData = await Stage.findById(stage)
+            .populate({
+                path: 'groupes',
+                populate: {
+                    path: 'stagiaires',
+                    select: 'nom prenom genre parcours',
+                    populate: {
+                        path: 'parcours.etablissement',
+                        select: 'nomFr nomEn'
+                    }
+                }
+            })
+            .lean();
+
+        if (!stageData) {
+            return res.status(404).json({
+                success: false,
+                message: t('stage_non_trouve', lang)
+            });
+        }
+
+        if (stageData.type !== 'GROUPE') {
+            return res.status(400).json({
+                success: false,
+                message: t('stage_type_invalide', lang)
+            });
+        }
+
+        if (!stageData.groupes || stageData.groupes.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_groupe_trouve', lang)
+            });
+        }
+
+        // Récupérer toutes les rotations pour tous les groupes
+        const rotations = await Rotation.find({ 
+            stage: stage,
+            groupe: { $in: stageData.groupes.map(g => g._id) }
+        })
+        .populate({
+            path: 'service',
+            select: 'nomFr nomEn'
+        })
+        .populate({
+            path: 'groupe',
+            select: 'numero'
+        })
+        .sort({ 'groupe.numero': 1, dateDebut: 1 })
+        .lean();
+
+        // Récupérer toutes les affectations finales
+        const affectations = await AffectationFinale.find({ 
+            stage: stage,
+            groupe: { $in: stageData.groupes.map(g => g._id) }
+        })
+        .populate({
+            path: 'service',
+            select: 'nomFr nomEn'
+        })
+        .populate({
+            path: 'groupe',
+            select: 'numero'
+        })
+        .sort({ 'groupe.numero': 1 })
+        .lean();
+
+        // Générer la référence
+        const reference = await genererReference();
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            reference,
+            stage,
+            typeNote: 'acceptation_stage',
+            titreFr: titreFr || "ACCEPTATION DE STAGE EN GROUPE",
+            titreEn: titreEn || "GROUP INTERNSHIP ACCEPTANCE",
+            descriptionFr,
+            descriptionEn,
+            copieA,
+            creePar,
+            dispositions,
+            personnesResponsables,
+            miseEnOeuvre,
+            valideParDG: false
+        });
+
+        const noteEnregistree = await nouvelleNote.save({ session });
+
+        // Générer le PDF
+        const pdfBuffer = await genererPDFStageGroupe(
+            noteEnregistree, 
+            stageData, 
+            rotations,
+            affectations,
+            lang,
+            creePar
+        );
+
+        // Définir le nom du fichier
+        const nomFichier = `note-service-stage-groupe-${reference.replace(/\//g, '-')}.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+        
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Erreur lors de la création de la note de service stage groupe:', error);
 
         await session.abortTransaction();
         session.endSession();
@@ -783,7 +944,186 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
     }
 };
 
+/**
+ * Génère le PDF pour un stage de groupe avec chronogramme
+ */
+const genererPDFStageGroupe = async (note, stageData, rotations, affectations, lang, createur) => {
+    try {
+        // Préparer le tableau des stagiaires par groupe
+        const groupesAvecStagiaires = stageData.groupes.map(groupe => {
+            return {
+                numero: groupe.numero,
+                stagiaires: groupe.stagiaires.map((stagiaire, index) => ({
+                    nom: stagiaire.nom,
+                    prenom: stagiaire.prenom || '',
+                    numero: index + 1
+                })),
+                nombreStagiaires: groupe.stagiaires.length
+            };
+        }).sort((a, b) => a.numero - b.numero);
 
+        // Construire le chronogramme des rotations
+        // Structure: { serviceId: { groupeNumero: { dateDebut, dateFin } } }
+        const chronogrammeRotations = {};
+        const servicesSet = new Set();
+
+        rotations.forEach(rotation => {
+            const serviceId = rotation.service._id.toString();
+            const serviceNom = lang === 'fr' ? rotation.service.nomFr : rotation.service.nomEn;
+            const groupeNumero = rotation.groupe.numero;
+
+            if (!chronogrammeRotations[serviceId]) {
+                chronogrammeRotations[serviceId] = {
+                    serviceNom,
+                    groupes: {}
+                };
+            }
+
+            chronogrammeRotations[serviceId].groupes[groupeNumero] = {
+                dateDebut: new Date(rotation.dateDebut).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                }),
+                dateFin: new Date(rotation.dateFin).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                })
+            };
+
+            servicesSet.add(serviceId);
+        });
+
+        // Construire le tableau des affectations finales
+        const affectationsFinalesParGroupe = {};
+        affectations.forEach(affectation => {
+            const groupeNumero = affectation.groupe.numero;
+            const serviceNom = lang === 'fr' ? affectation.service.nomFr : affectation.service.nomEn;
+            
+            if (!affectationsFinalesParGroupe[groupeNumero]) {
+                affectationsFinalesParGroupe[groupeNumero] = [];
+            }
+
+            affectationsFinalesParGroupe[groupeNumero].push({
+                service: serviceNom,
+                dateDebut: new Date(affectation.dateDebut).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                }),
+                dateFin: new Date(affectation.dateFin).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+            });
+        });
+
+        // Obtenir la liste des numéros de groupe
+        const numerosGroupes = [...new Set(stageData.groupes.map(g => g.numero))].sort((a, b) => a - b);
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Note de Service - Acceptation de Stage en Groupe',
+            logoUrl: getLogoBase64(__dirname),
+            
+            // Titre et description
+            noteTitle: lang === 'fr' 
+                ? (note.titreFr || "ACCEPTATION DE STAGE EN GROUPE")
+                : (note.titreEn || "GROUP INTERNSHIP ACCEPTANCE"),
+            description: lang === 'fr' ? note.descriptionFr : note.descriptionEn,
+            
+            // Tableau des stagiaires
+            groupesAvecStagiaires,
+            
+            // Dispositions
+            dispositions: note.dispositions
+                ? note.dispositions.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : [],
+            
+            // Responsables
+            personnesResponsables: note.personnesResponsables || "Les Chefs de Service concernés",
+            miseEnOeuvre: note.miseEnOeuvre || "Les Directeurs concernés",
+            
+            // Chronogramme
+            chronogrammeRotations,
+            servicesIds: Array.from(servicesSet),
+            numerosGroupes,
+            
+            // Affectations finales
+            affectationsFinalesParGroupe,
+            
+            // Copie
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
+            
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/note-service-stage-groupe.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+        
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true, // Format paysage pour les tableaux larges
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF stage groupe:', error);
+        throw error;
+    }
+};
     /**
  * Génère le PDF d'une note de service existante (endpoint séparé si besoin)
  */

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Budget - <%= documentTitle %></title>
+    <style>
+        @page {
+            margin: 2cm 2cm 2cm 2cm;
+            size: A4;
+        }
+        
+        body { 
+            font-family: 'Times New Roman', serif; 
+            margin: 0; 
+            padding: 0;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 0;
+            margin-bottom: 30px;
+            min-height: 120px;
+        }
+        
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.2;
+        }
+        
+        .header-center {
+            text-align: center;
+            width: 20%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .header-center img {
+            max-width: 100px;
+            height: auto;
+        }
+        
+        .separator {
+            margin: 3px 0;
+            color: #000;
+        }
+        
+        .header-section {
+            margin-bottom: 2px;
+        }
+        
+        .document-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #000;
+            margin: 30px 0;
+            text-decoration: underline;
+            text-transform: uppercase;
+        }
+
+        .table-container {
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        table th {
+            color: black;
+            padding: 10px 5px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #000;
+            font-size: 12px;
+            vertical-align: middle;
+        }
+        
+        table td {
+            padding: 8px 5px;
+            border: 1px solid #000;
+            text-align: left;
+            vertical-align: middle;
+        }
+        
+        table td.number {
+            text-align: right;
+        }
+        
+        table td.center {
+            text-align: center;
+        }
+        
+        table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .type-header {
+            background-color: #c1c1c2 !important;
+            color: black !important;
+            font-weight: bold;
+            text-align: center !important;
+            padding: 12px 10px !important;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .subtotal-row {
+            background-color: #e8f4f8 !important;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .subtotal-row td {
+            padding: 10px 5px !important;
+        }
+
+        .total-row {
+            background-color: #d4e6f1 !important;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .total-row td {
+            padding: 12px 5px !important;
+        }
+
+        .currency {
+            white-space: nowrap;
+        }
+
+        .tax-list {
+            margin: 0;
+            padding: 0;
+        }
+
+        .tax-item {
+            margin: 3px 0;
+            font-size: 9px;
+            line-height: 1.3;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .page-break {
+                page-break-before: always;
+            }
+
+            table {
+                page-break-inside: auto;
+            }
+            
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
+            <div class="header-section">Paix-Travail-Patrie</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTERE DES FINANCES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
+            <div class="header-section">LA FORMATION CONTINUE</div>
+            <div class="separator">----------------------</div>
+            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
+        </div>
+        
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+            <% } %>
+        </div>
+        
+        <div class="header-right">
+            <div class="header-section">REPUBLIC OF CAMEROON</div>
+            <div class="header-section">Peace-Work-Fatherland</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTRY OF FINANCE</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+            <div class="separator">----------------------</div>
+            <div class="date-line">Yaoundé, le _______________</div>
+        </div>
+    </div>
+   
+    <h3 class="document-title"><%= documentTitle || 'BUDGET DÉTAILLÉ' %></h3>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 25%;">NATURE DE LA DEPENSE</th>
+                    <th style="width: 8%;">QUANTITE</th>
+                    <th style="width: 10%;">MONTANT UNITAIRE HT</th>
+                    <th style="width: 10%;">MONTANT TOTAL HT</th>
+                    <th style="width: 12%;">NATURE DE LA TAXE</th>
+                    <th style="width: 7%;">TAUX</th>
+                    <th style="width: 10%;">MONTANT DE LA TAXE</th>
+                    <th style="width: 10%;">MONTANT TTC</th>
+                    <th style="width: 8%;">NAP</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% 
+                let totalGeneralHT = 0;
+                let totalGeneralTaxes = 0;
+                let totalGeneralTTC = 0;
+                
+                const depensesParType = {
+                    'ACQUISITION_BIENS_SERVICES': [],
+                    'FRAIS_ADMINISTRATIF': []
+                };
+                
+                depenses.forEach(function(depense) {
+                    if (depensesParType[depense.type]) {
+                        depensesParType[depense.type].push(depense);
+                    }
+                });
+                
+                const afficherGroupe = function(typeKey, depensesGroupe, typeLabel) {
+                    if (depensesGroupe.length === 0) return;
+                    
+                    let subtotalHT = 0;
+                    let subtotalTaxes = 0;
+                    let subtotalTTC = 0;
+                %>
+                
+                <tr>
+                    <td colspan="9" class="type-header"><%= typeLabel %></td>
+                </tr>
+                
+                <%
+                    depensesGroupe.forEach(function(depense) {
+                        const prixUnitaire = depense.montantUnitaireReel || 0;
+                        const quantite = depense.quantite || 1;
+                        const montantHT = prixUnitaire * quantite;
+
+                        if (!depense.taxes || depense.taxes.length === 0) {
+                            // Pas de taxe → ligne simple
+                            const montantTTC = montantHT;
+                            const nap = montantTTC;
+
+                            subtotalHT += montantHT;
+                            subtotalTTC += montantTTC;
+                    %>
+                        <tr>
+                            <td><%= depense.nomFr %></td>
+                            <td class="center"><%= quantite %></td>
+                            <td class="number currency"><%= prixUnitaire.toLocaleString('fr-FR') %></td>
+                            <td class="number currency"><%= montantHT.toLocaleString('fr-FR') %></td>
+                            <td class="center">-</td>
+                            <td class="center">-</td>
+                            <td class="number currency">0</td>
+                            <td class="number currency"><%= montantTTC.toLocaleString('fr-FR') %></td>
+                            <td class="number currency"><%= nap.toLocaleString('fr-FR') %></td>
+                        </tr>
+                    <%
+                        } else {
+                            // Avec taxes → rowspan
+                            const nbTaxes = depense.taxes.length;
+                            let totalMontantTaxes = 0;
+
+                            depense.taxes.forEach(function(taxe, index) {
+                                const tauxDecimal = (taxe.taux || 0) / 100;
+                                const montantTaxe = montantHT * tauxDecimal;
+                                totalMontantTaxes += montantTaxe;
+
+                                // Première ligne → affiche tout
+                                if (index === 0) {
+                                    const montantTTC = montantHT + totalMontantTaxes;
+                                    const nap = montantTTC;
+
+                                    subtotalHT += montantHT;
+                                    subtotalTaxes += montantTaxe;
+                                    subtotalTTC += montantTTC;
+                    %>
+                        <tr>
+                            <td rowspan="<%= nbTaxes %>"><%= depense.nomFr %></td>
+                            <td rowspan="<%= nbTaxes %>" class="center"><%= quantite %></td>
+                            <td rowspan="<%= nbTaxes %>" class="number currency"><%= prixUnitaire.toLocaleString('fr-FR') %></td>
+                            <td rowspan="<%= nbTaxes %>" class="number currency"><%= montantHT.toLocaleString('fr-FR') %></td>
+
+                            <td class="center"><%= taxe.natureFr || taxe.natureEn %></td>
+                            <td class="center"><%= taxe.taux %>%</td>
+                            <td class="number currency"><%= montantTaxe.toLocaleString('fr-FR') %></td>
+
+                            <td rowspan="<%= nbTaxes %>" class="number currency"><%= montantTTC.toLocaleString('fr-FR') %></td>
+                            <td rowspan="<%= nbTaxes %>" class="number currency"><%= nap.toLocaleString('fr-FR') %></td>
+                        </tr>
+                    <%
+                                } else {
+                                    // Lignes suivantes → seulement les taxes
+                                    subtotalTaxes += montantTaxe;
+                    %>
+                        <tr>
+                            <td class="center"><%= taxe.natureFr || taxe.natureEn %></td>
+                            <td class="center"><%= taxe.taux %>%</td>
+                            <td class="number currency"><%= montantTaxe.toLocaleString('fr-FR') %></td>
+                        </tr>
+                    <%
+                                }
+                            });
+                        }
+                    });
+                    %>
+                
+                <tr class="subtotal-row">
+                    <td colspan="3" style="padding-right: 10px;">Sous total</td>
+                    <td class="number currency"><%= subtotalHT.toLocaleString('fr-FR') %></td>
+                    <td colspan="2"></td>
+                    <td class="number currency"><%= subtotalTaxes.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= subtotalTTC.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= subtotalTTC.toLocaleString('fr-FR') %></td>
+                </tr>
+                
+                <% 
+                    totalGeneralHT += subtotalHT;
+                    totalGeneralTaxes += subtotalTaxes;
+                    totalGeneralTTC += subtotalTTC;
+                };
+                
+                afficherGroupe(
+                    'ACQUISITION_BIENS_SERVICES',
+                    depensesParType['ACQUISITION_BIENS_SERVICES'],
+                    'ACQUISITION DE BIENS ET SERVICES'
+                );
+                
+                afficherGroupe(
+                    'FRAIS_ADMINISTRATIF',
+                    depensesParType['FRAIS_ADMINISTRATIF'],
+                    'FRAIS ADMINISTRATIFS'
+                );
+                %>
+                
+                <tr class="total-row">
+                    <td colspan="3" style="padding-right: 10px;">Total général</td>
+                    <td class="number currency"><%= totalGeneralHT.toLocaleString('fr-FR') %></td>
+                    <td colspan="2"></td>
+                    <td class="number currency"><%= totalGeneralTaxes.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= totalGeneralTTC.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= totalGeneralTTC.toLocaleString('fr-FR') %></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</body>
+</html>

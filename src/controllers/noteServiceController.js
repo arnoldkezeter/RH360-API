@@ -103,6 +103,8 @@ export const creerNoteService = async (req, res) => {
             theme,
             stage,
             mandat,
+            designationTuteur,
+            miseEnOeuvre,
             typeNote,
             titreFr,
             titreEn,
@@ -140,8 +142,33 @@ export const creerNoteService = async (req, res) => {
                     select: 'nom prenom email'
                 }
             ]);
-        } else {
-            throw new Error(t('type_note_invalide', lang));
+        }
+        
+        if (noteEnregistree.typeNote === 'stage') {
+            await noteEnregistree.populate([
+                {
+                    path: 'stage',
+                    select: 'stagiaire superviseur',
+                    populate: [
+                        { path: 'superviseur', select: 'nom prenom titre posteDeTravail service',
+                            populate:[
+                                {path:'posteDeTravail', select:"nomFr nomEn"},
+                                {path:'service', select:"nomFr nomEn"}
+                            ]
+                         },
+                        { path: 'chercheur', select: 'nom prenom etablissement doctorat domaineRecherche genre',
+                            populate:{
+                                path:'etablissement',
+                                select:'nomFr nomEn'
+                            }
+                         }
+                    ]
+                },
+                {
+                    path: 'creePar',
+                    select: 'nom prenom email'
+                }
+            ]);
         }
 
         // Générer automatiquement le PDF selon le type

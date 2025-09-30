@@ -2,6 +2,19 @@ import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import Depense from '../models/Depense.js';
 import { t } from '../utils/i18n.js';
+import puppeteer from 'puppeteer';
+import ejs from 'ejs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import BudgetFormation from '../models/BudgetFormation.js';
+import { getLogoBase64 } from '../utils/logoBase64.js';
+import Utilisateur from '../models/Utilisateur.js';
+
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Ajouter une dépense
 export const createDepense = async (req, res) => {
@@ -240,6 +253,160 @@ export const getFilteredDepenses = async (req, res) => {
             success: false,
             message: t('erreur_serveur', lang),
             error: err.message
+        });
+    }
+};
+
+
+export const generateBudgetPDF = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { budgetId, userId } = req.params;
+
+    try {
+        // 1. Vérifier que le budgetId est valide
+        if (!mongoose.Types.ObjectId.isValid(budgetId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // 2. Vérifier que le budget existe
+        const budget = await BudgetFormation.findById(budgetId).lean();
+        
+        if (!budget) {
+            return res.status(404).json({
+                success: false,
+                message: t('budget_non_trouve', lang)
+            });
+        }
+
+        const creePar = await Utilisateur.findById(userId).select('nom prenom').lean();
+        
+        if (!creePar) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang)
+            });
+        }
+
+        // 3. Récupérer toutes les dépenses du budget avec les taxes
+        const depenses = await Depense.find({ budget: budgetId })
+            .populate({
+                path: 'taxes',
+                select: 'natureFr natureEn taux',
+                options: { strictPopulate: false }
+            })
+            .sort({ type: 1, createdAt: 1 })
+            .lean();
+
+        if (!depenses || depenses.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('depense_non_trouvee', lang)
+            });
+        }
+
+        // 4. Préparer les données pour le template
+        const templateData = {
+            documentTitle: lang === 'fr' ? (budget.nomFr || budget.nomEn) : (budget.nomEn || budget.nomFr),
+            budgetDescription: lang === 'fr' ? budget.descriptionFr : budget.descriptionEn,
+            depenses: depenses,
+            logoUrl: getLogoBase64(__dirname) || null,
+            dateDocument: new Date().toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            }),
+            // documentTitle: 'BUDGET DÉTAILLÉ'
+        };
+
+        // 5. Charger et compiler le template EJS
+        const templatePath = path.join(__dirname, '../views/budget_template.ejs');
+        
+        
+        const html = await ejs.renderFile(templatePath, templateData);
+        
+
+        // 6. Générer le PDF avec Puppeteer
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+        
+        // Définir le contenu HTML
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        // 7. Générer le PDF
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: '2cm',
+                right: '2cm',
+                bottom: '2cm',
+                left: '2cm'
+            },
+            // preferCSSPageSize: true
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>', // Header vide - utilise celui du template
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <!-- Partie gauche du footer -->
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${(creePar.nom+" "+creePar?.prenom ||"") || 'Système'}
+                    </div>
+                    
+                    <!-- Partie droite du footer -->
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+
+        // 8. Définir les en-têtes de réponse
+        const sanitizedBudgetName = (budget.nomFr || budget.nomEn || 'Budget')
+            .replace(/[^a-z0-9]/gi, '_')
+            .substring(0, 50);
+        const fileName = `Budget_${sanitizedBudgetName}_${Date.now()}.pdf`;
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+
+        // 9. Envoyer le PDF
+        return res.send(pdfBuffer);
+
+    } catch (err) {
+        console.error('Erreur lors de la génération du PDF du budget:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_generation_pdf', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 };

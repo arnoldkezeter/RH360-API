@@ -9,6 +9,8 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import { generateRandomPassword } from '../utils/generatePassword.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
+import fs from 'fs';
+import path from 'path';
 
 // Créer un utilisateur
 export const createUtilisateur = async (req, res) => {
@@ -250,6 +252,84 @@ export const updatePassword = async (req, res) => {
     }
 };
 
+
+
+
+
+export const updatePhotoProfil = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: t('fichier_requis', lang),
+    });
+  }
+
+  // 📂 Vérifie/crée le dossier uploads
+  const uploadsDir = path.join(process.cwd(), 'public/uploads/photos_profil');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  try {
+    const { userId } = req.params;
+
+    // Vérification de l’ID utilisateur
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({
+        success: false,
+        message: t('identifiant_invalide', lang),
+      });
+    }
+
+    const existUtilisateur = await Utilisateur.findById(userId);
+    if (!existUtilisateur) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(404).json({
+        success: false,
+        message: t('utilisateur_non_trouve', lang),
+      });
+    }
+
+    // 📌 Supprimer l’ancienne photo si elle existe
+    if (existUtilisateur.photoDeProfil) {
+      const anciennePhotoPath = path.join(
+        process.cwd(),
+        'public',
+        existUtilisateur.photoDeProfil.replace('/files', 'uploads') // conversion du chemin stocké en chemin réel
+      );
+
+      if (fs.existsSync(anciennePhotoPath)) {
+        fs.unlinkSync(anciennePhotoPath);
+      }
+    }
+
+    // 📌 Nouveau chemin relatif à stocker en DB
+    const fichierRelatif = `/files/photos_profil/${req.file.filename}`;
+
+    existUtilisateur.photoDeProfil = fichierRelatif;
+    await existUtilisateur.save();
+
+    return res.status(201).json({
+      success: true,
+      message: t('ajouter_succes', lang),
+      data: existUtilisateur,
+    });
+  } catch (err) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    console.error('Erreur lors de la mise à jour de la photo de profil:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
+};
+
+
+
 // Liste paginée
 export const getUtilisateurs = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
@@ -485,7 +565,55 @@ export const getCurrentUserData = async (req, res) => {
     }
 
     try {
-        const user = await Utilisateur.findById(userId).lean();
+        const user = await Utilisateur.findById(userId)
+        .populate([
+                { 
+                    path: 'service', 
+                    select: 'nomFr nomEn structure', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'structure',
+                        select: 'nomFr nomEn',
+                        options: { strictPopulate: false }
+                    }
+                },
+                { 
+                    path: 'grade', 
+                    select: 'nomFr nomEn', 
+                    options: { strictPopulate: false },
+                },
+                { 
+                    path: 'categorieProfessionnelle', 
+                    select: 'nomFr nomEn', 
+                    options: { strictPopulate: false },
+                },
+                { 
+                    path: 'familleMetier',
+                    select: 'nomFr nomEn',
+                    options: { strictPopulate: false }
+                },
+                { 
+                    path: 'posteDeTravail', 
+                    select: 'nomFr nomEn', 
+                    options: { strictPopulate: false },
+                   
+                },
+                { 
+                    path: 'commune', 
+                    select: 'nomFr nomEn departement', 
+                    options: { strictPopulate: false },
+                    populate: {
+                        path: 'departement',
+                        select: 'nomFr nomEn region',
+                        options: { strictPopulate: false },
+                        populate: {
+                            path: 'region',
+                            select: 'nomFr nomEn',
+                            options: { strictPopulate: false }
+                        }
+                    }
+                },
+            ]).lean();
 
         if (!user) {
             return res.status(404).json({
@@ -494,7 +622,7 @@ export const getCurrentUserData = async (req, res) => {
             });
         }
 
-        return res.statuts(200).json({
+        return res.status(200).json({
             success: true,
             data: user
         });

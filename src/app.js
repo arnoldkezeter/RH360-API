@@ -57,13 +57,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
+
 app.use(helmet());
 app.use(morgan('dev'));
 
@@ -73,6 +74,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 //middleware pour servir les supports de formations
 app.use('/files/supports', express.static(path.join(process.cwd(), 'public/uploads/supports')));
+app.use('/files/photos_profil', express.static(path.join(process.cwd(), 'public/uploads/photos_profil')));
 app.use('/files/fichiers_tache_executee', express.static(path.join(process.cwd(), 'public/uploads/fichiers_tache_executee')));
 
 connectDB();

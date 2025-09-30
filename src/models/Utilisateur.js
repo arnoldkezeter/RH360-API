@@ -27,6 +27,7 @@ const utilisateurSchema = new mongoose.Schema({
     posteDeTravail:{ type: mongoose.Schema.Types.ObjectId, ref: 'PosteDeTravail' },
     commune:{ type: mongoose.Schema.Types.ObjectId, ref: 'Commune' },
     actif: { type: Boolean, default: true },
+    photoDeProfil:{type:String},
 }, { timestamps: true });
 
 utilisateurSchema.pre('save', async function (next) {

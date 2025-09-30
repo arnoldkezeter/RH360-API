@@ -15,14 +15,33 @@ import {
     nombreStageRecherchesEnCoursSurPeriode,
     deleteStageRecherche,
     updateStageRecherche,
-    getStageRechercheById
+    getStageRechercheById,
+    changerStatutStageRecherche
 } from '../controllers/stageRechercheController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateStageRecherche.js';
+import multer from 'multer';
+import path from 'path';
+import fs from "fs";
 
 const router = express.Router();
 
 // Routes spécifiques en premier
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(process.cwd(), 'public/uploads/notes_service');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ storage });
+
+router.put('/:stageId/changer-statut', upload.single('noteServiceFile'), changerStatutStageRecherche);
 router.post('/', authentificate, validateFields, createStageRecherche); // Création
 router.put('/:stageId', authentificate, validateFields, updateStageRecherche); // Modification
 router.delete('/:id', authentificate, deleteStageRecherche); // Suppression

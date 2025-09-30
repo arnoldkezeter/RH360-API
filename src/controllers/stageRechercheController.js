@@ -4,6 +4,10 @@ import { t } from '../utils/i18n.js';
 import Chercheur from '../models/Chercheur.js';
 import { sendStageRechercheNotificationEmail } from '../utils/sendMailNotificationChercheur.js';
 import mongoose from 'mongoose';
+import fs from "fs";
+import path from "path";
+import { promisify } from 'util';
+import { sendEmail } from '../utils/sendMailNotificationStatutStage.js';
 
 const isValidDateRange = (start, end) => new Date(start) <= new Date(end);
 
@@ -267,6 +271,291 @@ export const deleteStageRecherche = async (req, res) => {
     }
 };
 
+
+
+const unlinkAsync = promisify(fs.unlink);
+const existsAsync = promisify(fs.exists);
+
+export const changerStatutStageRecherche = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { stageId } = req.params;
+    const { statut } = req.body;
+    const session = await mongoose.startSession();
+    
+    // Fonction helper pour nettoyer le fichier uploadé
+    const cleanupUploadedFile = async () => {
+        if (req.file?.path) {
+            try {
+                await unlinkAsync(req.file.path);
+            } catch (error) {
+                console.error('Erreur lors de la suppression du fichier uploadé:', error);
+            }
+        }
+    };
+
+    try {
+        // Validation de l'ID du stage
+        if (!mongoose.Types.ObjectId.isValid(stageId)) {
+            await cleanupUploadedFile();
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // Validation du statut
+        const statutsValides = ['ACCEPTE', 'REFUSE'];
+        if (!statut || !statutsValides.includes(statut)) {
+            await cleanupUploadedFile();
+            return res.status(400).json({
+                success: false,
+                message: t('statut_invalide', lang),
+                statutsValides
+            });
+        }
+
+        // Démarrer la transaction
+        session.startTransaction();
+
+        // Récupérer le stage avec le chercheur
+        const stage = await StageRecherche.findById(stageId)
+            .populate({
+                path: 'chercheur',
+                select: 'nom prenom email'
+            })
+            .session(session);
+
+        if (!stage) {
+            await cleanupUploadedFile();
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({
+                success: false,
+                message: t('stage_non_trouve', lang)
+            });
+        }
+
+        // Vérifier que le chercheur existe
+        if (!stage.chercheur) {
+            await cleanupUploadedFile();
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: lang === 'fr' ? 'Chercheur non trouvé' : 'Researcher not found'
+            });
+        }
+
+        let noteServicePath = null;
+        let noteServiceRelatif = null;
+
+        // Gestion de la note de service pour ACCEPTE
+        if (statut === 'ACCEPTE') {
+            if (!req.file) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('note_service_obligatoire', lang)
+                });
+            }
+
+            // Validation du type de fichier
+            const extensionsAutorisees = ['.pdf', '.doc', '.docx'];
+            const extension = path.extname(req.file.originalname).toLowerCase();
+            if (!extensionsAutorisees.includes(extension)) {
+                await cleanupUploadedFile();
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('format_fichier_invalide', lang),
+                    formatsAcceptes: extensionsAutorisees
+                });
+            }
+
+            // Validation de la taille du fichier (max 5MB)
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            if (req.file.size > maxSize) {
+                await cleanupUploadedFile();
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('fichier_trop_volumineux', lang),
+                    tailleMax: '5MB'
+                });
+            }
+
+            // Supprimer l'ancienne note si elle existe
+            if (stage.noteService) {
+                const oldFilePath = path.join(
+                    process.cwd(), 
+                    'public/uploads/notes_service', 
+                    path.basename(stage.noteService)
+                );
+                try {
+                    if (await existsAsync(oldFilePath)) {
+                        await unlinkAsync(oldFilePath);
+                    }
+                } catch (error) {
+                    console.error('Erreur lors de la suppression de l\'ancienne note:', error);
+                    // On continue quand même, ce n'est pas bloquant
+                }
+            }
+
+            noteServiceRelatif = `/files/notes_service/${req.file.filename}`;
+            noteServicePath = path.join(
+                process.cwd(), 
+                "public/uploads/notes_service", 
+                req.file.filename
+            );
+
+            // Vérifier que le fichier a bien été uploadé
+            if (!(await existsAsync(noteServicePath))) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(500).json({
+                    success: false,
+                    message: t('erreur_upload_fichier', lang)
+                });
+            }
+
+            stage.noteService = noteServiceRelatif;
+        }
+
+        // Mettre à jour le statut
+        stage.statut = statut;
+        await stage.save({ session });
+
+        // Valider la transaction avant d'envoyer l'email
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer l'email au chercheur
+        const chercheur = stage.chercheur;
+        let emailSent = false;
+        let emailError = null;
+
+        if (chercheur?.email) {
+            // Validation basique de l'email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (emailRegex.test(chercheur.email)) {
+                let subject, text, html;
+                const attachments = [];
+
+                if (statut === "ACCEPTE") {
+                    subject = lang === 'fr' 
+                        ? "Votre demande de stage de recherche a été acceptée" 
+                        : "Your research internship request has been accepted";
+                    
+                    text = lang === 'fr'
+                        ? "Votre demande de stage de recherche a été acceptée. Veuillez consulter la note de service jointe."
+                        : "Your research internship request has been accepted. Please find the service note attached.";
+                    
+                    html = `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2 style="color: #2c3e50;">Demande de Stage de Recherche</h2>
+                            <p>Bonjour <strong>${chercheur.nom} ${chercheur.prenom || ''}</strong>,</p>
+                            <p>Nous avons le plaisir de vous informer que votre demande de stage de recherche 
+                            <strong style="color: #27ae60;">a été acceptée</strong>.</p>
+                            <p>Veuillez trouver en pièce jointe la note de service officielle.</p>
+                            <p>Cordialement,<br/>Direction Générale des Impôts</p>
+                        </div>
+                    `;
+
+                    if (noteServicePath && await existsAsync(noteServicePath)) {
+                        attachments.push({
+                            filename: `Note_Service_${stage._id}.pdf`,
+                            path: noteServicePath,
+                            contentType: 'application/pdf'
+                        });
+                    }
+                } else {
+                    subject = lang === 'fr'
+                        ? "Votre demande de stage de recherche n'a pas été retenue"
+                        : "Your research internship request was not accepted";
+                    
+                    text = lang === 'fr'
+                        ? "Votre demande de stage de recherche n'a pas été retenue."
+                        : "Your research internship request was not accepted.";
+                    
+                    html = `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2 style="color: #2c3e50;">Demande de Stage de Recherche</h2>
+                            <p>Bonjour <strong>${chercheur.nom} ${chercheur.prenom || ''}</strong>,</p>
+                            <p>Nous vous informons que votre demande de stage de recherche n'a pas été retenue pour cette session.</p>
+                            <p>Nous vous encourageons à postuler lors des prochaines sessions.</p>
+                            <p>Cordialement,<br/>Direction Générale des Impôts</p>
+                        </div>
+                    `;
+                }
+
+                try {
+                    await sendEmail({
+                        to: chercheur.email,
+                        subject,
+                        text,
+                        html,
+                        attachments
+                    });
+                    emailSent = true;
+                } catch (error) {
+                    emailError = error.message;
+                    console.error(`Erreur envoi email à ${chercheur.email}:`, error);
+                }
+            } else {
+                console.warn(`Email invalide pour ${chercheur.nom}: ${chercheur.email}`);
+            }
+        } else {
+            console.warn(`Chercheur ${chercheur?.nom || 'inconnu'} sans email`);
+        }
+
+        // Construire la réponse
+        const response = {
+            success: true,
+            message: t('modifier_succes', lang),
+            data: {
+                stage: {
+                    _id: stage._id,
+                    statut: stage.statut,
+                    noteService: stage.noteService,
+                    chercheur: {
+                        _id: chercheur._id,
+                        nom: chercheur.nom,
+                        prenom: chercheur.prenom,
+                        email: chercheur.email
+                    }
+                },
+                emailEnvoye: emailSent
+            }
+        };
+
+        // Ajouter l'erreur d'email si en mode développement
+        if (emailError && process.env.NODE_ENV === 'development') {
+            response.data.erreurEmail = emailError;
+        }
+
+        return res.status(200).json(response);
+
+    } catch (error) {
+        // Nettoyage en cas d'erreur
+        await cleanupUploadedFile();
+        
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        session.endSession();
+
+        console.error("Erreur dans changerStatutStageRecherche:", error);
+        
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
 
 //Liste des stages
 export const listeStageRecherches = async (req, res) => {

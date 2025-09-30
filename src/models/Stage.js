@@ -11,7 +11,7 @@ const StageSchema = new mongoose.Schema({
     dateDebut: { type: Date, required: true },
     dateFin: { type: Date, required: true },
     anneeStage: { type: Number, required: true },
-    noteService: { type: mongoose.Schema.Types.ObjectId, ref: 'NoteService' },
+    noteService: { type:String },
     statut: {type: String,enum: ['EN_ATTENTE', 'ACCEPTE', 'REFUSE'],required: true,},
 },{ timestamps: true });
 

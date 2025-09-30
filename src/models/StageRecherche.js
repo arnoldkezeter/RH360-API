@@ -11,7 +11,7 @@ const StageRechercheSchema = new mongoose.Schema({
     dateDebut: {type: Date},
     dateFin: {type: Date},
     anneeStage: { type: Number, required: true },
-    noteService:{type: mongoose.Schema.Types.ObjectId, ref: 'NoteService'},
+    noteService:{type:String},
 }, { timestamps: true }); // Inclut createdAt et updatedAt automatiquement
 
 StageRechercheSchema.index({ chercheur: 1 });

@@ -7,6 +7,10 @@ import { Groupe } from '../models/Groupe.js';
 import { Rotation } from '../models/Rotation.js';
 import { AffectationFinale } from '../models/AffectationFinale.js';
 import mongoose from 'mongoose';
+import fs from "fs";
+import path from "path";
+import { promisify } from 'util';
+import { sendEmail } from '../utils/sendMailNotificationStatutStage.js';
 
 const isValidDateRange = (start, end) => new Date(start) <= new Date(end);
 
@@ -1062,6 +1066,320 @@ export const deleteStage = async (req, res) => {
         });
     }
 };
+
+
+
+const unlinkAsync = promisify(fs.unlink);
+const existsAsync = promisify(fs.exists);
+
+export const changerStatutStage = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { stageId } = req.params;
+    const { statut } = req.body;
+    const session = await mongoose.startSession();
+    
+    // Fonction helper pour nettoyer le fichier uploadé
+    const cleanupUploadedFile = async () => {
+        if (req.file?.path) {
+            try {
+                await unlinkAsync(req.file.path);
+            } catch (error) {
+                console.error('Erreur lors de la suppression du fichier uploadé:', error);
+            }
+        }
+    };
+
+    try {
+        // Validation de l'ID du stage
+        if (!mongoose.Types.ObjectId.isValid(stageId)) {
+            await cleanupUploadedFile();
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // Validation du statut
+        const statutsValides = ['ACCEPTE', 'REFUSE'];
+        if (!statut || !statutsValides.includes(statut)) {
+            await cleanupUploadedFile();
+            return res.status(400).json({
+                success: false,
+                message: t('statut_invalide', lang),
+                statutsValides
+            });
+        }
+
+        // Démarrer la transaction
+        session.startTransaction();
+
+        // Récupérer le stage avec vérification d'existence
+        const stage = await Stage.findById(stageId).session(session);
+        if (!stage) {
+            await cleanupUploadedFile();
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({
+                success: false,
+                message: t('stage_non_trouve', lang)
+            });
+        }
+
+        
+
+        let noteServicePath = null;
+        let noteServiceRelatif = null;
+
+        // Gestion de la note de service pour ACCEPTE
+        if (statut === 'ACCEPTE') {
+            if (!req.file) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('note_service_obligatoire', lang)
+                });
+            }
+
+            // Validation du type de fichier
+            const extensionsAutorisees = ['.pdf', '.doc', '.docx'];
+            const extension = path.extname(req.file.originalname).toLowerCase();
+            if (!extensionsAutorisees.includes(extension)) {
+                await cleanupUploadedFile();
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('format_fichier_invalide', lang),
+                    formatsAcceptes: extensionsAutorisees
+                });
+            }
+
+            // Validation de la taille du fichier (max 5MB)
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            if (req.file.size > maxSize) {
+                await cleanupUploadedFile();
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    success: false,
+                    message: t('fichier_trop_volumineux', lang),
+                    tailleMax: '5MB'
+                });
+            }
+
+            // Supprimer l'ancienne note si elle existe
+            if (stage.noteService) {
+                const oldFilePath = path.join(
+                    process.cwd(), 
+                    'public/uploads/notes_service', 
+                    path.basename(stage.noteService)
+                );
+                try {
+                    if (await existsAsync(oldFilePath)) {
+                        await unlinkAsync(oldFilePath);
+                    }
+                } catch (error) {
+                    console.error('Erreur lors de la suppression de l\'ancienne note:', error);
+                    // On continue quand même, ce n'est pas bloquant
+                }
+            }
+
+            noteServiceRelatif = `/files/notes_service/${req.file.filename}`;
+            noteServicePath = path.join(
+                process.cwd(), 
+                "public/uploads/notes_service", 
+                req.file.filename
+            );
+
+            // Vérifier que le fichier a bien été uploadé
+            if (!(await existsAsync(noteServicePath))) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(500).json({
+                    success: false,
+                    message: t('erreur_upload_fichier', lang)
+                });
+            }
+
+            stage.noteService = noteServiceRelatif;
+        }
+
+        // Mettre à jour le statut
+        stage.statut = statut;
+        await stage.save({ session });
+
+        // Récupérer les affectations avec gestion des cas vides
+        const affectations = await AffectationFinale.find({ stage: stage._id })
+            .populate({
+                path: "stagiaire",
+                select: "nom prenom email"
+            })
+            .populate({
+                path: "groupe",
+                populate: {
+                    path: "stagiaires",
+                    select: "nom prenom email"
+                }
+            })
+            .session(session)
+            .lean();
+
+        // Collecter les stagiaires uniques
+        const stagiairesMap = new Map();
+        
+        for (const aff of affectations) {
+            if (aff.stagiaire) {
+                const id = aff.stagiaire._id.toString();
+                if (!stagiairesMap.has(id)) {
+                    stagiairesMap.set(id, aff.stagiaire);
+                }
+            } else if (aff.groupe?.stagiaires?.length > 0) {
+                for (const stagiaire of aff.groupe.stagiaires) {
+                    const id = stagiaire._id.toString();
+                    if (!stagiairesMap.has(id)) {
+                        stagiairesMap.set(id, stagiaire);
+                    }
+                }
+            }
+        }
+
+        const stagiaires = Array.from(stagiairesMap.values());
+
+        // Valider la transaction avant d'envoyer les emails
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer les emails (après la transaction pour ne pas bloquer)
+        const emailPromises = [];
+        const emailErrors = [];
+
+        for (const stagiaire of stagiaires) {
+            if (!stagiaire?.email) {
+                console.warn(`Stagiaire ${stagiaire?.nom || 'inconnu'} sans email`);
+                continue;
+            }
+
+            // Validation basique de l'email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(stagiaire.email)) {
+                console.warn(`Email invalide pour ${stagiaire.nom}: ${stagiaire.email}`);
+                continue;
+            }
+
+            let subject, text, html;
+            const attachments = [];
+
+            if (statut === "ACCEPTE") {
+                subject = lang === 'fr' 
+                    ? "Votre demande de stage a été acceptée" 
+                    : "Your internship request has been accepted";
+                
+                text = lang === 'fr'
+                    ? "Votre demande de stage a été acceptée. Veuillez consulter la note de service jointe."
+                    : "Your internship request has been accepted. Please find the service note attached.";
+                
+                html = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #2c3e50;">Demande de Stage</h2>
+                        <p>Bonjour <strong>${stagiaire.nom} ${stagiaire.prenom || ''}</strong>,</p>
+                        <p>Nous avons le plaisir de vous informer que votre demande de stage a été 
+                        <strong style="color: #27ae60;">acceptée</strong>.</p>
+                        <p>Veuillez trouver en pièce jointe la note de service officielle.</p>
+                        <p>Cordialement,<br/>Direction Générale des Impôts</p>
+                    </div>
+                `;
+
+                if (noteServicePath && await existsAsync(noteServicePath)) {
+                    attachments.push({
+                        filename: `Note_Service_${stage._id}.pdf`,
+                        path: noteServicePath,
+                        contentType: 'application/pdf'
+                    });
+                }
+            } else {
+                subject = lang === 'fr'
+                    ? "Votre demande de stage n'a pas été retenue"
+                    : "Your internship request was not accepted";
+                
+                text = lang === 'fr'
+                    ? "Votre demande de stage n'a pas été retenue."
+                    : "Your internship request was not accepted.";
+                
+                html = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #2c3e50;">Demande de Stage</h2>
+                        <p>Bonjour <strong>${stagiaire.nom} ${stagiaire.prenom || ''}</strong>,</p>
+                        <p>Nous vous informons que votre demande de stage n'a pas été retenue pour cette session.</p>
+                        <p>Nous vous encourageons à postuler lors des prochaines sessions.</p>
+                        <p>Cordialement,<br/>Direction Générale des Impôts</p>
+                    </div>
+                `;
+            }
+
+            // Ajouter la promesse d'envoi d'email
+            emailPromises.push(
+                sendEmail({
+                    to: stagiaire.email,
+                    subject,
+                    text,
+                    html,
+                    attachments
+                }).catch(error => {
+                    emailErrors.push({
+                        stagiaire: `${stagiaire.nom} ${stagiaire.prenom || ''}`,
+                        email: stagiaire.email,
+                        error: error.message
+                    });
+                    console.error(`Erreur envoi email à ${stagiaire.email}:`, error);
+                })
+            );
+        }
+
+        // Attendre tous les envois d'email (sans bloquer la réponse)
+        await Promise.allSettled(emailPromises);
+
+        // Construire la réponse
+        const response = {
+            success: true,
+            message: t('modifier_succes', lang),
+            data: {
+                stage: {
+                    _id: stage._id,
+                    statut: stage.statut,
+                    noteService: stage.noteService
+                },
+                emailsEnvoyes: stagiaires.length - emailErrors.length,
+                totalStagiaires: stagiaires.length
+            }
+        };
+
+        // Ajouter les erreurs d'email si en mode développement
+        if (emailErrors.length > 0 && process.env.NODE_ENV === 'development') {
+            response.data.erreursEmail = emailErrors;
+        }
+
+        return res.status(200).json(response);
+
+    } catch (error) {
+        // Nettoyage en cas d'erreur
+        await cleanupUploadedFile();
+        
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        session.endSession();
+
+        console.error("Erreur dans changerStatutStage:", error);
+        
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
 
 export const updateGroupe = async (req, res) => {
   try {

@@ -292,10 +292,10 @@
             </tr>
         </thead>
         <tbody>
-            <% groupesAvecStagiaires.forEach(function(groupe) { %>
+            <% let numeroGlobal = 1; groupesAvecStagiaires.forEach(function(groupe) { %>
                 <% groupe.stagiaires.forEach(function(stagiaire, index) { %>
                     <tr>
-                        <td><%= stagiaire.numero %></td>
+                        <td><%= numeroGlobal++ %></td>
                         <td style="text-align: left; padding-left: 20px;">
                             <%= stagiaire.nom %> <%= stagiaire.prenom %>
                         </td>

@@ -299,7 +299,7 @@ export const creerNoteServiceStage = async (req, res) => {
         });
         
         const noteEnregistree = await nouvelleNote.save({ session });
-        const createur = Utilisateur.findById(creePar);
+        const createur = await Utilisateur.findById(creePar).lean();
         // Générer le PDF
         let pdfBuffer;
          if (affectations.length === 1) {
@@ -471,7 +471,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
         });
 
         const noteEnregistree = await nouvelleNote.save({ session });
-
+        const createur = await Utilisateur.findById(creePar).lean()
         // Générer le PDF
         const pdfBuffer = await genererPDFStageGroupe(
             noteEnregistree, 
@@ -479,7 +479,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
             rotations,
             affectations,
             lang,
-            creePar
+            createur
         );
 
         // Définir le nom du fichier

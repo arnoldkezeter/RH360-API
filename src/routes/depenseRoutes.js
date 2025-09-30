@@ -12,7 +12,7 @@ router.post('/:budgetId',authentificate, validateNatureDepense, createDepense);
 router.put('/:budgetId/depense/:id', authentificate, validateNatureDepense, updateDepense);
 router.delete('/:id',authentificate, deleteDepense);
 router.get('/filtre/:budgetId', authentificate, getFilteredDepenses);
-router.get('/:budgetId/:userId/pdf', generateBudgetPDF);
+router.get('/:budgetId/:userId/pdf', authentificate, generateBudgetPDF);
 
 
 

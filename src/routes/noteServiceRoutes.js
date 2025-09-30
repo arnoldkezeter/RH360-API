@@ -2,9 +2,11 @@
 import express from 'express';
 import { 
     creerNoteService, 
+    creerNoteServiceStage, 
     genererPDFNote, 
     obtenirNotesService, 
     validerNoteService } from '../controllers/noteServiceController.js';
+import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
@@ -15,7 +17,8 @@ const router = express.Router();
  * @body { typeNote, theme?, stage?, mandat?, titreFr?, titreEn?, copieA?, creePar? }
  * @returns PDF file download
  */
-router.post('/', creerNoteService);
+router.post('/note-service/stage', authentificate, creerNoteServiceStage);
+router.post('/', authentificate, creerNoteService);
 
 /**
  * @route GET /api/notes-service

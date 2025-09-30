@@ -8,6 +8,10 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { t } from '../utils/i18n.js';
 import mongoose from "mongoose";
+import { getLogoBase64 } from '../utils/logoBase64.js';
+import { AffectationFinale } from '../models/AffectationFinale.js';
+import Stage from '../models/Stage.js';
+import Utilisateur from '../models/Utilisateur.js';
 
 
 
@@ -33,17 +37,7 @@ const genererReference = async () => {
     return `NS/${numeroSequentiel}/DGI/${moisActuel}/${anneeActuelle}`;
 };
 
-const getLogoBase64 = () => {
-    try {
-        const logoPath = path.join(__dirname, '../views/logo.png'); // Votre chemin
-        const logoBuffer = fs.readFileSync(logoPath);
-        const logoBase64 = logoBuffer.toString('base64');
-        return `data:image/png;base64,${logoBase64}`;
-    } catch (error) {
-        console.error('Erreur lors du chargement du logo:', error);
-        return null;
-    }
-};
+
 
 /**
  * Crée une nouvelle note de service et génère automatiquement le PDF
@@ -62,7 +56,9 @@ export const creerNoteService = async (req, res) => {
             titreFr,
             titreEn,
             copieA,
-            creePar
+            creePar,
+            designationTuteur,
+            miseEnOeuvre
         } = req.body;
 
         // Validation des données requises
@@ -172,7 +168,7 @@ export const creerNoteService = async (req, res) => {
         }
 
         // Générer automatiquement le PDF selon le type
-        const pdfBuffer = await genererPDFSelonType(noteEnregistree);
+        const pdfBuffer = await genererPDFSelonType(noteEnregistree, lang);
 
         // Définir le nom du fichier PDF
         const nomFichier = `note-service-${typeNote}-${reference.replace(/\//g, '-')}.pdf`;
@@ -205,11 +201,161 @@ export const creerNoteService = async (req, res) => {
     }
 };
 
+/**
+ * Crée une nouvelle note de service pour un stage et génère le PDF
+ */
+export const creerNoteServiceStage = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const {
+            stage,
+            titreFr,
+            titreEn,
+            copieA,
+            creePar,
+            designationTuteur,
+            miseEnOeuvre
+        } = req.body;
+
+        // Validation
+        if (!stage) {
+            return res.status(400).json({
+                success: false,
+                message: t('ref_stage_requis', lang)
+            });
+        }
+
+        // Vérifier que le stage existe et est de type INDIVIDUEL
+        const stageData = await Stage.findById(stage)
+            .populate({
+                path: 'stagiaire',
+                select: 'nom prenom genre parcours',
+                populate: {
+                    path: 'parcours.etablissement',
+                    select: 'nomFr nomEn'
+                }
+            })
+            .lean();
+
+        if (!stageData) {
+        
+            return res.status(404).json({
+                success: false,
+                message: t('stage_non_trouve', lang)
+            });
+        }
+        if (stageData.type !== 'INDIVIDUEL') {
+            
+            return res.status(400).json({
+                success: false,
+                message: t('stage_type_invalide', lang)
+            });
+        }
+
+        // Récupérer l'affectation finale du stagiaire
+        const affectations = await AffectationFinale.find({ 
+            stage: stage,
+            stagiaire: stageData.stagiaire._id
+        })
+        .populate({
+            path: 'service',
+            select: 'nomFr nomEn'
+        })
+        .populate({
+            path: 'superviseur',
+            select: 'nom prenom titre posteDeTravail',
+            populate: {
+                path: 'posteDeTravail',
+                select: 'nomFr nomEn'
+            }
+        })
+        .lean();
+
+        if (!affectations) {
+            return res.status(404).json({
+                success: false,
+                message: t('affectation_non_trouvee', lang)
+            });
+        }
+
+        // Générer la référence
+        const reference = await genererReference();
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            stage,
+            typeNote: 'acceptation_stage',
+            titreFr: titreFr || "ACCEPTATION DE STAGE",
+            titreEn: titreEn || "INTERNSHIP ACCEPTANCE",
+            copieA,
+            creePar,
+            designationTuteur,
+            miseEnOeuvre,
+            valideParDG: false
+        });
+        
+        const noteEnregistree = await nouvelleNote.save({ session });
+        const createur = Utilisateur.findById(creePar);
+        // Générer le PDF
+        let pdfBuffer;
+         if (affectations.length === 1) {
+            pdfBuffer = await genererPDFStageIndividuel(
+                noteEnregistree, 
+                stageData, 
+                affectations[0], 
+                lang,
+                createur
+            );
+        }else{
+            pdfBuffer = await genererPDFStageRotations(
+                noteEnregistree, 
+                stageData, 
+                affectations, 
+                lang,
+                createur
+            );
+        }
+
+        
+
+        // Définir le nom du fichier
+        const nomFichier = `note-service-stage-${reference.replace(/\//g, '-')}.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+        
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Erreur lors de la création de la note de service stage:', error);
+
+        await session.abortTransaction();
+        session.endSession();
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
 
 /**
  * Génère le PDF selon le type de note de service
  */
-const genererPDFSelonType = async (note) => {
+const genererPDFSelonType = async (note, lang) => {
     try {
         let templateData = {};
         let templatePath = '';
@@ -217,7 +363,7 @@ const genererPDFSelonType = async (note) => {
         // Données communes à tous les types
         const donneesCommunes = {
             documentTitle: `Note de Service - ${note.typeNote}`,
-            logoUrl: getLogoBase64(), // Image en base64
+            logoUrl: getLogoBase64(__dirname), // Image en base64
             
            
             mandatCopie: note.copieA
@@ -250,21 +396,26 @@ const genererPDFSelonType = async (note) => {
             case 'acceptation_stage':
                 templateData = {
                     ...donneesCommunes,
-                    titreFr: note.titreFr || "ACCEPTATION DE STAGE",
-                    titreEn: note.titreEn || "INTERNSHIP ACCEPTANCE",
+                    noteTitle: lang==='fr'?note.titreFr || "ACCEPTATION DE STAGE":note.titreEn||"INTERNSHIP ACCEPTANCE",
                     stageTitre: note.stage?.titre || "Stage",
-                    stagiaireNom: `${note.stage?.stagiaire?.nom} ${note.stage?.stagiaire?.prenom}`,
-                    stagiaireEtablissement: note.stage?.stagiaire?.etablissement || "Établissement",
-                    stagiaireNiveau: note.stage?.stagiaire?.niveau || "Niveau d'étude",
+                    userSexe: note.stage?.stagiaire?.genre === 'M'?"Monsieur":"Madame",
+                    stagiaire: note.stage?.stagiaire?.genre === 'M'?"le":"la",
+                    leditStagiaire: note.stage?.stagiaire?.genre === 'M'?"du dit":"de ladite",
+                    userFullName: `${note.stage?.stagiaire?.nom} ${note.stage?.stagiaire?.prenom}`,
+                    userUniversity: note.stage?.stagiaire?.etablissement || "_______________",
+                    niveau: note.stage?.stagiaire?.niveau || "______________",
+                    filiere: note.stage?.stagiaire?.filiere || "______________",
                     dateDebut: note.stage?.dateDebut ? 
                         new Date(note.stage.dateDebut).toLocaleDateString('fr-FR') : '',
                     dateFin: note.stage?.dateFin ? 
                         new Date(note.stage.dateFin).toLocaleDateString('fr-FR') : '',
                     superviseurNom: `${note.stage?.superviseur?.nom} ${note.stage?.superviseur?.prenom}`,
                     superviseurPoste: note.stage?.superviseur?.poste || "Encadreur",
-                    structureAccueil: note.stage?.structure || "DGI"
+                    userService: "________________",
+                    designationTuteur:note?.designationTuteur || "_____________",
+                    miseEnOeuvre:note?.miseEnOeuvre || "_____________"
                 };
-                templatePath = path.join(__dirname, '../views/note-service-stage.ejs');
+                templatePath = path.join(__dirname, '../views/note-service-stage_individuel_1.ejs');
                 break;
 
             case 'convocation':
@@ -342,6 +493,292 @@ const genererPDFSelonType = async (note) => {
 
     } catch (error) {
         console.error('Erreur lors de la génération du PDF:', error);
+        throw error;
+    }
+};
+
+/**
+ * Génère le PDF pour un stage individuel avec une seule affectation
+ */
+const genererPDFStageIndividuel = async (note, stageData, affectations, lang, createur) => {
+    try {
+        // Récupérer le parcours le plus récent du stagiaire
+        const parcoursActuel = stageData.stagiaire.parcours && stageData.stagiaire.parcours.length > 0
+            ? stageData.stagiaire.parcours[stageData.stagiaire.parcours.length - 1]
+            : null;
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Note de Service - Acceptation de Stage',
+            logoUrl: getLogoBase64(__dirname),
+            
+            // Titre de la note
+            noteTitle: lang === 'fr' 
+                ? (note.titreFr || "ACCEPTATION DE STAGE")
+                : (note.titreEn || "INTERNSHIP ACCEPTANCE"),
+            
+            // Informations du stagiaire
+            userSexe: stageData.stagiaire.genre === 'M' ? "Monsieur" : "Madame",
+            stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
+            leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
+            userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
+            
+            // Informations académiques
+            userUniversity: parcoursActuel?.etablissement 
+                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
+                : "______________",
+            niveau: parcoursActuel?.niveau || "______________",
+            filiere: parcoursActuel?.filiere || "______________",
+            
+            // Informations d'affectations
+            userService: affectations.service 
+                ? (lang === 'fr' ? affectations.service.nomFr : affectations.service.nomEn)
+                : "________________",
+            dateDebut: affectations.dateDebut 
+                ? new Date(affectations.dateDebut).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '______________',
+            dateFin: affectations.dateFin 
+                ? new Date(affectations.dateFin).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '______________',
+            
+            // Superviseur (optionnel)
+            superviseurNom: affectations.superviseur 
+                ? `${affectations.superviseur.nom} ${affectations.superviseur.prenom || ''}`.trim()
+                : null,
+            superviseurPoste: affectations.superviseur?.posteDeTravail 
+                ? (lang === 'fr' ? affectations.superviseur.posteDeTravail.nomFr : affectations.superviseur.posteDeTravail.nomEn)
+                : null,
+            
+            // Autres informations
+            designationTuteur: note.designationTuteur || "___________________",
+            miseEnOeuvre: note.miseEnOeuvre || "___________________________",
+            
+            // Copie
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : ['Intéressé(e)', 'Archives/Chrono'],
+            
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/note-service-stage-individuel-1.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+        
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF stage individuel:', error);
+        throw error;
+    }
+};
+
+
+/**
+ * Génère le PDF pour un stage individuel avec plusieurs rotations
+ */
+const genererPDFStageRotations = async (note, stageData, affectations, lang, createur) => {
+    try {
+        // Récupérer le parcours le plus récent du stagiaire
+        const parcoursActuel = stageData.stagiaire.parcours && stageData.stagiaire.parcours.length > 0
+            ? stageData.stagiaire.parcours[stageData.stagiaire.parcours.length - 1]
+            : null;
+
+        // Formater les rotations pour le template
+        const rotationsFormatees = affectations.map((affectation, index) => {
+            const dateDebut = new Date(affectation.dateDebut).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+            
+            const dateFin = new Date(affectation.dateFin).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+
+            const nomService = affectation.service 
+                ? (lang === 'fr' ? affectation.service.nomFr : affectation.service.nomEn)
+                : "Service non défini";
+
+            return {
+                numero: index + 1,
+                periode: `Du ${dateDebut} au ${dateFin}`,
+                service: nomService,
+                superviseur: affectation.superviseur 
+                    ? `${affectation.superviseur.nom} ${affectation.superviseur.prenom || ''}`.trim()
+                    : null
+            };
+        });
+
+        // Calculer la période globale du stage
+        const dateDebutStage = new Date(affectations[0].dateDebut).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        const dateFinStage = new Date(affectations[affectations.length - 1].dateFin).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Note de Service - Acceptation de Stage avec Rotations',
+            logoUrl: getLogoBase64(__dirname),
+            
+            // Titre de la note
+            noteTitle: lang === 'fr' 
+                ? (note.titreFr || "ACCEPTATION DE STAGE")
+                : (note.titreEn || "INTERNSHIP ACCEPTANCE"),
+            
+            // Informations du stagiaire
+            userSexe: stageData.stagiaire.genre === 'M' ? "Monsieur" : "Madame",
+            stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
+            leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
+            userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
+            
+            // Informations académiques
+            userUniversity: parcoursActuel?.etablissement 
+                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
+                : "______________",
+            niveau: parcoursActuel?.niveau || "______________",
+            filiere: parcoursActuel?.filiere || "______________",
+            
+            // Période globale
+            dateDebutStage,
+            dateFinStage,
+            
+            // Rotations
+            rotations: rotationsFormatees,
+            nombreRotations: rotationsFormatees.length,
+            
+            // Autres informations
+            directeursEnCharge: note.miseEnOeuvre || "______________________________",
+            
+            // Copie
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : ['Intéressé(e)', 'Directeurs concernés', 'Archives/Chrono'],
+            
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/note-service-stage-individuel-2.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+        
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF stage rotations:', error);
         throw error;
     }
 };

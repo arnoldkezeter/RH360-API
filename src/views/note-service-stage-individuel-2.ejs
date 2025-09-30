@@ -18,7 +18,6 @@
             color: #000;
         }
         
-        /* Styles de l'en-tête */
         .header {
             display: flex;
             justify-content: space-between;
@@ -47,17 +46,17 @@
         .header-center img {
             max-width: 100px;
             height: auto;
-            align-items: center;
         }
         
-        /* Ligne de séparation dans l'en-tête */
         .separator {
             margin: 3px 0;
             color: #000;
         }
         
+        .header-section {
+            margin-bottom: 2px;
+        }
         
-        /* Titre de la note */
         .note-title {
             text-align: center;
             margin: 50px 0 10px 0;
@@ -68,12 +67,10 @@
             font-size: 16px;
             font-weight: bold;
             color: #000;
-            /* margin-bottom: 5px; */
             text-decoration: underline;
             text-transform: uppercase;
         }
 
-        /* Corps du document */
         .body-content {
             text-align: justify;
             line-height: 1.8;
@@ -81,45 +78,44 @@
         }
         
         .body-content p {
-            /* margin-bottom: 2px; */
             text-indent: 1.5cm;
+            margin-bottom: 15px;
         }
         
         .body-content p:first-child {
             text-indent: 1.5cm;
         }
 
-        /* Signature */
-        .signature-section {
-            margin-top: 80px;
-            margin-right: 1cm;
-        }
-        
-        .signature-container {
-            display: flex;
-            justify-content: flex-end;
-        }
-        
-        .signature-block {
-            text-align: center;
-            width: 300px;
-        }
-        
-        .signature-title {
-            font-weight: bold;
-            margin-bottom: 60px;
-            font-size: 12px;
-        }
-        
-        .signature-name {
-            font-weight: bold;
-            margin-top: 20px;
-            font-size: 11px;
-            border-top: 1px solid #000;
-            padding-top: 10px;
+        /* Style pour le calendrier des rotations */
+        .rotations-section {
+            margin: 20px 1cm;
+            padding: 15px;
+            border: 1px solid #000;
+            background-color: #f9f9f9;
         }
 
-        /* Section copie */
+        .rotations-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+            text-decoration: underline;
+            font-size: 14px;
+        }
+
+        .rotation-item {
+            margin: 10px 0;
+            padding-left: 20px;
+            line-height: 1.6;
+        }
+
+        .rotation-periode {
+            font-weight: bold;
+        }
+
+        .rotation-service {
+            margin-left: 10px;
+        }
+
         .copie-section {
             margin-top: 60px;
             margin-left: 1cm;
@@ -139,8 +135,6 @@
             font-size: 11px;
         }
 
-
-        /* Styles pour l'impression */
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
@@ -152,19 +146,8 @@
             }
         }
 
-        /* Mise en forme spéciale */
         .highlight {
             font-weight: bold;
-        }
-        
-        .theme-text {
-            font-style: italic;
-            font-weight: bold;
-        }
-        
-        /* Espacement spécial pour les sections de l'en-tête */
-        .header-section {
-            margin-bottom: 2px;
         }
     </style>
 </head>
@@ -218,43 +201,57 @@
     <div class="body-content">        
         <p>
             <span class="highlight"><%= userSexe %> <%= userFullName %></span>, en
-            <%= niveau %> année de la filiere <%= filiere %> à la/au <span class="highlight"><%= userUniversity %></span>,
-            admise en stage académique à la Direction Générale des Impôts, effectuera ledit stage à la/au <%= userService %>
-            du <%= dateDebut %> au <%= dateFin %>
+            <%= niveau %> de la filière <%= filiere %> à <span class="highlight"><%= userUniversity %></span>,
+            est mis(e) en stage académique auprès des structures de la Direction Générale des Impôts 
+            du <%= dateDebutStage %> au <%= dateFinStage %>, suivant le calendrier ci-après :
         </p>
+    </div>
 
+    <!-- Section des rotations -->
+    <div class="rotations-section">
+        <div class="rotations-title">CALENDRIER DES ROTATIONS</div>
+        <% rotations.forEach(function(rotation) { %>
+            <div class="rotation-item">
+                <span class="rotation-periode">- <%= rotation.periode %> :</span>
+                <span class="rotation-service"><%= rotation.service %></span>
+            </div>
+        <% }); %>
+    </div>
+
+    <!-- Suite du corps du document -->
+    <div class="body-content">
         <p>
-            <%= directeurEnCharge %> désignera un tuteur pour l'encadrement et le suivi <%= leditStagiaire %>
+            Chaque Chef de Service accueillant <%= stagiaire %> désignera un tuteur pour l'encadrement 
+            et le suivi <%= leditStagiaire %> durant la période de rotation dans son service.
         </p>
         
         <p>
-            A l'issue de la période de stage, <%= stagiaire %> soumettra au Directeur Général des Impôts un rapport y afférent.
+            A l'issue de la période de stage, <%= stagiaire %> soumettra au Directeur Général des Impôts 
+            un rapport global y afférent.
         </p>
         
         <p>
-            <%= directeursEnCharge %> est/sont chargés, chacun en ce qui le concerne, de la mise en oeuvre des termes de la
-             présente note de service. 
+            <%= directeursEnCharge %> sont chargés, chacun en ce qui le concerne, de la mise en œuvre 
+            des termes de la présente note de service.
         </p>
-        
     </div>
 
     <!-- Section copie -->
     <div class="copie-section">
         <div class="copie-title">Copie pour information :</div>
         <div class="copie-list">
-            <% if (mandatCopie && mandatCopie.length > 0) { %>
-                <% mandatCopie.forEach(function(copie) { %>
+            <% if (copies && copies.length > 0) { %>
+                <% copies.forEach(function(copie) { %>
                     <% if (copie.trim()) { %>
                         - <%= copie.trim() %><br>
                     <% } %>
                 <% }); %>
             <% } else { %>
                 - Intéressé(e)<br>
+                - Directeurs concernés<br>
                 - Archives/Chrono.
             <% } %>
         </div>
     </div>
-
-    
 </body>
 </html>

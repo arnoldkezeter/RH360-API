@@ -3,6 +3,7 @@ import { t } from '../utils/i18n.js';
 import TacheThemeFormation from '../models/TacheThemeFormation.js';
 import TacheGenerique from '../models/TacheGenerique.js';
 import ThemeFormation from '../models/ThemeFormation.js'; // Ajout supposé
+import Formation from '../models/Formation.js';
 
 // Fonction helper pour valider ObjectId
 const validateObjectId = (id) => {
@@ -25,11 +26,13 @@ const checkUserPermission = (user, tache, action = 'read') => {
   return true;
 };
 
+
+
 export const ajouterTacheAuTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { themeId, tacheId, dateDebut, dateFin } = req.body;
   const currentUser = req.user;
-  
+
   // Validation des IDs
   if (!validateObjectId(themeId) || !validateObjectId(tacheId)) {
     return res.status(400).json({ 
@@ -37,24 +40,23 @@ export const ajouterTacheAuTheme = async (req, res) => {
       message: t('identifiant_invalide', lang) 
     });
   }
-  const responsable = ThemeFormation.findById({themeId})
-                      .populate({path:'responsable', select:"nom prenom email"}).lean()
-  const responsableId = responsable? responsable._id:undefined
-  // Validation du responsable (optionnel)
-  if (responsableId && !validateObjectId(responsableId)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: t('responsable_invalide', lang) 
-    });
-  }
 
   try {
     // Vérifier l'existence du thème
-    const theme = await ThemeFormation.findById(themeId);
+    const theme = await ThemeFormation.findById(themeId).populate({ path:'responsable', select:"nom prenom email", strictPopulate:false });
     if (!theme) {
       return res.status(404).json({ 
         success: false, 
         message: t('theme_non_trouve', lang) 
+      });
+    }
+
+    // Déterminer le responsable
+    const responsableId = theme.responsable?._id || currentUser._id;
+    if (responsableId && !validateObjectId(responsableId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: t('responsable_invalide', lang) 
       });
     }
 
@@ -68,10 +70,7 @@ export const ajouterTacheAuTheme = async (req, res) => {
     }
 
     // Vérifier si déjà lié
-    const existingLink = await TacheThemeFormation.findOne({ 
-      theme: themeId, 
-      tache: tacheId 
-    });
+    const existingLink = await TacheThemeFormation.findOne({ theme: themeId, tache: tacheId });
     if (existingLink) {
       return res.status(409).json({ 
         success: false, 
@@ -87,20 +86,29 @@ export const ajouterTacheAuTheme = async (req, res) => {
       });
     }
 
+    // Création du lien tâche <-> thème
     const tacheTheme = new TacheThemeFormation({
       theme: themeId,
       tache: tacheId,
-      responsable: responsableId || currentUser._id,
       dateDebut: dateDebut ? new Date(dateDebut) : undefined,
       dateFin: dateFin ? new Date(dateFin) : undefined,
     });
-
     await tacheTheme.save();
+
+    // Mise à jour nbTachesTotal dans ThemeFormation
+    const nbTachesTheme = await TacheThemeFormation.countDocuments({ theme: themeId });
+    theme.nbTachesTotal = nbTachesTheme;
+    await theme.save();
+
+    // Mise à jour nbTachesTotal dans Formation associée
+    if (theme.formation) {
+      const nbTachesFormation = await TacheThemeFormation.countDocuments({ theme: { $in: await ThemeFormation.find({ formation: theme.formation }).distinct('_id') } });
+      await Formation.findByIdAndUpdate(theme.formation, { nbTachesTotal: nbTachesFormation });
+    }
 
     // Populer les données pour la réponse
     await tacheTheme.populate([
       { path: 'tache', select: 'code nomFr nomEn type' },
-      { path: 'responsable', select: 'nom prenom email' }
     ]);
 
     return res.status(201).json({
@@ -108,6 +116,7 @@ export const ajouterTacheAuTheme = async (req, res) => {
       message: t('ajouter_succes', lang),
       data: tacheTheme,
     });
+
   } catch (err) {
     console.error('Erreur ajouterTacheAuTheme:', err);
     return res.status(500).json({
@@ -117,6 +126,7 @@ export const ajouterTacheAuTheme = async (req, res) => {
     });
   }
 };
+
 
 export const getTachesParTheme = async (req, res) => {
   const { themeId } = req.params;
@@ -244,9 +254,7 @@ export const getTachesParTheme = async (req, res) => {
 
 export const executerTache = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { tacheFormationId } = req.params;
-  const { donnees, fichierJoint, commentaires } = req.body;
-  const currentUser = req.user;
+  const { tacheFormationId, currentUserId } = req.params;
 
   if (!validateObjectId(tacheFormationId)) {
     return res.status(400).json({ 
@@ -255,10 +263,16 @@ export const executerTache = async (req, res) => {
     });
   }
 
+  if (!validateObjectId(currentUserId)) {
+    return res.status(400).json({ 
+      success: false, 
+      message: t('identifiant_invalide', lang) 
+    });
+  }
+
   try {
     const tacheFormation = await TacheThemeFormation.findById(tacheFormationId)
-      .populate('tache')
-      .populate('responsable', 'nom prenom email');
+      .populate('tache');
 
     if (!tacheFormation) {
       return res.status(404).json({ 
@@ -267,74 +281,40 @@ export const executerTache = async (req, res) => {
       });
     }
 
-    // Vérification des autorisations
-    if (!checkUserPermission(currentUser, tacheFormation, 'execute')) {
-      return res.status(403).json({ 
-        success: false, 
-        message: t('acces_refuse', lang) 
-      });
-    }
+    // Vérifier si déjà exécutée
+    // if (tacheFormation.estExecutee) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: t('tache_deja_executee', lang)
+    //   });
+    // }
 
-    // Vérifier si la tâche n'est pas déjà exécutée
-    if (tacheFormation.estExecutee) {
-      return res.status(400).json({
-        success: false,
-        message: t('tache_deja_executee', lang)
-      });
-    }
-
-    const { type } = tacheFormation.tache;
-
-    // Validation selon le type de tâche
-    switch (type) {
-      case 'checkbox':
-        tacheFormation.estExecutee = true;
-        break;
-
-      case 'form':
-      case 'evaluation':
-      case 'table-form':
-        if (!donnees || Object.keys(donnees).length === 0) {
-          return res.status(400).json({ 
-            success: false, 
-            message: t('donnees_requises', lang) 
-          });
-        }
-        tacheFormation.donnees = donnees;
-        tacheFormation.estExecutee = true;
-        break;
-
-      case 'upload':
-        if (!fichierJoint) {
-          return res.status(400).json({ 
-            success: false, 
-            message: t('fichier_requis', lang) 
-          });
-        }
-        tacheFormation.fichierJoint = fichierJoint;
-        tacheFormation.estExecutee = true;
-        break;
-
-      case 'email':
-      case 'autoGenerate':
-        return res.status(400).json({ 
-          success: false, 
-          message: t('tache_automatique', lang) 
-        });
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: t('type_tache_non_supporte', lang)
-        });
-    }
-
-    // Mise à jour des champs communs
+    // ✅ Mise à jour des champs de la tâche
     tacheFormation.statut = 'TERMINE';
     tacheFormation.dateExecution = new Date();
-    tacheFormation.commentaires = commentaires || '';
+    tacheFormation.estExecutee = true;
+    tacheFormation.executePar = currentUserId;
 
     await tacheFormation.save();
+
+    const themeId = tacheFormation.theme;
+
+    // ✅ Mettre à jour nbTachesExecutees du thème
+    const nbTachesExecuteesTheme = await TacheThemeFormation.countDocuments({ 
+      theme: themeId, 
+      estExecutee: true 
+    });
+    await ThemeFormation.findByIdAndUpdate(themeId, { nbTachesExecutees: nbTachesExecuteesTheme });
+
+    // ✅ Mettre à jour nbTachesExecutees de la formation
+    const theme = await ThemeFormation.findById(themeId);
+    if (theme && theme.formation) {
+      const nbTachesExecuteesFormation = await TacheThemeFormation.countDocuments({
+        theme: { $in: await ThemeFormation.find({ formation: theme.formation }).distinct('_id') },
+        estExecutee: true
+      });
+      await Formation.findByIdAndUpdate(theme.formation, { nbTachesExecutees: nbTachesExecuteesFormation });
+    }
 
     return res.json({ 
       success: true, 
@@ -350,6 +330,7 @@ export const executerTache = async (req, res) => {
     });
   }
 };
+
 
 export const changerStatutTache = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -591,11 +572,10 @@ export const getStatutExecutionTheme = async (req, res) => {
   }
 };
 
-// Nouvelle fonction pour supprimer une tâche d'un thème
+
 export const supprimerTacheDuTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { tacheFormationId } = req.params;
-  const currentUser = req.user;
 
   if (!validateObjectId(tacheFormationId)) {
     return res.status(400).json({
@@ -614,15 +594,23 @@ export const supprimerTacheDuTheme = async (req, res) => {
       });
     }
 
-    // Vérification des autorisations
-    if (!checkUserPermission(currentUser, tacheFormation, 'delete')) {
-      return res.status(403).json({
-        success: false,
-        message: t('acces_refuse', lang)
-      });
-    }
+    const themeId = tacheFormation.theme;
 
+    // Supprimer la tâche
     await TacheThemeFormation.deleteOne({ _id: tacheFormationId });
+
+    // Mettre à jour nbTachesTotal dans ThemeFormation
+    const nbTachesTheme = await TacheThemeFormation.countDocuments({ theme: themeId });
+    await ThemeFormation.findByIdAndUpdate(themeId, { nbTachesTotal: nbTachesTheme });
+
+    // Mettre à jour nbTachesTotal dans Formation associée
+    const theme = await ThemeFormation.findById(themeId);
+    if (theme && theme.formation) {
+      const nbTachesFormation = await TacheThemeFormation.countDocuments({
+        theme: { $in: await ThemeFormation.find({ formation: theme.formation }).distinct('_id') }
+      });
+      await Formation.findByIdAndUpdate(theme.formation, { nbTachesTotal: nbTachesFormation });
+    }
 
     return res.json({
       success: true,

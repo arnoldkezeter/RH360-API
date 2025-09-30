@@ -7,6 +7,10 @@ import ThemeFormation from '../models/ThemeFormation.js';
 import { calculerCoutTotalPrevu } from '../services/budgetFormationService.js';
 import BudgetFormation from '../models/BudgetFormation.js';
 import Depense from '../models/Depense.js';
+import Utilisateur from '../models/Utilisateur.js';
+import { addRoleToUser, removeRoleFromUserIfUnused } from '../utils/utilisateurRole.js';
+
+
 
 // Ajouter
 export const createThemeFormation = async (req, res) => {
@@ -86,6 +90,10 @@ export const createThemeFormation = async (req, res) => {
             supports: [],
             formation: formation?._id || undefined,
         });
+
+        if (responsable?._id) {
+            await addRoleToUser(responsable?._id, 'RESPONSABLE-FORMATION');
+        }
 
         // Population des références pour la réponse
         const themePopule = await ThemeFormation.findById(theme._id)
@@ -199,7 +207,7 @@ export const updateThemeFormation = async (req, res) => {
                 message: t('theme_non_trouve', lang),
             });
         }
-
+        const oldResponsableId = theme.responsable?.toString();
         // Vérification de l'unicité du titre français
         if (titreFr !== undefined) {
             const existsFr = await ThemeFormation.findOne({ titreFr, _id: { $ne: id } });
@@ -233,6 +241,16 @@ export const updateThemeFormation = async (req, res) => {
 
         // Sauvegarde des modifications
         await theme.save();
+        // ✅ Nouveau formateur → rôle ajouté
+        if (responsable?._id && responsable._id.toString() !== oldResponsableId) {
+            await addRoleToUser(responsable?._id, 'formateur');
+    
+            // Ancien formateur → retirer le rôle si plus utilisé
+            if (oldUserId) {
+            await removeRoleFromUserIfUnused(oldUserId, 'RESPONSABLE-FORMATION', ThemeFormation, "responsable");
+            }
+        }
+        
 
         // Population des références pour la réponse
         const themePopule = await ThemeFormation.findById(theme._id)
@@ -294,8 +312,12 @@ export const deleteThemeFormation = async (req, res) => {
             message: t('theme_non_trouve', lang),
         });
         }
-
+        const oldResponsableId = theme.responsable?.toString();
         await ThemeFormation.findByIdAndDelete(id);
+        if (oldResponsableId) {
+            await removeRoleFromUserIfUnused(oldResponsableId, 'RESPONSABLE-FORMATION', ThemeFormation, "responsable");
+        }
+       
         return res.status(200).json({
             success: true,
             message: t('supprimer_succes', lang),

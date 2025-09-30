@@ -1927,21 +1927,36 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
 
         const matchStage = {
             dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
+            dateFin: { $gte: dateDebutFilter },
+            superviseur: { $exists: true, $ne: null }
         };
 
         const pipeline = [
-            // Étape 1: Utiliser $facet pour lancer deux pipelines d'agrégation en parallèle
             {
                 $facet: {
-                    // Pipeline pour les stagiaires individuels via les Rotations
-                    stagiairesIndividuels: [
-                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
-                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$stagiaire' } } }
+                    // Rotations individuelles
+                    rotations: [
+                        {
+                            $match: {
+                                ...matchStage,
+                                stagiaire: { $exists: true, $ne: null }
+                            }
+                        },
+                        {
+                            $group: {
+                                _id: '$superviseur',
+                                stagiaires: { $addToSet: '$stagiaire' }
+                            }
+                        }
                     ],
-                    // Pipeline pour les stagiaires de groupe via les AffectationsFinales
-                    stagiairesGroupes: [
-                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                    // Affectations de groupes
+                    affectations: [
+                        {
+                            $match: {
+                                ...matchStage,
+                                groupe: { $exists: true, $ne: null }
+                            }
+                        },
                         {
                             $lookup: {
                                 from: 'groupes',
@@ -1950,64 +1965,94 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                                 as: 'groupeInfo'
                             }
                         },
-                        { $unwind: '$groupeInfo' },
-                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$groupeInfo.stagiaires' } } }
+                        {
+                            $unwind: '$groupeInfo'
+                        },
+                        {
+                            $unwind: '$groupeInfo.stagiaires'
+                        },
+                        {
+                            $group: {
+                                _id: '$superviseur',
+                                stagiaires: { $addToSet: '$groupeInfo.stagiaires' }
+                            }
+                        }
                     ]
                 }
             },
-            // Étape 2: Fusionner les résultats des deux pipelines
+            // Fusionner les deux résultats
             {
                 $project: {
-                    tousLesStagiaires: { $concatArrays: ['$stagiairesIndividuels', '$stagiairesGroupes'] }
+                    combined: { $concatArrays: ['$rotations', '$affectations'] }
                 }
             },
-            { $unwind: '$tousLesStagiaires' },
-            // Étape 3: Regrouper à nouveau pour consolider les listes de stagiaires par superviseur
+            {
+                $unwind: '$combined'
+            },
+            // Regrouper par superviseur et combiner les stagiaires
             {
                 $group: {
-                    _id: '$tousLesStagiaires._id',
-                    stagiaires: {
-                        $addToSet: {
-                            $reduce: {
-                                input: '$tousLesStagiaires.stagiaires',
-                                initialValue: [],
-                                in: { $concatArrays: ['$$value', '$$this'] }
-                            }
+                    _id: '$combined._id',
+                    stagiaires: { $push: '$combined.stagiaires' }
+                }
+            },
+            // Aplatir le tableau de tableaux de stagiaires
+            {
+                $project: {
+                    _id: 1,
+                    stagiairesUniques: {
+                        $reduce: {
+                            input: '$stagiaires',
+                            initialValue: [],
+                            in: { $setUnion: ['$$value', '$$this'] }
                         }
                     }
                 }
             },
-            // Étape 4: Calculer la taille de chaque liste de stagiaires
             {
                 $project: {
-                    _id: 0,
-                    superviseurId: '$_id',
-                    nombreStagiaires: { $size: { $reduce: { input: '$stagiaires', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } } }
+                    _id: 1,
+                    nombreStagiaires: { $size: '$stagiairesUniques' }
                 }
             },
-            // Étape 5: Calculer la moyenne finale
+            // Calculer la moyenne
             {
                 $group: {
                     _id: null,
                     totalStagiaires: { $sum: '$nombreStagiaires' },
-                    totalSuperviseurs: { $sum: 1 }
+                    totalSuperviseurs: { $sum: 1 },
+                    details: { $push: { superviseurId: '$_id', nombreStagiaires: '$nombreStagiaires' } }
                 }
             },
             {
                 $project: {
                     _id: 0,
-                    moyenneStagiairesParSuperviseur: { $divide: ['$totalStagiaires', '$totalSuperviseurs'] }
+                    moyenneStagiairesParSuperviseur: {
+                        $cond: [
+                            { $eq: ['$totalSuperviseurs', 0] },
+                            0,
+                            { $divide: ['$totalStagiaires', '$totalSuperviseurs'] }
+                        ]
+                    },
+                    totalSuperviseurs: 1,
+                    totalStagiaires: 1,
+                    details: 1
                 }
             }
         ];
 
         const result = await Rotation.aggregate(pipeline);
-        const moyenne = result[0]?.moyenneStagiairesParSuperviseur || 0;
+        const data = result[0] || {
+            moyenneStagiairesParSuperviseur: 0,
+            totalSuperviseurs: 0,
+            totalStagiaires: 0
+        };
 
         return res.status(200).json({
             success: true,
-            data: moyenne
+            data
         });
+
     } catch (error) {
         console.error("Erreur dans moyenneStagiairesParSuperviseurSurPeriode:", error);
         return res.status(500).json({

@@ -11,8 +11,9 @@ const TacheThemeFormationSchema = new Schema({
     fichierJoint: {type: String},
     donnees: {type: Schema.Types.Mixed}, // Pour stocker des données personnalisées (budget, uploads, etc.)
     dateExecution: {type: Date},
-    statut: {type: String, enum: ['EN_ATTENTE', 'EN_COURS', 'TERMINE'], default: 'EN_ATTENTE',},
+    statut: {type: String, enum: ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'], default: 'A_FAIRE',},
     commentaires: {type:String},
+    executePar: {type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur', required: true},
 }, {
   timestamps: true
 });

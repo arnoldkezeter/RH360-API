@@ -3,6 +3,7 @@ import { t } from '../utils/i18n.js';
 import Utilisateur from '../models/Utilisateur.js';
 import ThemeFormation from '../models/ThemeFormation.js';
 import { Formateur } from '../models/Formateur.js';
+import { addRoleToUser, removeRoleFromUserIfUnused } from '../utils/utilisateurRole.js';
 
 
 // Ajouter un formateur
@@ -48,7 +49,7 @@ export const ajouterFormateur = async (req, res) => {
     }
 
     const nouveauFormateur = await Formateur.create({ utilisateur: utilisateurId, theme: themeId, interne });
-
+    await addRoleToUser(utilisateurId, 'FORMATEUR');
     const formateurPopule = await Formateur.findById(nouveauFormateur._id)
       .populate('utilisateur')
       .populate('theme')
@@ -96,7 +97,7 @@ export const modifierFormateur = async (req, res) => {
         message: t('utilisateur_non_trouve', lang),
       });
     }
-
+    const oldUserId = formateur.utilisateur?.toString();
     if (typeof interne === 'boolean') formateur.interne = interne;
     formateur.utilisateur = utilisateurId
 
@@ -106,6 +107,16 @@ export const modifierFormateur = async (req, res) => {
       .populate('utilisateur')
       .populate('theme')
       .lean();
+
+    // ✅ Nouveau formateur → rôle ajouté
+    if (utilisateurId && utilisateurId.toString() !== oldUserId) {
+      await addRoleToUser(utilisateurId, 'formateur');
+
+      // Ancien formateur → retirer le rôle si plus utilisé
+      if (oldUserId) {
+        await removeRoleFromUserIfUnused(oldUserId, 'FORMATEUR', Formateur);
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -141,9 +152,12 @@ export const supprimerFormateur = async (req, res) => {
         message: t('formateur_non_trouvee', lang),
       });
     }
-
+    const oldUserId = formateur.utilisateur?.toString();
     await formateur.deleteOne();
-
+    // ✅ Nouveau formateur → rôle ajouté
+    if (oldUserId) {
+      await removeRoleFromUserIfUnused(oldUserId, 'FORMATEUR', Formateur);
+    }
     return res.status(200).json({
       success: true,
       message: t('supprimer_succes', lang),

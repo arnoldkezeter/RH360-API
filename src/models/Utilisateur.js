@@ -18,6 +18,7 @@ const utilisateurSchema = new mongoose.Schema({
       default: 'UTILISATEUR',
       required:true
     },
+    roles:[{type:String}],
     dateEntreeEnService:{type:Date},
     service: { type: mongoose.Schema.Types.ObjectId, ref: 'Service'},
     grade: { type: mongoose.Schema.Types.ObjectId, ref: 'Grade' },

@@ -26,7 +26,7 @@ router.post('/', authentificate, ajouterTacheAuTheme);
 router.get('/theme/:themeId', authentificate, getTachesParTheme);
 router.get('/progression-taches/:themeId', authentificate, getTacheProgressionByTheme)
 router.get('/:tacheFormationId', authentificate, getTacheThemeById);
-router.put('/:tacheFormationId/executer', authentificate, executerTache);
+router.put('/:tacheFormationId/executer/:currentUserId', executerTache);
 router.put('/:tacheFormationId/:currentUser', authentificate, changerStatutTache);
 router.put('/:tacheFormationId/reinitialiser', authentificate, reinitialiserTache);
 router.put('/', authentificate, reinitialiserToutesLesTaches);

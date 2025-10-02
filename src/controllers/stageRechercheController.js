@@ -987,34 +987,37 @@ export const totalChercheursTerminesSurPeriode = async (req, res) => {
   }
 
   try {
+    // ✅ On ne garde que la date (sans l’heure)
     const dateDebutFilter = new Date(dateDebut);
-    const dateFinFilter = new Date(dateFin);
-    const now = new Date();
 
-    // Agrégation pour trouver les chercheurs dont le stage est terminé
+    const dateFinFilter = new Date(dateFin);
+
+    const now = new Date();
+    now.setHours(23, 59, 59, 999); // sécurité : on s’arrête à aujourd’hui inclus
+
     const chercheursIndividuelsResult = await StageRecherche.aggregate([
       {
         $match: {
           chercheur: { $exists: true, $ne: null },
           dateFin: { 
-            $gte: dateDebutFilter,   // fini après début période
-            $lte: dateFinFilter,     // fini avant fin période
-            $lt: now                 // déjà terminé (sécurité si dateFin > aujourd’hui)
+            $gte: dateDebutFilter,  // fini après ou à la dateDebut
+            $lte: dateFinFilter,    // fini avant ou à la dateFin
+            $lte: now               // déjà terminé
           }
         }
       },
       {
         $group: {
-          _id: '$chercheur' // Chercheurs distincts
+          _id: '$chercheur'
         }
       }
     ]);
 
     const totalChercheursTermines = chercheursIndividuelsResult.length;
-
+    
     return res.status(200).json({
       success: true,
-      totalChercheursTermines
+      data:totalChercheursTermines
     });
 
   } catch (error) {
@@ -1026,6 +1029,7 @@ export const totalChercheursTerminesSurPeriode = async (req, res) => {
     });
   }
 };
+
 
 export const moyenneChercheursParSuperviseurSurPeriode = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
@@ -1282,187 +1286,243 @@ export const repartitionChercheursParServiceSurPeriode = async (req, res) => {
 };
 
 export const repartitionChercheursParSuperviseurSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-        return res.status(400).json({
-            success: false,
-            message: lang === 'fr'
-                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-                : 'dateDebut and dateFin parameters are required.'
-        });
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+    });
+  }
+
+  try {
+    // ✅ Normalisation des dates (on ignore l’heure)
+    const dateDebutFilter = new Date(dateDebut);
+    dateDebutFilter.setHours(0, 0, 0, 0);
+
+    const dateFinFilter = new Date(dateFin);
+    dateFinFilter.setHours(23, 59, 59, 999);
+
+    if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
+      return res.status(400).json({
+        success: false,
+        message: lang === 'fr'
+          ? 'Les dates fournies ne sont pas valides.'
+          : 'The provided dates are not valid.'
+      });
     }
 
-    try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+    if (dateDebutFilter > dateFinFilter) {
+      return res.status(400).json({
+        success: false,
+        message: lang === 'fr'
+          ? 'La date de début doit être antérieure à la date de fin.'
+          : 'The start date must be earlier than the end date.'
+      });
+    }
 
-        if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
-            return res.status(400).json({
-                success: false,
-                message: lang === 'fr'
-                    ? 'Les dates fournies ne sont pas valides.'
-                    : 'The provided dates are not valid.'
-            });
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+
+    const repartition = await StageRecherche.aggregate([
+      {
+        $match: {
+          chercheur: { $exists: true, $ne: null },
+          superviseur: { $exists: true, $ne: null },
+          dateDebut: { $lte: dateFinFilter },
+          dateFin: { $gte: dateDebutFilter }
         }
-
-        if (dateDebutFilter > dateFinFilter) {
-            return res.status(400).json({
-                success: false,
-                message: lang === 'fr'
-                    ? 'La date de début doit être antérieure à la date de fin.'
-                    : 'The start date must be earlier than the end date.'
-            });
+      },
+      {
+        $group: {
+          _id: '$superviseur',
+          chercheurs: { $addToSet: '$chercheur' },
+          stages: { $push: { dateDebut: '$dateDebut', dateFin: '$dateFin' } }
         }
-
-        const matchStageRecherche = {
-            chercheur: { $exists: true, $ne: null },
-            superviseur: { $exists: true, $ne: null },
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
-
-        const repartition = await StageRecherche.aggregate([
-            { $match: matchStageRecherche },
-            {
-                $group: {
-                    _id: '$superviseur',
-                    chercheurs: { $addToSet: '$chercheur' }
+      },
+      {
+        $lookup: {
+          from: 'utilisateurs',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'superviseurInfo'
+        }
+      },
+      { $unwind: { path: '$superviseurInfo', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          superviseur: {
+            _id: '$superviseurInfo._id',
+            nom: '$superviseurInfo.nom',
+            prenom: '$superviseurInfo.prenom',
+            email: '$superviseurInfo.email'
+          },
+          nombreChercheurs: { $size: '$chercheurs' },
+          stagesEnCours: {
+            $size: {
+              $filter: {
+                input: '$stages',
+                as: 'stage',
+                cond: {
+                  $and: [
+                    { $lte: ['$$stage.dateDebut', now] },
+                    { $gte: ['$$stage.dateFin', now] }
+                  ]
                 }
-            },
-            {
-                $lookup: {
-                    from: 'utilisateurs', // collection liée au modèle Utilisateur
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'superviseurInfo'
-                }
-            },
-            { $unwind: { path: '$superviseurInfo', preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 0,
-                    superviseur: {
-                        _id: '$superviseurInfo._id',
-                        nom: '$superviseurInfo.nom',
-                        prenom: '$superviseurInfo.prenom',
-                        email: '$superviseurInfo.email'
-                    },
-                    nombreChercheurs: { $size: '$chercheurs' }
-                }
+              }
             }
-        ]);
+          },
+          stagesTermines: {
+            $size: {
+              $filter: {
+                input: '$stages',
+                as: 'stage',
+                cond: { $lt: ['$$stage.dateFin', now] }
+              }
+            }
+          }
+        }
+      }
+    ]);
 
-        return res.status(200).json({
-            success: true,
-            data: repartition.length > 0 ? repartition : []
-        });
+    return res.status(200).json({
+      success: true,
+      data: repartition.length > 0 ? repartition : []
+    });
 
-    } catch (error) {
-        console.error("Erreur dans repartitionChercheursParSuperviseurSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
-    }
+  } catch (error) {
+    console.error("Erreur dans repartitionChercheursParSuperviseurSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
 
 
 export const repartitionChercheursParEtablissementSurPeriode = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { dateDebut, dateFin } = req.query;
+  const lang = req.headers['accept-language'] || 'fr';
+  const { dateDebut, dateFin } = req.query;
 
-    if (!dateDebut || !dateFin) {
-        return res.status(400).json({
-            success: false,
-            message: lang === 'fr'
-                ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-                : 'dateDebut and dateFin parameters are required.'
-        });
+  if (!dateDebut || !dateFin) {
+    return res.status(400).json({
+      success: false,
+      message: lang === 'fr'
+        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+        : 'dateDebut and dateFin parameters are required.'
+    });
+  }
+
+  try {
+    const dateDebutFilter = new Date(dateDebut);
+    dateDebutFilter.setHours(0, 0, 0, 0);
+
+    const dateFinFilter = new Date(dateFin);
+    dateFinFilter.setHours(23, 59, 59, 999);
+
+    if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
+      return res.status(400).json({
+        success: false,
+        message: lang === 'fr'
+          ? 'Les dates fournies ne sont pas valides.'
+          : 'The provided dates are not valid.'
+      });
     }
 
-    try {
-        const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
-
-        if (isNaN(dateDebutFilter) || isNaN(dateFinFilter)) {
-            return res.status(400).json({
-                success: false,
-                message: lang === 'fr'
-                    ? 'Les dates fournies ne sont pas valides.'
-                    : 'The provided dates are not valid.'
-            });
-        }
-
-        if (dateDebutFilter > dateFinFilter) {
-            return res.status(400).json({
-                success: false,
-                message: lang === 'fr'
-                    ? 'La date de début doit être antérieure à la date de fin.'
-                    : 'The start date must be earlier than the end date.'
-            });
-        }
-
-        const matchStageRecherche = {
-            chercheur: { $exists: true, $ne: null },
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
-
-        const repartition = await StageRecherche.aggregate([
-            { $match: matchStageRecherche },
-            {
-                $lookup: {
-                    from: 'chercheurs', // collection liée au modèle Chercheur
-                    localField: 'chercheur',
-                    foreignField: '_id',
-                    as: 'chercheurInfo'
-                }
-            },
-            { $unwind: { path: '$chercheurInfo', preserveNullAndEmptyArrays: true } },
-            {
-                $group: {
-                    _id: '$chercheurInfo.etablissement',
-                    chercheurs: { $addToSet: '$chercheur' }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'etablissements', // collection liée au modèle Etablissement
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'etablissementInfo'
-                }
-            },
-            { $unwind: { path: '$etablissementInfo', preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 0,
-                    etablissement: {
-                        _id: '$etablissementInfo._id',
-                        nom: '$etablissementInfo.nom'
-                    },
-                    nombreChercheurs: { $size: '$chercheurs' }
-                }
-            }
-        ]);
-
-        return res.status(200).json({
-            success: true,
-            data: repartition.length > 0 ? repartition : []
-        });
-
-    } catch (error) {
-        console.error("Erreur dans repartitionChercheursParEtablissementSurPeriode:", error);
-        return res.status(500).json({
-            success: false,
-            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-            error: error.message
-        });
+    if (dateDebutFilter > dateFinFilter) {
+      return res.status(400).json({
+        success: false,
+        message: lang === 'fr'
+          ? 'La date de début doit être antérieure à la date de fin.'
+          : 'The start date must be earlier than the end date.'
+      });
     }
+
+    const matchStageRecherche = {
+      chercheur: { $exists: true, $ne: null },
+      dateDebut: { $lte: dateFinFilter },
+      dateFin: { $gte: dateDebutFilter }
+    };
+
+    const repartition = await StageRecherche.aggregate([
+      { $match: matchStageRecherche },
+      {
+        // 💡 MODIFICATION : Joindre la collection 'baseutilisateurs' au lieu de 'chercheurs'
+        $lookup: {
+          from: 'baseutilisateurs', 
+          localField: 'chercheur',
+          foreignField: '_id',
+          as: 'chercheurInfo'
+        }
+      },
+      { $unwind: { path: '$chercheurInfo', preserveNullAndEmptyArrays: true } },
+      
+      // Filtre pour garantir que l'établissement existe sur le document BaseUtilisateur/Chercheur.
+      { 
+        $match: { 
+          'chercheurInfo.etablissement': { $exists: true, $ne: null },
+          // Optionnel mais recommandé : s'assurer que c'est bien un chercheur
+          'chercheurInfo.type': 'Chercheur' 
+        } 
+      },
+      
+      {
+        $group: {
+          // L'établissement se trouve maintenant dans le document joint
+          _id: '$chercheurInfo.etablissement',
+          totalStages: { $sum: 1 },
+          stagesAccepte: { $sum: { $cond: [{ $eq: ['$statut', 'ACCEPTE'] }, 1, 0] } },
+          stagesRefuse: { $sum: { $cond: [{ $eq: ['$statut', 'REFUSE'] }, 1, 0] } },
+          chercheurs_ids: { $addToSet: '$chercheur' } 
+        }
+      },
+      {
+        $lookup: {
+          from: 'etablissements',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'etablissementInfo'
+        }
+      },
+      { $unwind: { path: '$etablissementInfo', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          etablissement: {
+            nomFr: '$etablissementInfo.nomFr',
+            nomEn: '$etablissementInfo.nomEn'
+          },
+          nombreChercheurs: { $size: '$chercheurs_ids' },
+          chercheurs_ids: 1, 
+          totalStages: 1,
+          stagesAccepte: 1,
+          stagesRefuse: 1
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: repartition.length > 0 ? repartition : []
+    });
+
+  } catch (error) {
+    console.error("Erreur dans repartitionChercheursParEtablissementSurPeriode:", error);
+    return res.status(500).json({
+      success: false,
+      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+      error: error.message
+    });
+  }
 };
+
+
+
 
 export const nombreStageRecherchesEnCoursSurPeriode = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';

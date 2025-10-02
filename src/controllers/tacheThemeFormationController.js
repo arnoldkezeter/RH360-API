@@ -363,14 +363,7 @@ export const changerStatutTache = async (req, res) => {
         });
       }
 
-      // Vérification des autorisations
-      // if (!checkUserPermission(currentUser, tache, 'update')) {
-      //   return res.status(403).json({
-      //     success: false,
-      //     message: t('acces_refuse', lang)
-      //   });
-      // }
-
+    
       // Logique métier pour les changements de statut
       if (statut === 'TERMINE' && !tache.estExecutee) {
         return res.status(400).json({

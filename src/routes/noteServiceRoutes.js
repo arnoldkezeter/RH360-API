@@ -2,8 +2,12 @@
 import express from 'express';
 import { 
     creerNoteService, 
+    creerNoteServiceConvocationFormateurs, 
+    creerNoteServiceConvocationParticipants, 
     creerNoteServiceStage, 
     creerNoteServiceStageGroupe, 
+    genererFichesPresenceFormateurs, 
+    genererFichesPresenceParticipants, 
     genererPDFNote, 
     obtenirNotesService, 
     validerNoteService } from '../controllers/noteServiceController.js';
@@ -20,6 +24,11 @@ const router = express.Router();
  */
 router.post('/note-service/stage', authentificate, creerNoteServiceStage);
 router.post('/note-service/stage/groupe', authentificate, creerNoteServiceStageGroupe);
+router.post('/note-service/convocation/formateurs', authentificate, creerNoteServiceConvocationFormateurs);
+router.post('/note-service/convocation/participants', authentificate, creerNoteServiceConvocationParticipants);
+router.post('/formations/fiches-presence/participants', authentificate, genererFichesPresenceParticipants);
+router.post('/formations/fiches-presence/formateurs', authentificate, genererFichesPresenceFormateurs);
+
 
 router.post('/', authentificate, creerNoteService);
 

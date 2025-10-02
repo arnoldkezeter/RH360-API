@@ -13,6 +13,12 @@ import { AffectationFinale } from '../models/AffectationFinale.js';
 import Stage from '../models/Stage.js';
 import Utilisateur from '../models/Utilisateur.js';
 import { Rotation } from '../models/Rotation.js';
+import { Formateur } from '../models/Formateur.js';
+import { LieuFormation } from '../models/LieuFormation.js';
+import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
+import ThemeFormation from '../models/ThemeFormation.js';
+
+import { mettreAJourTache } from '../services/tacheThemeFormationService.js';
 
 
 
@@ -1190,6 +1196,1244 @@ export const genererPDFNote = async (req, res) => {
                 error: error.message
             });
         }
+    }
+};
+
+/**
+ * Crée une note de service pour convoquer les formateurs d'un thème
+ */
+export const creerNoteServiceConvocationFormateurs = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const {
+            theme,
+            titreFr,
+            titreEn,
+            descriptionFr,
+            descriptionEn,
+            copieA,
+            creePar,
+            tacheFormationId 
+        } = req.body;
+
+        // Validation du thème
+        if (!theme) {
+            return res.status(400).json({
+                success: false,
+                message: t('theme_requis', lang)
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(theme)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // Vérifier que le thème existe
+        const themeData = await ThemeFormation.findById(theme)
+            .select('libelleFr libelleEn dateDebut dateFin lieu')
+            .lean();
+
+        if (!themeData) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Récupérer les formateurs du thème
+        const formateurs = await Formateur.find({ theme: theme })
+            .populate({
+                path: 'utilisateur',
+                select: 'nom prenom',
+            }).lean();
+
+        if (!formateurs || formateurs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('formateur_non_trouve', lang)
+            });
+        }
+
+        // Récupérer les infos du créateur
+        let createur = null;
+        if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
+            createur = await Utilisateur.findById(creePar)
+                .select('nom prenom')
+                .lean();
+        }
+
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            theme,
+            typeNote: 'convocation',
+            titreFr: titreFr || "CONVOCATION",
+            titreEn: titreEn || "CONVOCATION",
+            descriptionFr,
+            descriptionEn,
+            copieA,
+            creePar,
+            valideParDG: false
+        });
+
+        const noteEnregistree = await nouvelleNote.save({ session });
+
+        if (tacheFormationId) {
+            mettreAJourTache({
+                tacheFormationId,
+                statut: "EN_ATTENTE",
+                donnees: `Note de convocation générée : ${noteEnregistree._id}`,
+                lang,
+                executePar:creePar,
+                session
+            });
+        }
+
+        // Générer le PDF
+        const pdfBuffer = await genererPDFConvocationFormateurs(
+            noteEnregistree,
+            themeData,
+            formateurs,
+            lang,
+            createur
+        );
+
+        // Nom du fichier
+        const nomFichier = `note-service-convocation.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Erreur lors de la création de la note de convocation:', error);
+
+        await session.abortTransaction();
+        session.endSession();
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+/**
+ * Génère le PDF pour la convocation des formateurs
+ */
+const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang, createur) => {
+    try {
+        // Préparer la liste des formateurs
+        const formateursListe = formateurs.map((formateur, index) => {
+            const utilisateur = formateur.utilisateur;
+            
+            
+            // Construire le nom complet
+            const nomComplet = `${utilisateur.nom} ${utilisateur.prenom || ''}`.trim();
+            
+            
+            return {
+                numero: index + 1,
+                nomComplet,
+            };
+        });
+        
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Note de Service - Convocation des Formateurs',
+            logoUrl: getLogoBase64(__dirname),
+
+            // Titre et description
+            noteTitle: lang === 'fr'
+                ? (note.titreFr || "CONVOCATION")
+                : (note.titreEn || "CONVOCATION"),
+            description: lang === 'fr' ? note.descriptionFr : note.descriptionEn,
+
+           
+
+            // Liste des formateurs
+            formateurs: formateursListe,
+
+            // Copie
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
+
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/note-service-convocation-formateurs.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF de convocation:', error);
+        throw error;
+    }
+};
+
+
+/**
+ * Crée une note de service pour convoquer les participants d'un thème
+ */
+export const creerNoteServiceConvocationParticipants = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const {
+            theme,
+            titreFr,
+            titreEn,
+            copieA,
+            creePar,
+            tacheFormationId
+        } = req.body;
+
+        // Validation
+        if (!theme) {
+            return res.status(400).json({
+                success: false,
+                message: t('theme_requis', lang)
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(theme)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // Récupérer le thème
+        const themeData = await ThemeFormation.findById(theme)
+            .select('libelleFr libelleEn dateDebut dateFin')
+            .lean();
+
+        if (!themeData) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Récupérer tous les lieux de formation pour ce thème
+        const lieuxFormation = await LieuFormation.find({ theme: theme })
+            .populate({
+                path: 'participants',
+                select: 'utilisateur',
+                populate: {
+                    path: 'utilisateur',
+                    select: 'nom prenom posteDeTravail service',
+                    populate: [
+                        {
+                            path: 'posteDeTravail',
+                            select: 'nomFr nomEn'
+                        },
+                        {
+                            path: 'service',
+                            select: 'nomFr nomEn'
+                        }
+                    ]
+                }
+            })
+            .populate({
+                path: 'cohortes',
+                select: '_id'
+            })
+            .lean();
+
+        if (!lieuxFormation || lieuxFormation.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_lieu_formation_trouve', lang)
+            });
+        }
+
+        // Récupérer tous les IDs de cohortes
+        const toutesLesCohortes = lieuxFormation.flatMap(lieu => lieu.cohortes.map(c => c._id));
+
+        // Récupérer les utilisateurs des cohortes
+        const cohortesUtilisateurs = await CohorteUtilisateur.find({
+            cohorte: { $in: toutesLesCohortes }
+        })
+        .populate({
+            path: 'utilisateur',
+            select: 'nom prenom posteDeTravail service',
+            populate: [
+                {
+                    path: 'posteDeTravail',
+                    select: 'nomFr nomEn'
+                },
+                {
+                    path: 'service',
+                    select: 'nomFr nomEn'
+                }
+            ]
+        })
+        .lean();
+
+        // Fusionner tous les participants (éviter doublons)
+        const participantsMap = new Map();
+
+        // Ajouter les participants directs de tous les lieux
+        lieuxFormation.forEach(lieu => {
+            if (lieu.participants) {
+                lieu.participants.forEach(participant => {
+                    if (participant.utilisateur) {
+                        const userId = participant.utilisateur._id.toString();
+                        if (!participantsMap.has(userId)) {
+                            participantsMap.set(userId, {
+                                utilisateur: participant.utilisateur,
+                                lieu: lieu.lieu,
+                                dateDebut: lieu.dateDebut,
+                                dateFin: lieu.dateFin
+                            });
+                        }
+                    }
+                });
+            }
+        });
+
+        // Ajouter les utilisateurs des cohortes
+        cohortesUtilisateurs.forEach(cu => {
+            if (cu.utilisateur) {
+                const userId = cu.utilisateur._id.toString();
+                if (!participantsMap.has(userId)) {
+                    // Trouver le lieu associé à la cohorte
+                    const lieuAssocie = lieuxFormation.find(lieu =>
+                        lieu.cohortes.some(c => c._id.toString() === cu.cohorte.toString())
+                    );
+
+                    participantsMap.set(userId, {
+                        utilisateur: cu.utilisateur,
+                        lieu: lieuAssocie?.lieu || 'Non défini',
+                        dateDebut: lieuAssocie?.dateDebut,
+                        dateFin: lieuAssocie?.dateFin
+                    });
+                }
+            }
+        });
+
+        const tousLesParticipants = Array.from(participantsMap.values());
+
+        if (tousLesParticipants.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_participant_trouve', lang)
+            });
+        }
+
+        // Récupérer les infos du créateur
+        let createur = null;
+        if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
+            createur = await Utilisateur.findById(creePar)
+                .select('nom prenom')
+                .lean();
+        }
+
+        // Générer la référence
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            theme,
+            typeNote: 'convocation',
+            titreFr: titreFr || "CONVOCATION À LA FORMATION",
+            titreEn: titreEn || "TRAINING CONVOCATION",
+            copieA,
+            creePar,
+            valideParDG: false
+        });
+
+        const noteEnregistree = await nouvelleNote.save({ session });
+        if (tacheFormationId) {
+            mettreAJourTache({
+                tacheFormationId,
+                statut: "EN_ATTENTE",
+                donnees: `Note de convocation générée : ${noteEnregistree._id}`,
+                lang,
+                executePar:creePar,
+                session
+            });
+        }
+        // Générer le PDF
+        const pdfBuffer = await genererPDFConvocationParticipants(
+            noteEnregistree,
+            themeData,
+            tousLesParticipants,
+            lang,
+            createur
+        );
+
+        // Définir le nom du fichier
+        const nomFichier = `note-service-convocation-participants.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Erreur lors de la création de la convocation participants:', error);
+
+        await session.abortTransaction();
+        session.endSession();
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+
+/**
+ * Génère le PDF pour la convocation des participants
+ */
+const genererPDFConvocationParticipants = async (note, themeData, participants, lang, createur) => {
+    try {
+        // Grouper les participants par service
+        const participantsParService = {};
+
+        participants.forEach(participant => {
+            const utilisateur = participant.utilisateur;
+            const serviceId = utilisateur.service?._id?.toString() || 'sans_service';
+            const serviceNom = utilisateur.service
+                ? (lang === 'fr' ? utilisateur.service.nomFr : utilisateur.service.nomEn)
+                : 'Service non spécifié';
+
+            if (!participantsParService[serviceId]) {
+                participantsParService[serviceId] = {
+                    serviceNom,
+                    participants: []
+                };
+            }
+
+            const poste = utilisateur.posteDeTravail
+                ? (lang === 'fr' ? utilisateur.posteDeTravail.nomFr : utilisateur.posteDeTravail.nomEn)
+                : '';
+
+            // Formater les dates spécifiques à ce participant (selon son lieu)
+            const dateDebut = participant.dateDebut
+                ? new Date(participant.dateDebut).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '';
+
+            const dateFin = participant.dateFin
+                ? new Date(participant.dateFin).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '';
+
+            const periode = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
+
+            participantsParService[serviceId].participants.push({
+                nom: utilisateur.nom,
+                prenom: utilisateur.prenom || '',
+                poste,
+                lieu: participant.lieu,
+                periode
+            });
+        });
+
+        // Convertir en tableau trié par nom de service
+        const servicesOrdonnes = Object.values(participantsParService).sort((a, b) =>
+            a.serviceNom.localeCompare(b.serviceNom)
+        );
+
+        // Créer la liste numérotée globale
+        let numeroGlobal = 1;
+        const participantsFormates = [];
+
+        servicesOrdonnes.forEach(service => {
+            service.participants.forEach(participant => {
+                participantsFormates.push({
+                    numero: numeroGlobal++,
+                    nom: `${participant.nom} ${participant.prenom}`.trim(),
+                    fonction: participant.poste,
+                    service: service.serviceNom,
+                    dateLieu: `${participant.periode}\n${participant.lieu}`
+                });
+            });
+        });
+
+        // Formater les dates globales du thème
+        const dateDebutTheme = themeData.dateDebut
+            ? new Date(themeData.dateDebut).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            })
+            : '______________';
+
+        const dateFinTheme = themeData.dateFin
+            ? new Date(themeData.dateFin).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            })
+            : '______________';
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Note de Service - Convocation des Participants',
+            logoUrl: getLogoBase64(__dirname),
+
+            // Titre
+            noteTitle: lang === 'fr'
+                ? (note.titreFr || "CONVOCATION À LA FORMATION")
+                : (note.titreEn || "TRAINING CONVOCATION"),
+
+            // Informations du thème
+            themeLibelle: lang === 'fr' ? themeData.libelleFr : themeData.libelleEn,
+            dateDebut: dateDebutTheme,
+            dateFin: dateFinTheme,
+
+            // Participants groupés par service
+            participants: participantsFormates,
+            nombreParticipants: participantsFormates.length,
+
+            // Copie
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0)
+                : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
+
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/note-service-convocation-participants.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF de convocation participants:', error);
+        throw error;
+    }
+};
+
+
+/**
+ * Génère les fiches de présence des participants par lieu
+ */
+export const genererFichesPresenceParticipants = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const {titreFr, titreEn, theme, creePar, tacheFormationId } = req.body;
+
+        // Validation
+        if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
+            return res.status(400).json({
+                success: false,
+                message: t('ref_theme_requis', lang)
+            });
+        }
+
+        // Récupérer le thème
+        const themeData = await ThemeFormation.findById(theme)
+            .select('titreFr titreEn')
+            .lean();
+
+        if (!themeData) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Récupérer tous les lieux de formation pour ce thème
+        const lieuxFormation = await LieuFormation.find({ theme: theme })
+            .populate({
+                path: 'participants',
+                populate: {
+                    path: 'utilisateur',
+                    select: 'nom prenom matricule telephone grade posteDeTravail',
+                    populate: {
+                        path: 'posteDeTravail',
+                        select: 'nomFr nomEn'
+                    },
+                    populate: {
+                        path: 'grade',
+                        select: 'nomFr nomEn'
+                    }
+                }
+            })
+            .populate({
+                path: 'cohortes',
+                select: '_id'
+            })
+            .sort({ lieu: 1 })
+            .lean();
+
+        if (!lieuxFormation || lieuxFormation.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_lieu_formation_trouve', lang)
+            });
+        }
+
+        // Pour chaque lieu, récupérer aussi les utilisateurs des cohortes
+        const lieuxAvecParticipants = await Promise.all(
+            lieuxFormation.map(async (lieu) => {
+                const participantsMap = new Map();
+
+                // Ajouter les participants directs
+                if (lieu.participants) {
+                    lieu.participants.forEach(participant => {
+                        if (participant.utilisateur) {
+                            const userId = participant.utilisateur._id.toString();
+                            participantsMap.set(userId, participant.utilisateur);
+                        }
+                    });
+                }
+
+                // Récupérer les utilisateurs des cohortes de ce lieu
+                if (lieu.cohortes && lieu.cohortes.length > 0) {
+                    const cohortesUtilisateurs = await CohorteUtilisateur.find({
+                        cohorte: { $in: lieu.cohortes.map(c => c._id) }
+                    })
+                    .populate({
+                        path: 'utilisateur',
+                        select: 'nom prenom matricule telephone grade posteDeTravail',
+                        populate: {
+                            path: 'posteDeTravail',
+                            select: 'nomFr nomEn'
+                        },
+                        populate: {
+                            path: 'grade',
+                            select: 'nomFr nomEn'
+                        }
+                        
+                    })
+                    .lean();
+
+                    cohortesUtilisateurs.forEach(cu => {
+                        if (cu.utilisateur) {
+                            const userId = cu.utilisateur._id.toString();
+                            if (!participantsMap.has(userId)) {
+                                participantsMap.set(userId, cu.utilisateur);
+                            }
+                        }
+                    });
+                }
+
+                return {
+                    lieu: lieu.lieu,
+                    dateDebut: lieu.dateDebut,
+                    dateFin: lieu.dateFin,
+                    participants: Array.from(participantsMap.values())
+                };
+            })
+        );
+
+        // Filtrer les lieux sans participants
+        const lieuxValides = lieuxAvecParticipants.filter(lieu => lieu.participants.length > 0);
+
+        if (lieuxValides.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('aucun_participant_trouve', lang)
+            });
+        }
+
+        // Récupérer les infos du créateur
+        let createur = null;
+        if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
+            createur = await Utilisateur.findById(creePar)
+                .select('nom prenom')
+                .lean();
+        }
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            theme,
+            typeNote: 'convocation',
+            titreFr: titreFr || "CONVOCATION À LA FORMATION",
+            titreEn: titreEn || "TRAINING CONVOCATION",
+            copieA:"",
+            creePar,
+            valideParDG: false
+        });
+
+        const noteEnregistree = await nouvelleNote.save({ session });
+        if (tacheFormationId) {
+            mettreAJourTache({
+                tacheFormationId,
+                statut: "EN_ATTENTE",
+                donnees: `Note de convocation générée : ${noteEnregistree._id}`,
+                lang,
+                executePar:creePar,
+                session
+            });
+        }
+        // Générer le PDF
+        const pdfBuffer = await genererPDFFichesPresence(
+            themeData,
+            lieuxValides,
+            lang,
+            createur
+        );
+
+        // Définir le nom du fichier
+        const nomFichier = `fiches-presence-${Date.now()}.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+        
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        
+        console.error('Erreur lors de la génération des fiches de présence:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+/**
+ * Génère le PDF des fiches de présence par lieu
+ */
+const genererPDFFichesPresence = async (themeData, lieuxAvecParticipants, lang, createur) => {
+    try {
+        // Date actuelle pour la journée
+        const journee = new Date().toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        // Préparer les données pour chaque lieu
+        const lieuxFormates = lieuxAvecParticipants.map(lieu => {
+            // Trier les participants par nom
+            const participantsTries = lieu.participants.sort((a, b) => 
+                a.nom.localeCompare(b.nom)
+            );
+
+            // Formater les participants
+            const participantsFormates = participantsTries.map((participant, index) => ({
+                numero: index + 1,
+                matricule: participant.matricule || '-',
+                nomComplet: `${participant.nom} ${participant.prenom || ''}`.trim(),
+                grade: participant.grade
+                    ? (lang === 'fr' ? participant.grade.nomFr : participant.grade.nomEn)
+                    : '-',
+                fonction: participant.posteDeTravail
+                    ? (lang === 'fr' ? participant.posteDeTravail.nomFr : participant.posteDeTravail.nomEn)
+                    : '-',
+                telephone: participant.telephone || '-'
+            }));
+
+            // Formater les dates
+            const dateDebut = lieu.dateDebut
+                ? new Date(lieu.dateDebut).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '';
+
+            const dateFin = lieu.dateFin
+                ? new Date(lieu.dateFin).toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric'
+                })
+                : '';
+
+            const periode = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
+
+            return {
+                lieu: lieu.lieu,
+                periode,
+                participants: participantsFormates,
+                nombreParticipants: participantsFormates.length
+            };
+        });
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Fiches de Présence - Formation',
+            logoUrl: getLogoBase64(__dirname),
+            journee: journee,
+            themeLibelle: lang === 'fr' ? themeData.titreFr : themeData.titreEn,
+            lieux: lieuxFormates,
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/fiches-presence-participants.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF des fiches de présence:', error);
+        throw error;
+    }
+};
+
+/**
+ * Génère les fiches de présence des formateurs
+ */
+export const genererFichesPresenceFormateurs = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const { titreFr, titreEn, theme, creePar, tacheFormationId } = req.body;
+
+        // Validation
+        if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
+            return res.status(400).json({
+                success: false,
+                message: t('ref_theme_requis', lang)
+            });
+        }
+
+        // Récupérer le thème
+        const themeData = await ThemeFormation.findById(theme)
+            .select('titreFr titreEn')
+            .lean();
+
+        if (!themeData) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Récupérer tous les formateurs pour ce thème
+        const formateursData = await Formateur.find({ theme: theme })
+            .populate({
+                path: 'utilisateur',
+                select: 'nom prenom matricule telephone grade posteDeTravail',
+                populate: {
+                    path: 'posteDeTravail',
+                    select: 'nomFr nomEn'
+                },
+                populate: {
+                    path: 'grade',
+                    select: 'nomFr nomEn'
+                }
+            })
+            .lean();
+
+        if (!formateursData || formateursData.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('formateur_non_trouve', lang)
+            });
+        }
+
+        // Récupérer les infos du créateur
+        let createur = null;
+        if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
+            createur = await Utilisateur.findById(creePar)
+                .select('nom prenom')
+                .lean();
+        }
+
+        // Créer la note de service
+        const nouvelleNote = new NoteService({
+            theme,
+            typeNote: 'convocation',
+            titreFr: titreFr || "CONVOCATION À LA FORMATION - FORMATEURS",
+            titreEn: titreEn || "TRAINING CONVOCATION - TRAINERS",
+            copieA: "",
+            creePar,
+            valideParDG: false
+        });
+
+        const noteEnregistree = await nouvelleNote.save({ session });
+        if (tacheFormationId) {
+            mettreAJourTache({
+                tacheFormationId,
+                statut: "EN_ATTENTE",
+                donnees: `Note de convocation générée : ${noteEnregistree._id}`,
+                lang,
+                executePar:creePar,
+                session
+            });
+        }
+        // Récupérer les dates de formation (optionnel)
+        const lieuxFormation = await LieuFormation.find({ theme: theme })
+            .select('dateDebut dateFin')
+            .sort({ dateDebut: 1 })
+            .lean();
+
+        let dateDebut = null;
+        let dateFin = null;
+
+        if (lieuxFormation && lieuxFormation.length > 0) {
+            // Prendre la date de début la plus ancienne
+            dateDebut = lieuxFormation[0].dateDebut;
+            // Prendre la date de fin la plus récente
+            dateFin = lieuxFormation[lieuxFormation.length - 1].dateFin;
+        }
+
+        // Générer le PDF
+        const pdfBuffer = await genererPDFFichesPresenceFormateurs(
+            themeData,
+            formateursData,
+            dateDebut,
+            dateFin,
+            lang,
+            createur
+        );
+
+        // Définir le nom du fichier
+        const nomFichier = `fiches-presence-formateurs-${Date.now()}.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error('Erreur lors de la génération des fiches de présence des formateurs:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+/**
+ * Génère le PDF des fiches de présence des formateurs
+ */
+const genererPDFFichesPresenceFormateurs = async (
+    themeData,
+    formateursData,
+    dateDebut,
+    dateFin,
+    lang,
+    createur
+) => {
+    try {
+        // Date actuelle pour la journée
+        const journee = new Date().toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        // Trier les formateurs par nom
+        const formateursTries = formateursData.sort((a, b) => {
+            const nomA = a.utilisateur?.nom || '';
+            const nomB = b.utilisateur?.nom || '';
+            return nomA.localeCompare(nomB);
+        });
+
+        // Formater les formateurs
+        const formateursFormates = formateursTries.map((formateur, index) => ({
+            numero: index + 1,
+            nomComplet: formateur.utilisateur
+                ? `${formateur.utilisateur.nom} ${formateur.utilisateur.prenom || ''}`.trim()
+                : '-',
+            grade: formateur.grade
+                    ? (lang === 'fr' ? formateur.grade.nomFr : formateur.grade.nomEn)
+                    : '-',
+            fonction: formateur.posteDeTravail
+                ? (lang === 'fr' ? formateur.posteDeTravail.nomFr : formateur.posteDeTravail.nomEn)
+                : '-',
+            telephone: formateur.utilisateur?.telephone || '-',
+            email: formateur.utilisateur?.email || '-'
+        }));
+
+        // Formater la période si les dates existent
+        let periode = '';
+        if (dateDebut && dateFin) {
+            const dateDebutFormatee = new Date(dateDebut).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+
+            const dateFinFormatee = new Date(dateFin).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+
+            periode = `Du ${dateDebutFormatee} au ${dateFinFormatee}`;
+        }
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: 'Fiches de Présence - Formateurs',
+            logoUrl: getLogoBase64(__dirname),
+            journee: journee,
+            themeLibelle: lang === 'fr' ? themeData.titreFr : themeData.titreEn,
+            periode: periode,
+            formateurs: formateursFormates,
+            nombreFormateurs: formateursFormates.length,
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
+        };
+
+        // Charger le template
+        const templatePath = path.join(__dirname, '../views/fiches-presence-formateurs.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF des fiches de présence des formateurs:', error);
+        throw error;
     }
 };
 

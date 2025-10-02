@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title><%= documentTitle %></title>
+    <style>
+        @page {
+            margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+            size: A4 landscape;
+        }
+        
+        body { 
+            font-family: 'Times New Roman', serif; 
+            margin: 0; 
+            padding: 0;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        .page-container {
+            page-break-after: always;
+        }
+
+        .page-container:last-child {
+            page-break-after: auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 0;
+            margin-bottom: 30px;
+            min-height: 100px;
+        }
+        
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 9px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.2;
+        }
+        
+        .header-center {
+            text-align: center;
+            width: 20%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .header-center img {
+            max-width: 80px;
+            height: auto;
+        }
+        
+        .separator {
+            margin: 2px 0;
+            color: #000;
+        }
+        
+        .header-section {
+            margin-bottom: 1px;
+        }
+        
+        .fiche-title {
+            text-align: center;
+            margin: 20px 0 10px 0;
+        }
+        
+        .document-title {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #000;
+            text-decoration: underline;
+            text-transform: uppercase;
+        }
+
+        .lieu-content {
+            margin: 20px 1cm;
+        }
+
+        .lieu-header {
+            margin-bottom: 20px;
+        }
+
+        .lieu-nom {
+            font-size: 13px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .lieu-periode {
+            font-size: 11px;
+            color: #555;
+            font-style: italic;
+        }
+
+        .presence-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .presence-table th {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 5px;
+            border: 1px solid #000;
+            font-weight: bold;
+            text-align: center;
+            font-size: 10px;
+        }
+
+        .presence-table td {
+            padding: 10px 5px;
+            border: 1px solid #000;
+            font-size: 10px;
+        }
+
+        .presence-table td.numero {
+            text-align: center;
+            font-weight: bold;
+            width: 5%;
+        }
+
+        .presence-table td.matricule {
+            text-align: center;
+            width: 10%;
+        }
+
+        .presence-table td.nom {
+            text-align: left;
+            padding-left: 10px;
+            width: 20%;
+        }
+
+        .presence-table td.grade {
+            text-align: center;
+            width: 10%;
+        }
+
+        .presence-table td.fonction {
+            text-align: left;
+            padding-left: 10px;
+            width: 20%;
+        }
+
+        .presence-table td.telephone {
+            text-align: center;
+            width: 12%;
+        }
+
+        .presence-table td.signature {
+            width: 23%;
+            min-height: 40px;
+            background-color: #f9f9f9;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
+        .stats {
+            margin-top: 10px;
+            font-size: 11px;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 20px;
+        }
+    </style>
+</head>
+<body>
+    <% lieux.forEach(function(lieu, indexLieu) { %>
+        <div class="page-container">
+            <!-- En-tête officiel (répété pour chaque lieu) -->
+            <div class="header">
+                <div class="header-left">
+                    <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
+                    <div class="header-section">Paix-Travail-Patrie</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">MINISTERE DES FINANCES</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
+                    <div class="header-section">LA FORMATION CONTINUE</div>
+                </div>
+                
+                <div class="header-center">
+                    <% if (logoUrl) { %>
+                        <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+                    <% } %>
+                </div>
+                
+                <div class="header-right">
+                    <div class="header-section">REPUBLIC OF CAMEROON</div>
+                    <div class="header-section">Peace-Work-Fatherland</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">MINISTRY OF FINANCE</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+                    <div class="separator">----------------------</div>
+                    <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+                </div>
+            </div>
+
+            <!-- Titre de la fiche -->
+            <div class="fiche-title">
+                <h3 class="document-title">FICHE DE PRESENCE DES PARTICIPANTS</h3>
+            </div>
+
+            <!-- Contenu du lieu -->
+            <div class="lieu-content">
+                <div class="lieu-header">
+                    <div class="lieu-nom">Formation : <%= themeLibelle %></div>
+                    <div class="lieu-nom">Lieu : <%= lieu.lieu %></div>
+                    <div class="lieu-periode"><%= lieu.periode %></div>
+                    <div class="lieu-nom">Journée du <%= journee %></div>
+                </div>
+
+                <!-- Tableau des participants -->
+                <table class="presence-table">
+                    <thead>
+                        <tr>
+                            <th>N°</th>
+                            <th>MATRICULE</th>
+                            <th>NOM ET PRÉNOM</th>
+                            <th>GRADE</th>
+                            <th>FONCTION</th>
+                            <th>TÉLÉPHONE</th>
+                            <th>SIGNATURE</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% lieu.participants.forEach(function(participant) { %>
+                            <tr>
+                                <td class="numero"><%= participant.numero %></td>
+                                <td class="matricule"><%= participant.matricule %></td>
+                                <td class="nom"><%= participant.nomComplet %></td>
+                                <td class="grade"><%= participant.grade %></td>
+                                <td class="fonction"><%= participant.fonction %></td>
+                                <td class="telephone"><%= participant.telephone %></td>
+                                <td class="signature"></td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+
+                <div class="stats">
+                    Total participants : <%= lieu.nombreParticipants %>
+                </div>
+            </div>
+        </div>
+    <% }); %>
+</body>
+</html>

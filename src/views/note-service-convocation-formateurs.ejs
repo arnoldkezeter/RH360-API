@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title><%= documentTitle %></title>
+    <style>
+        @page {
+            margin: 2cm 2cm 2cm 2cm;
+            size: A4;
+        }
+        
+        body { 
+            font-family: 'Times New Roman', serif; 
+            margin: 0; 
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 0;
+            margin-bottom: 40px;
+            min-height: 120px;
+        }
+        
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.2;
+        }
+        
+        .header-center {
+            text-align: center;
+            width: 20%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .header-center img {
+            max-width: 100px;
+            height: auto;
+        }
+        
+        .separator {
+            margin: 3px 0;
+            color: #000;
+        }
+        
+        .header-section {
+            margin-bottom: 2px;
+        }
+        
+        .note-title {
+            text-align: center;
+            margin: 50px 0 10px 0;
+        }
+        
+        .document-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #000;
+            text-decoration: underline;
+            text-transform: uppercase;
+        }
+
+        .description {
+            text-align: justify;
+            margin: 20px 1cm;
+            line-height: 1.6;
+        }
+
+        .body-content {
+            text-align: justify;
+            line-height: 1.8;
+            margin: 0 1cm;
+        }
+        
+        .body-content p {
+            margin-bottom: 15px;
+            text-indent: 1.5cm;
+        }
+
+        .formateurs-intro {
+            text-indent: 1.5cm;
+            margin-bottom: 10px;
+        }
+
+        .formateurs-list {
+            margin: 15px 0 15px 3cm;
+            line-height: 1.8;
+        }
+
+        .formateur-item {
+            margin-bottom: 8px;
+        }
+
+        .formateur-details {
+            margin-left: 20px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .copie-section {
+            margin-top: 60px;
+            margin-left: 1cm;
+            page-break-inside: avoid;
+        }
+        
+        .copie-title {
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .copie-list {
+            margin-left: 20px;
+            line-height: 1.6;
+            font-size: 11px;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .page-break {
+                page-break-before: always;
+            }
+        }
+
+        .highlight {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- En-tête officiel -->
+    <div class="header">
+        <div class="header-left">
+            <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
+            <div class="header-section">Paix-Travail-Patrie</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTERE DES FINANCES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
+            <div class="header-section">LA FORMATION CONTINUE</div>
+            <div class="separator">----------------------</div>
+            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
+        </div>
+        
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+            <% } %>
+        </div>
+        
+        <div class="header-right">
+            <div class="header-section">REPUBLIC OF CAMEROON</div>
+            <div class="header-section">Peace-Work-Fatherland</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">MINISTRY OF FINANCE</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+            <div class="separator">----------------------</div>
+            <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+            <div class="separator">----------------------</div>
+            <div class="date-line">Yaoundé, le _______________</div>
+        </div>
+    </div>
+   
+    <!-- Titre du document -->
+    <div class="note-title">
+        <h3 class="document-title"><%= noteTitle %></h3>
+    </div>
+
+    <!-- Description -->
+    <% if (description) { %>
+    <div class="description">
+        <%= description %>
+    </div>
+    <% } %>
+
+    <!-- Corps du document -->
+    <div class="body-content">
+        <p class="formateurs-intro">
+            Il s'agit de Mesdames et Messieurs :
+        </p>
+
+        <div class="formateurs-list">
+            <% formateurs.forEach(function(formateur) { %>
+                <div class="formateur-item">
+                    <%= formateur.numero %>. <span class="highlight"> <%= formateur.nomComplet %></span>
+                </div>
+            <% }); %>
+        </div>
+
+        <p>
+            La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
+            dûment justifiée.
+        </p>
+
+        <p>
+            Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
+            disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
+            et concernés par cette formation.
+        </p>
+
+        <p>
+            Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
+            présente note de service.
+        </p>
+    </div>
+
+    <!-- Section copie -->
+    <div class="copie-section">
+        <div class="copie-title">Copie pour information :</div>
+        <div class="copie-list">
+            <% if (copies && copies.length > 0) { %>
+                <% copies.forEach(function(copie) { %>
+                    <% if (copie.trim()) { %>
+                        - <%= copie.trim() %><br>
+                    <% } %>
+                <% }); %>
+            <% } else { %>
+                - Intéressé(e)s<br>
+                - Chefs de Service concernés<br>
+                - Archives/Chrono.
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

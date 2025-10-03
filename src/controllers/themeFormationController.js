@@ -242,14 +242,14 @@ export const updateThemeFormation = async (req, res) => {
         // Sauvegarde des modifications
         await theme.save();
         // ✅ Nouveau formateur → rôle ajouté
-        if (responsable?._id && responsable._id.toString() !== oldResponsableId) {
-            await addRoleToUser(responsable?._id, 'formateur');
+        // if (responsable?._id && responsable._id.toString() !== oldResponsableId) {
+            await addRoleToUser(responsable?._id, 'RESPONSABLE-FORMATION');
     
             // Ancien formateur → retirer le rôle si plus utilisé
-            if (oldUserId) {
-            await removeRoleFromUserIfUnused(oldUserId, 'RESPONSABLE-FORMATION', ThemeFormation, "responsable");
+            if (oldResponsableId) {
+                await removeRoleFromUserIfUnused(oldResponsableId, 'RESPONSABLE-FORMATION', ThemeFormation, "responsable");
             }
-        }
+        // }
         
 
         // Population des références pour la réponse

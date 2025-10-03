@@ -2067,78 +2067,133 @@ export const totalStagiairesSurPeriode = async (req, res) => {
 
     if (!dateDebut || !dateFin) {
        return res.status(400).json({
-        success: false,
-        message: lang === 'fr'
-        ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
-        : 'dateDebut and dateFin parameters are required.'
+         success: false,
+         message: lang === 'fr'
+         ? 'Les paramètres dateDebut et dateFin sont obligatoires.'
+         : 'dateDebut and dateFin parameters are required.'
         });
     }
 
-     try {
-    const dateDebutFilter = new Date(dateDebut);
-    const dateFinFilter = new Date(dateFin);
+    try {
+        // Définir les limites de date précises (début du premier jour à fin du dernier jour)
+        const dateDebutFilter = new Date(dateDebut);
+        dateDebutFilter.setHours(0, 0, 0, 0);
 
-    // --- Stagiaires individuels à partir des Rotations ---
-    const stagiairesIndividuelsResult = await Rotation.aggregate([
-    {
-        $match: {
-        stagiaire: { $exists: true, $ne: null },
-        dateDebut: { $lte: dateFinFilter },
-        dateFin: { $gte: dateDebutFilter }
+        const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
+
+        // --- 1. Stagiaires individuels (AffectationFinale.stagiaire) ---
+        const stagiairesIndividuelsResult = await AffectationFinale.aggregate([ 
+            {
+                $match: {
+                    stagiaire: { $exists: true, $ne: null },
+                    groupe: null // Assure que c'est bien un stage individuel
+                }
+            },
+            // 💡 AJOUT : Lookup vers Stage pour les dates
+            {
+                $lookup: {
+                    from: 'stages',
+                    localField: 'stage', // ASSUMPTION : L'ID du stage est dans AffectationFinale.stage
+                    foreignField: '_id',
+                    as: 'stageInfo'
+                }
+            },
+            { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+            // 💡 FILTRE : Filtrer sur les VRAIES dates du stage
+            {
+                $match: {
+                    'stageInfo.dateDebut': { $lte: dateFinFilter }, 
+                    'stageInfo.dateFin': { $gte: dateDebutFilter } 
+                }
+            },
+            {
+                $group: {
+                    _id: '$stagiaire'
+                }
+            }
+        ]);
+        const stagiairesIndividuelsSet = new Set(stagiairesIndividuelsResult.map(doc => doc._id.toString()));
+
+        // --- 2. Stagiaires de groupe (AffectationFinale.groupe) ---
+        const stagiairesGroupesResult = await AffectationFinale.aggregate([
+            {
+                $match: {
+                    groupe: { $exists: true, $ne: null },
+                    stagiaire: null // Assure que c'est bien une affectation de groupe
+                }
+            },
+            // 1er lookup vers la collection 'groupes'
+            {
+                $lookup: {
+                    from: 'groupes',
+                    localField: 'groupe',
+                    foreignField: '_id',
+                    as: 'groupeInfo'
+                }
+            },
+            { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+            
+            // 2ème lookup vers la collection 'stages' pour récupérer les dates
+            {
+                $lookup: {
+                    from: 'stages',
+                    localField: 'groupeInfo.stage',
+                    foreignField: '_id',
+                    as: 'stageInfo'
+                }
+            },
+            { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+
+            // FILTRE : Filtrer sur les VRAIES dates du stage
+            {
+                $match: {
+                    'stageInfo.dateDebut': { $lte: dateFinFilter }, 
+                    'stageInfo.dateFin': { $gte: dateDebutFilter } 
+                }
+            },
+            
+            // On continue le processus d'unwind et de groupement des stagiaires
+            { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
+            {
+                $group: {
+                    _id: '$groupeInfo.stagiaires'
+                }
+            }
+        ]);
+        const stagiairesGroupesSet = new Set(stagiairesGroupesResult.map(doc => doc._id.toString()));
+
+        // --- 3. Fusionner et compter (Unicité globale) ---
+        const tousStagiairesSet = new Set([...stagiairesIndividuelsSet, ...stagiairesGroupesSet]);
+
+        // 📢 AFFICHAGE CONSOLE : Détermination des stagiaires en doublon
+        const individuelsArray = Array.from(stagiairesIndividuelsSet);
+        let doublonsCount = 0;
+        
+        for (const stagiaireId of individuelsArray) {
+            if (stagiairesGroupesSet.has(stagiaireId)) {
+                doublonsCount++;
+            }
         }
-    },
-    {
-        $group: {
-         _id: '$stagiaire'
-        }
+
+        console.log(`--- Vérification des stagiaires en doublon sur la période ---`);
+        console.log(`Nombre de stagiaires présents à la fois dans un stage individuel ET dans un stage de groupe : ${doublonsCount}`);
+        console.log(`--------------------------------------------------------------`);
+        
+
+        return res.status(200).json({
+            success: true,
+            totalStagiaires: tousStagiairesSet.size
+        });
+
+    } catch (error) {
+        console.error("Erreur dans totalStagiairesSurPeriode:", error);
+        return res.status(500).json({
+            success: false,
+            message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
+            error: error.message
+        });
     }
-    ]);
-    const stagiairesIndividuelsSet = new Set(stagiairesIndividuelsResult.map(doc => doc._id.toString()));
-
-
-    // --- Stagiaires de groupe à partir des Affectations Finales ---
-    const stagiairesGroupesResult = await AffectationFinale.aggregate([
-      {
-        $match: {
-          groupe: { $exists: true, $ne: null },
-          dateDebut: { $lte: dateFinFilter },
-          dateFin: { $gte: dateDebutFilter }
-        }
-      },
-      {
-        $lookup: {
-          from: 'groupes',
-          localField: 'groupe',
-          foreignField: '_id',
-          as: 'groupeInfo'
-        }
-      },
-      { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
-      { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
-      {
-        $group: {
-          _id: '$groupeInfo.stagiaires'
-        }
-      }
-    ]);
-    const stagiairesGroupesSet = new Set(stagiairesGroupesResult.map(doc => doc._id.toString()));
-
-    // Fusionner et compter
-    const tousStagiairesSet = new Set([...stagiairesIndividuelsSet, ...stagiairesGroupesSet]);
-
-    return res.status(200).json({
-      success: true,
-      totalStagiaires: tousStagiairesSet.size
-    });
-
-  } catch (error) {
-    console.error("Erreur dans totalStagiairesSurPeriode:", error);
-    return res.status(500).json({
-      success: false,
-      message: lang === 'fr' ? 'Erreur serveur.' : 'Server error.',
-      error: error.message
-    });
-  }
 };
 
 
@@ -2157,17 +2212,39 @@ export const totalStagiairesTerminesSurPeriode = async (req, res) => {
 
     try {
         const dateDebutFilter = new Date(dateDebut);
+        dateDebutFilter.setHours(0, 0, 0, 0);
+
         const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
+        
         const now = new Date();
 
-        // --- Stagiaires individuels à partir des Rotations ---
-        // On cherche les rotations qui se sont terminées DANS la période spécifiée
-        const stagiairesIndividuelsResult = await Rotation.aggregate([
+        // --- 1. Stagiaires individuels ---
+        const stagiairesIndividuelsResult = await AffectationFinale.aggregate([
             {
                 $match: {
                     stagiaire: { $exists: true, $ne: null },
-                    // On s'assure que la date de fin est dans la période et antérieure à aujourd'hui
-                    dateFin: { $gte: dateDebutFilter, $lte: dateFinFilter, $lt: now }
+                    groupe: null
+                }
+            },
+            // 💡 AJOUT : Lookup vers Stage pour les dates
+            {
+                $lookup: {
+                    from: 'stages',
+                    localField: 'stage', // ASSUMPTION : L'ID du stage est dans AffectationFinale.stage
+                    foreignField: '_id',
+                    as: 'stageInfo'
+                }
+            },
+            { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+            // 💡 FILTRE : Condition de terminaison sur les VRAIES dates du stage
+            {
+                $match: {
+                    'stageInfo.dateFin': { 
+                        $gte: dateDebutFilter, 
+                        $lte: dateFinFilter, 
+                        $lt: now 
+                    }
                 }
             },
             {
@@ -2178,16 +2255,15 @@ export const totalStagiairesTerminesSurPeriode = async (req, res) => {
         ]);
         const stagiairesIndividuelsSet = new Set(stagiairesIndividuelsResult.map(doc => doc._id.toString()));
 
-        // --- Stagiaires de groupe à partir des Affectations Finales ---
-        // On cherche les affectations de groupe qui se sont terminées DANS la période
+        // --- 2. Stagiaires de groupe ---
         const stagiairesGroupesResult = await AffectationFinale.aggregate([
             {
                 $match: {
                     groupe: { $exists: true, $ne: null },
-                    // On s'assure que la date de fin est dans la période et antérieure à aujourd'hui
-                    dateFin: { $gte: dateDebutFilter, $lte: dateFinFilter, $lt: now }
+                    stagiaire: null
                 }
             },
+            // Lookup vers la collection 'groupes'
             {
                 $lookup: {
                     from: 'groupes',
@@ -2197,6 +2273,30 @@ export const totalStagiairesTerminesSurPeriode = async (req, res) => {
                 }
             },
             { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+            
+            // Lookup vers la collection 'stages' pour obtenir les VRAIES dates
+            {
+                $lookup: {
+                    from: 'stages',
+                    localField: 'groupeInfo.stage',
+                    foreignField: '_id',
+                    as: 'stageInfo'
+                }
+            },
+            { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+
+            // 💡 FILTRE : Condition de terminaison sur la date de fin du Stage
+            {
+                $match: {
+                    'stageInfo.dateFin': { 
+                        $gte: dateDebutFilter, 
+                        $lte: dateFinFilter, 
+                        $lt: now 
+                    }
+                }
+            },
+            
+            // Unwind et groupement des stagiaires
             { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
             {
                 $group: {
@@ -2240,24 +2340,37 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
     }
 
     try {
+        // Définir les limites de date précises (début/fin de journée)
         const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+        dateDebutFilter.setHours(0, 0, 0, 0);
 
-        const matchStage = {
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter },
-            superviseur: { $exists: true, $ne: null }
-        };
+        const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
+
+        // Match initial : Seuls les superviseurs sont requis
+        const initialMatch = { superviseur: { $exists: true, $ne: null } };
 
         const pipeline = [
             {
                 $facet: {
-                    // Rotations individuelles
-                    rotations: [
+                    // Stagiaires individuels
+                    stagesIndividuels: [
+                        { $match: { ...initialMatch, stagiaire: { $exists: true, $ne: null }, groupe: null } },
+                        // Lookup Stage
+                        {
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'stage', // ASSUMPTION : L'ID du stage est dans AffectationFinale.stage
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        // 💡 FILTRE par date de STAGE
                         {
                             $match: {
-                                ...matchStage,
-                                stagiaire: { $exists: true, $ne: null }
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
                             }
                         },
                         {
@@ -2268,13 +2381,9 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                         }
                     ],
                     // Affectations de groupes
-                    affectations: [
-                        {
-                            $match: {
-                                ...matchStage,
-                                groupe: { $exists: true, $ne: null }
-                            }
-                        },
+                    affectationsGroupes: [
+                        { $match: { ...initialMatch, groupe: { $exists: true, $ne: null }, stagiaire: null } },
+                        // Lookup Groupe
                         {
                             $lookup: {
                                 from: 'groupes',
@@ -2283,12 +2392,25 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                                 as: 'groupeInfo'
                             }
                         },
+                        { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+                        // Lookup Stage
                         {
-                            $unwind: '$groupeInfo'
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'groupeInfo.stage',
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
                         },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        // 💡 FILTRE par date de STAGE
                         {
-                            $unwind: '$groupeInfo.stagiaires'
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
                         },
+                        { $unwind: { path: '$groupeInfo.stagiaires', preserveNullAndEmptyArrays: false } },
                         {
                             $group: {
                                 _id: '$superviseur',
@@ -2298,15 +2420,9 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                     ]
                 }
             },
-            // Fusionner les deux résultats
-            {
-                $project: {
-                    combined: { $concatArrays: ['$rotations', '$affectations'] }
-                }
-            },
-            {
-                $unwind: '$combined'
-            },
+            // Fusionner les résultats
+            { $project: { combined: { $concatArrays: ['$stagesIndividuels', '$affectationsGroupes'] } } },
+            { $unwind: '$combined' },
             // Regrouper par superviseur et combiner les stagiaires
             {
                 $group: {
@@ -2314,7 +2430,7 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                     stagiaires: { $push: '$combined.stagiaires' }
                 }
             },
-            // Aplatir le tableau de tableaux de stagiaires
+            // Aplatir les stagiaires en un ensemble unique (SetUnion)
             {
                 $project: {
                     _id: 1,
@@ -2346,11 +2462,7 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
                 $project: {
                     _id: 0,
                     moyenneStagiairesParSuperviseur: {
-                        $cond: [
-                            { $eq: ['$totalSuperviseurs', 0] },
-                            0,
-                            { $divide: ['$totalStagiaires', '$totalSuperviseurs'] }
-                        ]
+                        $cond: [{ $eq: ['$totalSuperviseurs', 0] }, 0, { $divide: ['$totalStagiaires', '$totalSuperviseurs'] }]
                     },
                     totalSuperviseurs: 1,
                     totalStagiaires: 1,
@@ -2359,11 +2471,13 @@ export const moyenneStagiairesParSuperviseurSurPeriode = async (req, res) => {
             }
         ];
 
-        const result = await Rotation.aggregate(pipeline);
+        const result = await AffectationFinale.aggregate(pipeline);
+        
         const data = result[0] || {
             moyenneStagiairesParSuperviseur: 0,
             totalSuperviseurs: 0,
-            totalStagiaires: 0
+            totalStagiaires: 0,
+            details: []
         };
 
         return res.status(200).json({
@@ -2396,49 +2510,140 @@ export const dureeMoyenneStagesSurPeriode = async (req, res) => {
     }
 
     try {
+        // 1. Définir les limites de date précises (début/fin de journée)
         const dateDebutFilter = new Date(dateDebut);
+        dateDebutFilter.setHours(0, 0, 0, 0);
+
         const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
 
-        const matchStage = {
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
+        // --- Pipeline d'agrégation unique sur AffectationFinale ---
+        const dureesStagesResult = await AffectationFinale.aggregate([
+            {
+                $facet: {
+                    // Stages Individuels (stagiaire: non null, groupe: null)
+                    individuels: [
+                        { $match: { stagiaire: { $exists: true, $ne: null }, groupe: null } },
+                        
+                        // 💡 ÉTAPE CRUCIALE : Récupérer le StageID.
+                        // On suppose que pour un stage individuel, l'ID du stage est dans un champ 'stage' de AffectationFinale.
+                        // Si l'ID du stage n'est pas dans AffectationFinale, il faut le récupérer via une autre collection.
+                        // Pour l'instant, on suppose que l'ID est dans un champ 'stageId' ou 'stage' sur AffectationFinale.
+                        // Si le champ n'existe pas, nous devons le déduire du stagiaire ou d'une autre rotation/affectation initiale.
+                        // Cependant, le cas le plus courant est que AffectationFinale contient l'ID du Stage.
+                        // POUR LA CORRECTION, NOUS ALLONS SUPPOSER L'EXISTENCE DU CHAMP 'stage' DANS AFFECTATIONFINALE POUR LES INDIVIDUELS.
+                        
+                        // 1. Lookup vers la collection 'stages'
+                        {
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'stage', // 💡 ASSUMPTION: 'stage' est le champ ID du stage dans AffectationFinale
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 2. Filtrer sur les VRAIES dates du Stage
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        {
+                            $project: {
+                                _id: 1,
+                                // Calcul de la durée en jours basée sur stageInfo
+                                dureeEnJours: {
+                                    $divide: [{ $subtract: ['$stageInfo.dateFin', '$stageInfo.dateDebut'] }, 1000 * 60 * 60 * 24]
+                                }
+                            }
+                        }
+                    ],
+                    // Stages de Groupe (groupe: non null, stagiaire: null)
+                    groupes: [
+                        { $match: { groupe: { $exists: true, $ne: null }, stagiaire: null } },
+                        
+                        // 1. Lookup vers la collection 'groupes' pour obtenir l'ID du Stage
+                        {
+                            $lookup: {
+                                from: 'groupes',
+                                localField: 'groupe',
+                                foreignField: '_id',
+                                as: 'groupeInfo'
+                            }
+                        },
+                        { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
 
-        // Pipeline pour les rotations individuelles
-        const dureesRotations = await Rotation.aggregate([
-            { $match: matchStage },
+                        // 2. Lookup vers la collection 'stages' pour obtenir les dates
+                        {
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'groupeInfo.stage', // stage ID vient du document Groupe
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 3. Filtrer sur les VRAIES dates du Stage
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        
+                        {
+                            $project: {
+                                _id: 1,
+                                // Calcul de la durée en jours basée sur stageInfo
+                                dureeEnJours: {
+                                    $divide: [{ $subtract: ['$stageInfo.dateFin', '$stageInfo.dateDebut'] }, 1000 * 60 * 60 * 24]
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            // Fusionner les résultats des deux facettes
             {
                 $project: {
-                    dureeEnJours: {
-                        $divide: [{ $subtract: ['$dateFin', '$dateDebut'] }, 1000 * 60 * 60 * 24]
+                    toutesDurees: { $concatArrays: ["$individuels", "$groupes"] }
+                }
+            },
+            { $unwind: "$toutesDurees" },
+            
+            // Regrouper pour calculer la somme totale des jours et le nombre total de stages
+            {
+                $group: {
+                    _id: null,
+                    totalJours: { $sum: '$toutesDurees.dureeEnJours' },
+                    totalStages: { $sum: 1 } // Chaque élément unwindé est une affectation valide
+                }
+            },
+            // Calculer la moyenne finale
+            {
+                $project: {
+                    _id: 0,
+                    moyenneEnMois: {
+                        $cond: [
+                            { $eq: ['$totalStages', 0] },
+                            0,
+                            // (Total Jours / Total Stages) / 30
+                            { $divide: [{ $divide: ['$totalJours', '$totalStages'] }, 30] }
+                        ]
                     }
                 }
             }
         ]);
 
-        // Pipeline pour les affectations finales de groupe
-        const dureesAffectations = await AffectationFinale.aggregate([
-            { $match: matchStage },
-            {
-                $project: {
-                    dureeEnJours: {
-                        $divide: [{ $subtract: ['$dateFin', '$dateDebut'] }, 1000 * 60 * 60 * 24]
-                    }
-                }
-            }
-        ]);
-
-        // Fusionner et calculer les totaux
-        const toutesDurees = [...dureesRotations, ...dureesAffectations];
-
-        const totalJours = toutesDurees.reduce((sum, item) => sum + item.dureeEnJours, 0);
-        const totalStages = toutesDurees.length;
-
-        const moyenneEnMois = totalStages > 0 ? (totalJours / totalStages) / 30 : 0;
-
+        const data = dureesStagesResult[0] || { moyenneEnMois: 0 };
+        
         return res.status(200).json({
             success: true,
-            dureeMoyenneMois: moyenneEnMois.toFixed(2)
+            dureeMoyenneMois: data.moyenneEnMois.toFixed(2)
         });
 
     } catch (error) {
@@ -2466,33 +2671,42 @@ export const tauxStatutStagesSurPeriode = async (req, res) => {
     }
 
     try {
+        // 💡 CORRECTION : Définir les limites de date précises (début/fin de journée)
         const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+        dateDebutFilter.setHours(0, 0, 0, 0); // Début du jour
 
+        const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999); // Fin du jour
+
+        // Le filtre s'applique directement sur la collection Stage, où les dates sont stockées
         const matchStage = {
             dateDebut: { $lte: dateFinFilter },
             dateFin: { $gte: dateDebutFilter }
         };
 
         const result = await Stage.aggregate([
-            { $match: matchStage },
+            { $match: matchStage }, // Filtrer les stages par la période définie
             {
                 $group: {
-                    _id: '$statut',
-                    count: { $sum: 1 }
+                    _id: '$statut', // Regrouper par le champ 'statut' du stage
+                    count: { $sum: 1 } // Compter le nombre de stages dans chaque statut
                 }
             }
         ]);
 
         const totalStages = result.reduce((acc, cur) => acc + cur.count, 0);
+        
+        // Convertir le résultat en map pour faciliter l'accès aux comptes
         const map = result.reduce((acc, cur) => {
             acc[cur._id] = cur.count;
             return acc;
         }, {});
 
+        // Calcul des taux pour chaque statut
         const tauxAccepte = totalStages > 0 ? (map.ACCEPTE || 0) / totalStages : 0;
         const tauxRefuse = totalStages > 0 ? (map.REFUSE || 0) / totalStages : 0;
         const tauxEnAttente = totalStages > 0 ? (map.EN_ATTENTE || 0) / totalStages : 0;
+        // Vous pouvez ajouter d'autres statuts si nécessaire (ex: EN_COURS, TERMINE, ANNULE...)
 
         return res.status(200).json({
             success: true,
@@ -2502,6 +2716,7 @@ export const tauxStatutStagesSurPeriode = async (req, res) => {
                 tauxEnAttente: tauxEnAttente,
             }
         });
+        
     } catch (error) {
         console.error("Erreur dans tauxStatutStagesSurPeriode:", error);
         return res.status(500).json({
@@ -2526,30 +2741,53 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
     }
 
     try {
+        // 1. Définir les limites de date précises
         const dateDebutFilter = new Date(dateDebut);
+        dateDebutFilter.setHours(0, 0, 0, 0);
+
         const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
 
-        const matchStage = {
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
-
+        // 💡 ASSUMPTION: L'ID du service est dans AffectationFinale.service
+        // 💡 ASSUMPTION: L'ID du stage est dans AffectationFinale.stage pour les individus
+        
         const pipeline = [
             {
                 $facet: {
-                    // Pipeline pour les stagiaires individuels, filtré par la période
+                    // Stagiaires individuels
                     individuels: [
-                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
+                        { $match: { stagiaire: { $exists: true, $ne: null }, groupe: null, service: { $exists: true, $ne: null } } },
+                        
+                        // 1. Lookup Stage pour les VRAIES dates et le filtre
                         {
-                            $group: {
-                                _id: '$service',
-                                stagiaires: { $addToSet: '$stagiaire' }
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'stage',
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 2. FILTRE par dates réelles du Stage
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        {
+                            $project: {
+                                service: '$service',
+                                stagiaires: ['$stagiaire']
                             }
                         }
                     ],
-                    // Pipeline pour les stagiaires de groupe, filtré par la période
+                    // Stagiaires de groupe
                     groupes: [
-                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        { $match: { groupe: { $exists: true, $ne: null }, stagiaire: null, service: { $exists: true, $ne: null } } },
+                        
+                        // 1. Lookup Groupe
                         {
                             $lookup: {
                                 from: 'groupes',
@@ -2558,49 +2796,105 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
                                 as: 'groupeInfo'
                             }
                         },
-                        { $unwind: '$groupeInfo' },
+                        { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+
+                        // 2. Lookup Stage pour les VRAIES dates et le filtre
                         {
-                            $group: {
-                                _id: '$service',
-                                stagiaires: { $addToSet: '$groupeInfo.stagiaires' }
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'groupeInfo.stage',
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 3. FILTRE par dates réelles du Stage
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        {
+                            $project: {
+                                service: '$service',
+                                stagiaires: '$groupeInfo.stagiaires' 
                             }
                         }
                     ]
                 }
             },
-            // Fusionner les résultats des deux pipelines
+            // Fusionner les résultats
             {
                 $project: {
-                    tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
+                    tousLesStages: { $concatArrays: ['$individuels', '$groupes'] }
                 }
             },
-            { $unwind: '$tousLesStagiaires' },
-            // Regrouper par service pour consolider les listes de stagiaires
+            { $unwind: '$tousLesStages' },
+            
+            // Regrouper par service et consolider TOUS les IDs de stagiaires
             {
                 $group: {
-                    _id: '$tousLesStagiaires._id',
-                    stagiaires: { $addToSet: '$tousLesStagiaires.stagiaires' }
+                    _id: '$tousLesStages.service',
+                    stagiairesListes: { $push: '$tousLesStages.stagiaires' }
                 }
             },
-            // Compter les stagiaires uniques par service
+            
+            // Calculer le nombre de stagiaires uniques par service
             {
                 $project: {
-                    _id: 0,
-                    service: '$_id',
-                    nombreStagiaires: {
-                        $size: {
+                    serviceId: '$_id',
+                    stagiairesUniques: {
+                        $setUnion: {
                             $reduce: {
-                                input: '$stagiaires',
+                                input: '$stagiairesListes',
                                 initialValue: [],
-                                in: { $concatArrays: ['$$value', '$$this'] }
+                                in: { $concatArrays: ['$$value', '$$this'] } 
                             }
                         }
                     }
                 }
-            }
+            },
+            {
+                $project: {
+                    serviceId: '$serviceId',
+                    nombreStagiaires: { $size: '$stagiairesUniques' }
+                }
+            },
+            
+            // 💡 CORRECTION : Lookup vers la collection 'services' pour obtenir les noms
+            {
+                $lookup: {
+                    from: 'services', // ASSUMPTION : nom de la collection de services
+                    localField: 'serviceId',
+                    foreignField: '_id',
+                    as: 'serviceDetails'
+                }
+            },
+            { 
+                $unwind: { 
+                    path: '$serviceDetails', 
+                    preserveNullAndEmptyArrays: true // S'assurer qu'on garde les services même si le lookup échoue
+                } 
+            },
+            
+            // 💡 CORRECTION : Projection finale pour retourner le serviceId et les noms
+            {
+                $project: {
+                    _id: 0,
+                    serviceId: '$serviceId',
+                    nombreStagiaires: '$nombreStagiaires',
+                    // Récupération des noms, avec fallback au cas où le lookup ne trouve rien
+                    nomFr: { $ifNull: ['$serviceDetails.nomFr', 'Inconnu (FR)'] },
+                    nomEn: { $ifNull: ['$serviceDetails.nomEn', 'Unknown (EN)'] },
+                }
+            },
+            // Optionnel : Trier par nombre de stagiaires
+            { $sort: { nombreStagiaires: -1 } }
         ];
 
-        const repartition = await Rotation.aggregate(pipeline);
+        const repartition = await AffectationFinale.aggregate(pipeline); 
 
         return res.status(200).json({
             success: true,
@@ -2616,7 +2910,6 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
     }
 };
 
-
 export const repartitionStagiairesParSuperviseurSurPeriode = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { dateDebut, dateFin } = req.query;
@@ -2631,26 +2924,71 @@ export const repartitionStagiairesParSuperviseurSurPeriode = async (req, res) =>
     }
 
     try {
+        // 1. Définir les limites de date précises et l'heure actuelle
         const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+        dateDebutFilter.setHours(0, 0, 0, 0);
 
-        const matchStage = {
-            dateDebut: { $lte: dateFinFilter },
-            dateFin: { $gte: dateDebutFilter }
-        };
+        const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
+        
+        const now = new Date(); 
+        
+        const initialMatch = { superviseur: { $exists: true, $ne: null } };
 
         const pipeline = [
-            // Étape 1: Traiter les stages individuels et de groupe en parallèle
+            // Étape 1: Traiter les stages individuels et de groupe en parallèle et filtrer par dates de STAGE
             {
                 $facet: {
-                    // Stagiaires individuels à partir des rotations
+                    // Stagiaires individuels
                     individuels: [
-                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
-                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$stagiaire' } } }
+                        { $match: { ...initialMatch, stagiaire: { $exists: true, $ne: null }, groupe: null } },
+                        
+                        // 1. Lookup Stage pour les VRAIES dates et le filtre
+                        {
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'stage',
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 2. FILTRE par dates réelles du Stage sur la PÉRIODE
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        // 3. Projection pour le regroupement et le statut du stage
+                        {
+                            $project: {
+                                superviseur: '$superviseur',
+                                stagiaires: ['$stagiaire'],
+                                isEnCours: { 
+                                    $cond: [
+                                        { $and: [
+                                            { $lte: ['$stageInfo.dateDebut', now] },
+                                            { $gt: ['$stageInfo.dateFin', now] }
+                                        ]},
+                                        1, 0
+                                    ]
+                                },
+                                isTermine: { 
+                                    $cond: [
+                                        { $lt: ['$stageInfo.dateFin', now] },
+                                        1, 0
+                                    ]
+                                }
+                            }
+                        }
                     ],
-                    // Stagiaires de groupe à partir des affectations finales
+                    // Stagiaires de groupe
                     groupes: [
-                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        { $match: { ...initialMatch, groupe: { $exists: true, $ne: null }, stagiaire: null } },
+                        
+                        // 1. Lookup Groupe
                         {
                             $lookup: {
                                 from: 'groupes',
@@ -2659,51 +2997,124 @@ export const repartitionStagiairesParSuperviseurSurPeriode = async (req, res) =>
                                 as: 'groupeInfo'
                             }
                         },
-                        { $unwind: '$groupeInfo' },
-                        { $unwind: '$groupeInfo.stagiaires' },
-                        { $group: { _id: '$superviseur', stagiaires: { $addToSet: '$groupeInfo.stagiaires' } } }
+                        { $unwind: { path: '$groupeInfo', preserveNullAndEmptyArrays: false } },
+
+                        // 2. Lookup Stage pour les VRAIES dates et le filtre
+                        {
+                            $lookup: {
+                                from: 'stages',
+                                localField: 'groupeInfo.stage',
+                                foreignField: '_id',
+                                as: 'stageInfo'
+                            }
+                        },
+                        { $unwind: { path: '$stageInfo', preserveNullAndEmptyArrays: false } },
+                        
+                        // 3. FILTRE par dates réelles du Stage sur la PÉRIODE
+                        {
+                            $match: {
+                                'stageInfo.dateDebut': { $lte: dateFinFilter },
+                                'stageInfo.dateFin': { $gte: dateDebutFilter }
+                            }
+                        },
+                        // 4. Projection pour le regroupement et le statut du stage
+                        {
+                            $project: {
+                                superviseur: '$superviseur',
+                                stagiaires: '$groupeInfo.stagiaires',
+                                isEnCours: { 
+                                    $cond: [
+                                        { $and: [
+                                            { $lte: ['$stageInfo.dateDebut', now] },
+                                            { $gt: ['$stageInfo.dateFin', now] }
+                                        ]},
+                                        1, 0
+                                    ]
+                                },
+                                isTermine: { 
+                                    $cond: [
+                                        { $lt: ['$stageInfo.dateFin', now] },
+                                        1, 0
+                                    ]
+                                }
+                            }
+                        }
                     ]
                 }
             },
             // Étape 2: Fusionner les résultats des deux pipelines
             {
                 $project: {
-                    tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
+                    tousLesStages: { $concatArrays: ['$individuels', '$groupes'] }
                 }
             },
-            { $unwind: '$tousLesStagiaires' },
-            // Étape 3: Consolider les stagiaires par superviseur et compter
+            { $unwind: '$tousLesStages' },
+            
+            // Étape 3: Regrouper par superviseur, consolider les IDs de stagiaires et SOMMER les statuts de stages
             {
                 $group: {
-                    _id: '$tousLesStagiaires._id',
-                    nombreStagiaires: { $sum: { $size: '$tousLesStagiaires.stagiaires' } }
+                    _id: '$tousLesStages.superviseur',
+                    stagiairesListes: { $push: '$tousLesStages.stagiaires' },
+                    totalStagesEnCours: { $sum: '$tousLesStages.isEnCours' },
+                    totalStagesTermines: { $sum: '$tousLesStages.isTermine' }
                 }
             },
-            // Étape 4: Joindre les informations des superviseurs
+
+            // Étape 4: Calculer le nombre de stagiaires UNIQUES
+            {
+                $project: {
+                    superviseurId: '$_id',
+                    totalStagesEnCours: 1,
+                    totalStagesTermines: 1,
+                    nombreStagiairesUniques: {
+                        $size: {
+                            $setUnion: {
+                                $reduce: {
+                                    input: '$stagiairesListes',
+                                    initialValue: [],
+                                    in: { $concatArrays: ['$$value', '$$this'] } 
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+
+            // Étape 5: Joindre les informations des superviseurs
             {
                 $lookup: {
-                    from: 'superviseurs', // Remplace 'superviseurs' par le nom de ta collection de superviseurs
-                    localField: '_id',
+                    from: 'utilisateurs', // 💡 CORRECTION : Utilisation de la collection 'utilisateurs'
+                    localField: 'superviseurId',
                     foreignField: '_id',
                     as: 'superviseurInfo'
                 }
             },
-            { $unwind: '$superviseurInfo' },
-            // Étape 5: Projetter le résultat final
+            { 
+                $unwind: { 
+                    path: '$superviseurInfo', 
+                    preserveNullAndEmptyArrays: true
+                } 
+            },
+
+            // Étape 6: Projetter le résultat final (nom et prénom du superviseur)
             {
                 $project: {
                     _id: 0,
                     superviseur: {
-                        _id: '$superviseurInfo._id',
-                        nom: '$superviseurInfo.nom',
-                        prenom: '$superviseurInfo.prenom'
+                        _id: '$superviseurId',
+                        nom: { $ifNull: ['$superviseurInfo.nom', 'Inconnu'] }, // 💡 Utilisation du champ 'nom'
+                        prenom: { $ifNull: ['$superviseurInfo.prenom', 'Superviseur'] } // 💡 Utilisation du champ 'prenom'
                     },
-                    nombreStagiaires: '$nombreStagiaires'
+                    nombreStagiairesUniques: '$nombreStagiairesUniques',
+                    totalStagesEnCours: '$totalStagesEnCours',
+                    totalStagesTermines: '$totalStagesTermines'
                 }
-            }
+            },
+            { $sort: { nombreStagiairesUniques: -1 } }
         ];
 
-        const repartition = await Rotation.aggregate(pipeline);
+        // ASSUMPTION: AffectationFinale est la collection qui contient l'ID du superviseur
+        const repartition = await AffectationFinale.aggregate(pipeline);
 
         return res.status(200).json({
             success: true,
@@ -2735,118 +3146,126 @@ export const repartitionStagiairesParEtablissementSurPeriode = async (req, res) 
     }
 
     try {
+        // 1. Définir les limites de date précises (début/fin de journée)
         const dateDebutFilter = new Date(dateDebut);
-        const dateFinFilter = new Date(dateFin);
+        dateDebutFilter.setHours(0, 0, 0, 0);
 
+        const dateFinFilter = new Date(dateFin);
+        dateFinFilter.setHours(23, 59, 59, 999);
+
+        // Le filtre de période s'applique directement sur la collection Stage
         const matchStage = {
             dateDebut: { $lte: dateFinFilter },
             dateFin: { $gte: dateDebutFilter }
         };
 
         const pipeline = [
+            // Étape 1: Filtrer les stages par la période demandée
+            { $match: matchStage }, 
+
+            // Étape 2: Identifier tous les stagiaires (individuels et de groupe) impliqués dans ces stages
+            {
+                $project: {
+                    _id: 0,
+                    stagiaireId: '$stagiaire', // Stagiaire individuel
+                    groupeId: '$groupe',       // Groupe de stagiaires
+                }
+            },
+            
+            // Étape 3: Transformer les stages de groupe en IDs de stagiaires individuels (si groupe existe)
             {
                 $facet: {
-                    // Pipeline pour les stagiaires individuels
                     individuels: [
-                        { $match: { ...matchStage, stagiaire: { $exists: true, $ne: null } } },
-                        {
-                            $lookup: {
-                                from: 'stagiaires',
-                                localField: 'stagiaire',
-                                foreignField: '_id',
-                                as: 'stagiaireInfo'
-                            }
-                        },
-                        { $unwind: '$stagiaireInfo' },
-                        {
-                            $group: {
-                                _id: '$stagiaireInfo.etablissement',
-                                stagiaires: { $addToSet: '$stagiaire' }
-                            }
-                        }
+                        { $match: { stagiaireId: { $ne: null } } },
+                        { $project: { stagiaireId: '$stagiaireId' } }
                     ],
-                    // Pipeline pour les stagiaires de groupe
                     groupes: [
-                        { $match: { ...matchStage, groupe: { $exists: true, $ne: null } } },
+                        { $match: { groupeId: { $ne: null } } },
                         {
                             $lookup: {
                                 from: 'groupes',
-                                localField: 'groupe',
+                                localField: 'groupeId',
                                 foreignField: '_id',
                                 as: 'groupeInfo'
                             }
                         },
                         { $unwind: '$groupeInfo' },
                         { $unwind: '$groupeInfo.stagiaires' },
-                        {
-                            $lookup: {
-                                from: 'stagiaires',
-                                localField: 'groupeInfo.stagiaires',
-                                foreignField: '_id',
-                                as: 'stagiaireInfo'
-                            }
-                        },
-                        { $unwind: '$stagiaireInfo' },
-                        {
-                            $group: {
-                                _id: '$stagiaireInfo.etablissement',
-                                stagiaires: { $addToSet: '$stagiaireInfo._id' }
-                            }
-                        }
+                        { $project: { stagiaireId: '$groupeInfo.stagiaires' } } // Renvoyer chaque stagiaire du groupe
                     ]
                 }
             },
-            // Fusionner les résultats
+
+            // Étape 4: Fusionner les résultats individuels et groupes
             {
                 $project: {
                     tousLesStagiaires: { $concatArrays: ['$individuels', '$groupes'] }
                 }
             },
             { $unwind: '$tousLesStagiaires' },
-            // Regrouper par établissement pour consolider les listes de stagiaires
+            { $replaceRoot: { newRoot: '$tousLesStagiaires' } }, // Le document contient maintenant l'ID du stagiaire: { stagiaireId: ObjectId(...) }
+            
+            // Étape 5: Joindre les informations du Stagiaire (Utilisateur Base)
             {
-                $group: {
-                    _id: '$tousLesStagiaires._id',
-                    stagiaires: { $addToSet: '$tousLesStagiaires.stagiaires' }
+                $lookup: {
+                    from: 'baseutilisateurs', // 💡 CORRECTION: Collection du modèle de base
+                    localField: 'stagiaireId',
+                    foreignField: '_id',
+                    as: 'stagiaireInfo'
                 }
             },
-            // Compter les stagiaires uniques par établissement et joindre le nom de l'établissement
+            { $unwind: '$stagiaireInfo' },
+            
+            // Étape 6: Regrouper par ID d'établissement et collecter les IDs UNIQUES des stagiaires
+            {
+                $unwind: '$stagiaireInfo.parcours', // Déconstruire le tableau des parcours
+            },
+            {
+                // Regrouper par l'ID de l'établissement trouvé dans n'importe quel parcours du stagiaire
+                $group: {
+                    _id: '$stagiaireInfo.parcours.etablissement', 
+                    stagiairesUniques: { $addToSet: '$stagiaireId' } // IDs des stagiaires uniques qui ont cet établissement dans leur parcours
+                }
+            },
+
+            // Étape 7: Compter les stagiaires uniques et joindre les détails de l'établissement
             {
                 $project: {
                     etablissementId: '$_id',
-                    nombreStagiaires: {
-                        $size: {
-                            $reduce: {
-                                input: '$stagiaires',
-                                initialValue: [],
-                                in: { $concatArrays: ['$$value', '$$this'] }
-                            }
-                        }
-                    }
+                    nombreStagiaires: { $size: '$stagiairesUniques' }
                 }
             },
             {
                 $lookup: {
-                    from: 'etablissements', // Remplace par le nom de ta collection d'établissements
+                    from: 'etablissements', 
                     localField: 'etablissementId',
                     foreignField: '_id',
                     as: 'etablissementInfo'
                 }
             },
-            { $unwind: '$etablissementInfo' },
+            { 
+                $unwind: { 
+                    path: '$etablissementInfo', 
+                    preserveNullAndEmptyArrays: true
+                } 
+            },
+
+            // Étape 8: Projection finale
             {
                 $project: {
                     _id: 0,
                     etablissement: {
-                        _id: '$etablissementInfo._id',
-                        nom: '$etablissementInfo.nom'
+                        _id: '$etablissementId',
+                        nom: { $ifNull: ['$etablissementInfo.nom', 'Établissement Inconnu'] }
                     },
                     nombreStagiaires: 1
                 }
-            }
+            },
+            { $sort: { nombreStagiaires: -1 } }
         ];
 
-        const repartition = await Rotation.aggregate(pipeline);
+        // Exécuter l'agrégation sur la collection Stage (la source des dates)
+        const repartition = await Stage.aggregate(pipeline); 
 
         return res.status(200).json({
             success: true,

@@ -4,6 +4,7 @@ import TacheThemeFormation from '../models/TacheThemeFormation.js';
 import TacheGenerique from '../models/TacheGenerique.js';
 import ThemeFormation from '../models/ThemeFormation.js'; // Ajout supposé
 import Formation from '../models/Formation.js';
+import { notifierChangementStatutTache } from '../services/notificationService.js';
 
 // Fonction helper pour valider ObjectId
 const validateObjectId = (id) => {
@@ -332,76 +333,173 @@ export const executerTache = async (req, res) => {
 };
 
 
-export const changerStatutTache = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
-    const { tacheFormationId, currentUser } = req.params;
-    const {statut, donnees=""}=req.body
-    // Validation du statut
-    const statutsValides = ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'];
-    if (!statutsValides.includes(statut)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: t('statut_invalide', lang),
-        statutsValides 
-      });
-    }
+// export const changerStatutTache = async (req, res) => {
+//     const lang = req.headers['accept-language'] || 'fr';
+//     const { tacheFormationId, currentUser } = req.params;
+//     const {statut, donnees=""}=req.body
+//     // Validation du statut
+//     const statutsValides = ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'];
+//     if (!statutsValides.includes(statut)) {
+//       return res.status(400).json({ 
+//         success: false, 
+//         message: t('statut_invalide', lang),
+//         statutsValides 
+//       });
+//     }
 
-    if (!validateObjectId(tacheFormationId)) {
-      return res.status(400).json({
-        success: false,
-        message: t('identifiant_invalide', lang)
-      });
-    }
+//     if (!validateObjectId(tacheFormationId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: t('identifiant_invalide', lang)
+//       });
+//     }
 
-    try {
-      const tache = await TacheThemeFormation.findById(tacheFormationId);
+//     try {
+//       const tache = await TacheThemeFormation.findById(tacheFormationId);
       
-      if (!tache) {
-        return res.status(404).json({ 
-          success: false, 
-          message: t('tache_non_trouvee', lang) 
-        });
-      }
+//       if (!tache) {
+//         return res.status(404).json({ 
+//           success: false, 
+//           message: t('tache_non_trouvee', lang) 
+//         });
+//       }
 
     
-      // Logique métier pour les changements de statut
-      if (statut === 'TERMINE' && !tache.estExecutee) {
-        return res.status(400).json({
-          success: false,
-          message: t('tache_non_executee', lang)
-        });
-      }
+//       // Logique métier pour les changements de statut
+//       if (statut === 'TERMINE' && !tache.estExecutee) {
+//         return res.status(400).json({
+//           success: false,
+//           message: t('tache_non_executee', lang)
+//         });
+//       }
 
-      if (statut === 'EN_ATTENTE') {
-        tache.dateDebut = tache.dateDebut || new Date();
-      }
+//       if (statut === 'EN_ATTENTE') {
+//         tache.dateDebut = tache.dateDebut || new Date();
+//       }
 
-      if (statut === 'EN_COURS') {
-        tache.dateDebut = tache.dateDebut || new Date();
-      }
+//       if (statut === 'EN_COURS') {
+//         tache.dateDebut = tache.dateDebut || new Date();
+//       }
 
-      if (statut === 'TERMINE') {
-        tache.dateFin = new Date();
-      }
+//       if (statut === 'TERMINE') {
+//         tache.dateFin = new Date();
+//       }
 
-      tache.statut = statut;
-      tache.donnees = donnees;
-      await tache.save();
+//       tache.statut = statut;
+//       tache.donnees = donnees;
+//       await tache.save();
 
-      return res.json({ 
-        success: true, 
-        message: t('statut_modifie_succes', lang),
-        data: tache 
+//       return res.json({ 
+//         success: true, 
+//         message: t('statut_modifie_succes', lang),
+//         data: tache 
+//       });
+//     } catch (err) {
+//       console.error('Erreur changerStatutTache:', err);
+//       return res.status(500).json({
+//         success: false,
+//         message: t('erreur_serveur', lang),
+//         error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+//       });
+//     }
+// };
+
+
+export const changerStatutTache = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const { tacheFormationId, currentUser } = req.params;
+  const { statut, donnees = "" } = req.body;
+
+  // Validation du statut
+  const statutsValides = ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'];
+  if (!statutsValides.includes(statut)) {
+    return res.status(400).json({ 
+      success: false, 
+      message: t('statut_invalide', lang),
+      statutsValides 
+    });
+  }
+
+  if (!validateObjectId(tacheFormationId)) {
+    return res.status(400).json({
+      success: false,
+      message: t('identifiant_invalide', lang)
+    });
+  }
+
+  try {
+    const tache = await TacheThemeFormation.findById(tacheFormationId)
+      .populate({
+        path: 'theme',
+        select: 'titreFr titreEn responsables',
+        
       });
-    } catch (err) {
-      console.error('Erreur changerStatutTache:', err);
-      return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    
+    if (!tache) {
+      return res.status(404).json({ 
+        success: false, 
+        message: t('tache_non_trouvee', lang) 
       });
     }
+
+    // Sauvegarder l'ancien statut
+    const ancienStatut = tache.statut;
+
+    // Logique métier pour les changements de statut
+    if (statut === 'TERMINE' && !tache.estExecutee) {
+      return res.status(400).json({
+        success: false,
+        message: t('tache_non_executee', lang)
+      });
+    }
+
+    if (statut === 'EN_ATTENTE') {
+      tache.dateDebut = tache.dateDebut || new Date();
+    }
+
+    if (statut === 'EN_COURS') {
+      tache.dateDebut = tache.dateDebut || new Date();
+    }
+
+    if (statut === 'TERMINE') {
+      tache.dateFin = new Date();
+    }
+    tache.executePar = currentUser;
+    tache.statut = statut;
+    tache.donnees = donnees;
+    await tache.save();
+
+    // Envoyer les notifications si le statut a changé
+    if (ancienStatut !== statut) {
+      try {
+        await notifierChangementStatutTache({
+          tache,
+          ancienStatut,
+          nouveauStatut: statut,
+          modifiePar: currentUser,
+          theme: tache.theme
+        });
+      } catch (notifError) {
+        // Logger l'erreur mais ne pas bloquer la réponse
+        console.error('Erreur envoi notifications:', notifError);
+      }
+    }
+
+    return res.json({ 
+      success: true, 
+      message: t('statut_modifie_succes', lang),
+      data: tache 
+    });
+  } catch (err) {
+    console.error('Erreur changerStatutTache:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
+  }
 };
+
 
 export const reinitialiserToutesLesTaches = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';

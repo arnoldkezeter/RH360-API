@@ -47,10 +47,17 @@ export const createUtilisateur = async (req, res) => {
             });
         }
 
+        let roles = ['UTILISATEUR'];
+        
+        // 2. Ajouter le rôle fourni si différent et non déjà inclus
+        if (role && role !== 'UTILISATEUR') {
+            roles.push(role);
+        }
+
         const password = generateRandomPassword();
         const utilisateur = new Utilisateur({
             matricule, nom, prenom, email, motDePasse : password, genre, dateNaissance, lieuNaissance, telephone,
-            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, grade, familleMetier
+            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, grade, familleMetier
         });
 
         await utilisateur.save();
@@ -109,6 +116,8 @@ export const updateUtilisateur = async (req, res) => {
             role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
+
+
         if (email && email !== utilisateur.email) {
             const exists = await Utilisateur.findOne({ email, _id: { $ne: id } });
             if (exists) {
@@ -131,6 +140,15 @@ export const updateUtilisateur = async (req, res) => {
             utilisateur.matricule = matricule;
         }
 
+        if (role !== undefined) {
+            // Recréer le tableau de rôles: toujours 'UTILISATEUR' + le nouveau rôle
+            let newRoles = ['UTILISATEUR'];
+            if (role && role !== 'UTILISATEUR') {
+                newRoles.push(role);
+            }
+            utilisateur.role = role; // Mise à jour de l'ancien champ 'role' pour rétrocompatibilité
+            utilisateur.roles = newRoles; // Mise à jour du nouveau champ 'roles'
+        }
 
         utilisateur.nom = nom ?? utilisateur.nom;
         utilisateur.prenom = prenom ?? utilisateur.prenom;
@@ -138,7 +156,6 @@ export const updateUtilisateur = async (req, res) => {
         utilisateur.dateNaissance = dateNaissance ?? utilisateur.dateNaissance;
         utilisateur.lieuNaissance = lieuNaissance ?? utilisateur.lieuNaissance;
         utilisateur.telephone = telephone ?? utilisateur.telephone;
-        utilisateur.role = role ?? utilisateur.role;
         utilisateur.dateEntreeEnService = dateEntreeEnService ?? utilisateur.dateEntreeEnService;
         utilisateur.service = service ?? utilisateur.service;
         utilisateur.categorieProfessionnelle = categorieProfessionnelle ?? utilisateur.categorieProfessionnelle;

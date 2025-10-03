@@ -50,12 +50,16 @@ import importDataRoutes from './routes/importDataRoutes.js';
 import exportDocumentRoutes from './routes/exportRoutes.js';
 import generatePDFRoutes from './routes/generatePDFRoutes.js';
 import noteServiceRoutes from './routes/noteServiceRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { Server } from 'socket.io';
+import http from 'http';
+import { initSocket } from './utils/socket.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -78,7 +82,11 @@ app.use('/files/photos_profil', express.static(path.join(process.cwd(), 'public/
 app.use('/files/fichiers_tache_executee', express.static(path.join(process.cwd(), 'public/uploads/fichiers_tache_executee')));
 
 connectDB();
+// Créer le serveur HTTP
+const server = http.createServer(app);
 
+// Initialiser Socket.IO
+initSocket(server);
 //Route d'autentification
 app.use('/api/v1/auth', authRoutes);
 
@@ -126,7 +134,8 @@ app.use('/api/v1/chercheurs', chercheurRoutes);
 app.use('/api/v1/import-export-data', importDataRoutes);
 app.use('/api/v1/export-document', exportDocumentRoutes);
 app.use('/api/v1/generate-document', generatePDFRoutes)
-app.use('/api/v1/notes-service', noteServiceRoutes)
+app.use('/api/v1/notes-service', noteServiceRoutes);
+app.use('/api/v1/notifications', notificationRoutes)
 
 // Route racine
 app.get('/', (req, res) => {
@@ -138,5 +147,5 @@ app.get('/', (req, res) => {
       timestamp: new Date().toISOString()
     });
   });
-  
-export default app;
+
+export { server }; 

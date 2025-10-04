@@ -18,6 +18,7 @@ import { Formateur } from '../models/Formateur.js';
 import { sendMailFormation } from '../utils/sendMailFormation.js';
 import path from 'path';
 import fs from 'fs';
+import Utilisateur from '../models/Utilisateur.js';
 
 
 // Ajouter
@@ -435,14 +436,85 @@ export const supprimerFamilleMetierDeFormation = async (req, res) => {
     }
 };
 
+
+
 // Pour les menus déroulants
 export const getFormationsForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-    const {programmeId} = req.params;
+    // Récupérer userId des params, il peut être undefined/null si non fourni
+    const { programmeId } = req.params; 
+    const { userId } = req.query;
+    
+    // --- Validation de programmeId (toujours nécessaire) ---
+    if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
 
     try {
-        const formations = await Formation.find({programmeFormation:programmeId}, '_id titreFr titreEn')
+        let query = { programmeFormation: programmeId };
+        let formations = [];
+
+        // --- Logique de filtrage conditionnel par utilisateur ---
+        if (userId) {
+            
+            // 0. Validation de l'ID utilisateur
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            // 1. Charger l'utilisateur pour vérifier les rôles
+            const user = await Utilisateur.findById(userId).select('roles').lean();
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            const userRoles = (user.roles || []).map(r => r.toUpperCase());
+            const isAdministrator = userRoles.includes('SUPER-ADMIN') || userRoles.includes('ADMIN');
+
+            // 2. Filtrage basé sur la responsabilité si NON-ADMIN
+            if (!isAdministrator) {
+                
+                // a. Trouver tous les IDs de Formation pour lesquels l'utilisateur est responsable d'au moins un Thème
+                const responsibleThemes = await ThemeFormation.find(
+                    { responsable: userId }, 
+                    'formation'
+                ).lean();
+
+                // b. Extraire les IDs de formation uniques
+                const responsibleFormationIds = [...new Set(responsibleThemes.map(theme => theme.formation))];
+
+                if (responsibleFormationIds.length === 0) {
+                    // Si l'utilisateur est connu, n'est pas admin, mais n'est responsable de rien.
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            formations: [],
+                            totalItems: 0,
+                            currentPage: 1,
+                            totalPages: 1,
+                            pageSize: 0,
+                        },
+                    });
+                }
+
+                // c. Ajouter la restriction par ID à la requête principale
+                query._id = { $in: responsibleFormationIds };
+            }
+        } 
+        // Si `userId` est manquant, la `query` reste `{ programmeFormation: programmeId }`, retournant tout.
+
+        // 3. Exécuter la requête finale
+        formations = await Formation.find(query, '_id titreFr titreEn')
             .sort({ [sortField]: 1 })
             .lean();
 
@@ -457,6 +529,7 @@ export const getFormationsForDropdown = async (req, res) => {
             },
         });
     } catch (err) {
+        // En cas d'erreur Mongoose ou autre erreur serveur
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),

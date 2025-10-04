@@ -110,7 +110,7 @@ export const modifierFormateur = async (req, res) => {
 
     // ✅ Nouveau formateur → rôle ajouté
     if (utilisateurId && utilisateurId.toString() !== oldUserId) {
-      await addRoleToUser(utilisateurId, 'formateur');
+      await addRoleToUser(utilisateurId, 'FORMATEUR');
 
       // Ancien formateur → retirer le rôle si plus utilisé
       if (oldUserId) {

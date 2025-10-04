@@ -17,6 +17,10 @@
     "statut_invalide":"Statut invalide.",
     "type_tache_non_supporte":"Type de tâche non supporté",
     "statut_modifie_succes":"Statut modifié avec succès",
+    "permissions_insuffisantes":"Permissions insuffisantes",
+    "chat_non_trouve":"Chat non trouvé",
+    "non_autorise":"Non autorisé",
+    "chat_desactive_succes":"Chat désactivé",
     
     
     

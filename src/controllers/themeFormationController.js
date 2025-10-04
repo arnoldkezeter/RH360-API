@@ -413,11 +413,14 @@ export const supprimerFormateur = async (req, res) => {
 };
 
 
-// Liste pour dropdown
+
 export const getThemeFormationsForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
-    const{formationId}=req.params
+    const { formationId } = req.params;
+    
+    // ✅ Récupération du userId du paramètre de requête (optionnel)
+    const { userId } = req.query;
 
     try {
         if (!mongoose.Types.ObjectId.isValid(formationId)) {
@@ -426,7 +429,45 @@ export const getThemeFormationsForDropdown = async (req, res) => {
                 message: t('identifiant_invalide', lang),
             });
         }
-        const themes = await ThemeFormation.find({formation:formationId}, `titreFr titreEn _id`).sort({ [sortField]: 1 }).lean();
+        
+        let query = { formation: formationId };
+
+        // --- Logique de filtrage conditionnel par utilisateur ---
+        if (userId) {
+            
+            // 0. Validation de l'ID utilisateur
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            // 1. Charger l'utilisateur pour vérifier les rôles
+            const user = await Utilisateur.findById(userId).select('roles').lean();
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            const userRoles = (user.roles || []).map(r => r.toUpperCase());
+            const isAdministrator = userRoles.includes('SUPER-ADMIN') || userRoles.includes('ADMIN');
+
+            // 2. Filtrage basé sur la responsabilité si NON-ADMIN
+            if (!isAdministrator) {
+                // Ajouter la restriction 'responsable' à la requête
+                query.responsable = userId;
+            }
+        } 
+        // Si userId est manquant ou si l'utilisateur est admin, la query reste simple: { formation: formationId }
+
+        // 3. Exécuter la requête finale
+        const themes = await ThemeFormation.find(query, `titreFr titreEn _id`)
+            .sort({ [sortField]: 1 })
+            .lean();
+
         return res.status(200).json({
             success: true,
             data: {
@@ -434,10 +475,11 @@ export const getThemeFormationsForDropdown = async (req, res) => {
                 totalItems: themes.length,
                 currentPage: 1,
                 totalPages: 1,
-                pageSize:  themes.length
+                pageSize: themes.length
             },
         });
     } catch (err) {
+        // En cas d'erreur Mongoose ou autre erreur serveur
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -445,7 +487,6 @@ export const getThemeFormationsForDropdown = async (req, res) => {
         });
     }
 };
-
 
 // Filtrer la liste des thèmes de formation
 export const getFilteredThemes = async (req, res) => {

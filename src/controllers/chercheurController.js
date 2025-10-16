@@ -22,7 +22,7 @@ export const createChercheur = async (req, res) => {
     }
 
     try {
-        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, etablissement, domaineRecherche, commune } = req.body;
+        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, etablissement, domaineRecherche, commune, doctorat } = req.body;
 
         // Vérifier si l'email existe déjà
         const exists = await BaseUtilisateur.exists({ email });
@@ -63,7 +63,8 @@ export const createChercheur = async (req, res) => {
             telephone,
             etablissement : etablissementRecord._id,
             domaineRecherche,
-            commune
+            commune, 
+            doctorat
         });
 
         await sendAccountEmail(email, email, password);
@@ -108,6 +109,7 @@ export const updateChercheur = async (req, res) => {
             etablissement,
             domaineRecherche,
             commune,
+            doctorat
         } = req.body;
 
         if (email) {
@@ -160,7 +162,7 @@ export const updateChercheur = async (req, res) => {
         if (etablissementRecord._id) chercheur.etablissement = etablissementRecord._id;
         if (domaineRecherche) chercheur.domaineRecherche = domaineRecherche;
         if (commune) chercheur.commune = commune;
-
+        if (doctorat) chercheur.doctorat = doctorat;
         // Enregistrer les modifications
         await chercheur.save();
         const chercheurPopulate = await chercheur.populate('etablissement');

@@ -214,7 +214,7 @@
     "evaluation_incomplete":"Évaluation incomplete",
 
 
-    "stagiaire_email_existe": "Cet email est déjà associé à un stagiaire.",
+    "stagiaire_email_existe": "Cet email est déjà utilisé.",
     "stagiaire_non_trouve": "Stagiaire introuvable.",
     "stagiaire_modifie_succes": "Le stagiaire a été modifié avec succès.",
     "stagiaires_liste": "Liste des stagiaires récupérée avec succès.",
@@ -254,7 +254,7 @@
     "tache_verrouiller": "Cette tâche est verrouillée et ne peut pas être modifiée.",
 
 
-    "chercheur_email_existe": "Un chercheur avec cet email existe déjà.",
+    "chercheur_email_existe": "Cet email est déjà utilisé.",
     "chercheur_non_trouve": "Chercheur non trouvé.",
 
     "mandat_non_trouve": "Le mandat spécifié est introuvable.",

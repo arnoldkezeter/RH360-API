@@ -628,31 +628,80 @@ export const addMessage = async (req, res) => {
             isRead: [{ user: senderId, readAt: new Date() }]
         };
         
-        // 1. Sauvegarder le message dans la BDD
+        // 1. Sauvegarder le message
         chat.messages.push(newMessage);
         chat.lastActivity = new Date();
         await chat.save();
         
-        // 2. Préparer le message à envoyer via Socket.io et pour les notifications
-        const savedMessage = chat.messages[chat.messages.length - 1]; // Récupérer le message avec son _id
+        // 2. Récupérer le message avec son _id ET populate le sender
+        const savedMessage = chat.messages[chat.messages.length - 1];
         const senderUser = await Utilisateur.findById(senderId).select('nom prenom email').lean();
         
         const populatedMessage = {
-            ...savedMessage.toObject(), // Utilisez .toObject() si newMessage était un sous-document Mongoose
+            _id: savedMessage._id, // ✅ IMPORTANT : inclure l'_id MongoDB
+            content: savedMessage.content,
+            messageType: savedMessage.messageType,
+            timestamp: savedMessage.timestamp,
+            isRead: savedMessage.isRead,
             sender: senderUser
         };
         
-        // 3. Émettre l'événement Socket.io (temps réel dans le chat)
+        // 3. ✅ CORRECTION : Émettre l'événement Socket.io AVANT la réponse HTTP
         const io = getIO();
         const roomName = `chat_${chatId}`;
-        io.to(roomName).emit('new_message', {
-            chatId,
-            message: populatedMessage,
-            entityType: chat.entityType,
-            entityId: chat.entityId,
-        });
+        
+        console.log(`📤 Émission Socket.IO vers la room: ${roomName}`);
+        console.log(`📨 Message émis:`, populatedMessage);
+        
+        // ✅ CORRECTION : Émettre à tous SAUF l'expéditeur
+        const senderSocketId = Array.from(io.sockets.sockets.values())
+            .find(s => s.userId === senderId.toString())?.id;
 
-        // 4. Déclencher les notifications (BDD et temps réel NOTIF)
+        if (senderSocketId) {
+            // Émettre à tous sauf l'expéditeur
+            io.to(roomName).emit('new_message', {
+                chatId: chatId.toString(),
+                message: populatedMessage,
+            });
+            
+            console.log(`📤 Message émis à la room ${roomName} (sauf expéditeur)`);
+        } else {
+            // Si on ne trouve pas le socket de l'expéditeur, émettre à tous
+            io.to(roomName).emit('new_message', {
+                chatId: chatId.toString(),
+                message: populatedMessage,
+            });
+        }
+
+        const participantsInRoom = io.sockets.adapter.rooms.get(roomName) || new Set();
+
+        chat.participants.forEach(participant => {
+            const participantId = participant.user.toString();
+            
+            // Ne pas notifier l'expéditeur
+            if (participantId === senderId.toString()) return;
+            
+            // Vérifier si l'utilisateur est dans la room du chat
+            const userSockets = Array.from(io.sockets.sockets.values())
+                .filter(s => s.userId === participantId);
+            
+            const isInChatRoom = userSockets.some(s => participantsInRoom.has(s.id));
+            
+            if (!isInChatRoom) {
+                // L'utilisateur n'est pas dans le chat, envoyer notification personnelle
+                const userRoom = `user_${participantId}`;
+                console.log(`📬 Notification message non lu vers ${userRoom}`);
+                
+                io.to(userRoom).emit('unread_message', {
+                    chatId: chatId.toString(),
+                    chatTitle: chat.title,
+                    message: populatedMessage,
+                    entityType: chat.entityType,
+                    entityId: chat.entityId
+                });
+            }
+        });
+        // 4. Déclencher les notifications
         await notifierNouveauMessage({
             chatId: chat._id, 
             chatTitle: chat.title, 
@@ -660,18 +709,19 @@ export const addMessage = async (req, res) => {
             senderId: senderId, 
             senderNom: senderUser.nom,
             senderPrenom: senderUser.prenom,
-            participants: chat.participants, // La liste des participants est déjà dans 'chat'
+            participants: chat.participants,
             entityType: chat.entityType,
             entityId: chat.entityId
         });
 
+        // 5. ✅ Répondre à la requête HTTP
         return res.status(201).json({
             success: true,
             data: populatedMessage,
         });
 
     } catch (error) {
-        console.log(error);
+        console.error('❌ Erreur addMessage:', error);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),

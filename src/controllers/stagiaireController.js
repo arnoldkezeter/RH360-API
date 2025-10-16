@@ -6,6 +6,7 @@ import { sendAccountEmail } from '../utils/sendMail.js';
 import { Groupe } from '../models/Groupe.js';
 import Etablissement from '../models/Etablissement.js';
 import BaseUtilisateur from '../models/BaseUtilisateur.js';
+import { AffectationFinale } from '../models/AffectationFinale.js';
 
 export const createStagiaire = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -273,100 +274,166 @@ export const getStagiaires = async (req, res) => {
 
     try {
         const pipeline = [];
-        const stageFilters = {};
-        const affectationFilters = {};
 
-        // 1. Filtrer par date et service dans AffectationFinale
-        if (dateDebut && dateFin) {
-            affectationFilters.dateDebut = { $gte: new Date(dateDebut) };
-            affectationFilters.dateFin = { $lte: new Date(dateFin) };
-        }
-        if (serviceId) {
-            affectationFilters.service = new mongoose.Types.ObjectId(serviceId);
-        }
-
-        // 2. Filtrer les stages en fonction des filtres d'affectation
-        if (Object.keys(affectationFilters).length > 0) {
-            const affectedStages = await AffectationFinale.find(affectationFilters).distinct('stage').lean();
-            stageFilters._id = { $in: affectedStages };
-        }
-
-        // 3. Filtrer les stages par statut
-        if (statut) {
-            stageFilters.statut = statut;
-        }
-
-        // 4. Définir le filtre initial pour les stagiaires
+        // 1. Filtrage initial des stagiaires
         const stagiaireFilters = {};
+        
         if (search) {
             stagiaireFilters.$or = [
                 { nom: { $regex: search, $options: 'i' } },
                 { prenom: { $regex: search, $options: 'i' } },
             ];
         }
+        
         if (etablissement) {
             stagiaireFilters['parcours.etablissement'] = new mongoose.Types.ObjectId(etablissement);
         }
-        pipeline.push({ $match: stagiaireFilters });
+        
+        if (Object.keys(stagiaireFilters).length > 0) {
+            pipeline.push({ $match: stagiaireFilters });
+        }
 
-        // 5. Utiliser l'agrégation pour unifier les données
+        // 2. Lookup des affectations finales pour chaque stagiaire (individuelles)
         pipeline.push({
             $lookup: {
-                from: 'stages',
-                localField: 'stages',
-                foreignField: '_id',
-                as: 'individualStages'
+                from: 'affectationfinales',
+                localField: '_id',
+                foreignField: 'stagiaire',
+                as: 'affectationsIndividuelles'
             }
         });
+
+        // 3. Lookup des groupes dont le stagiaire fait partie
         pipeline.push({
             $lookup: {
                 from: 'groupes',
                 localField: '_id',
                 foreignField: 'stagiaires',
-                as: 'groups'
+                as: 'groupes'
             }
-        });
-        pipeline.push({
-            $unwind: { path: '$groups', preserveNullAndEmptyArrays: true }
-        });
-        pipeline.push({
-            $lookup: {
-                from: 'stages',
-                localField: 'groups.stage',
-                foreignField: '_id',
-                as: 'groupStage'
-            }
-        });
-        pipeline.push({
-            $unwind: { path: '$groupStage', preserveNullAndEmptyArrays: true }
         });
 
-        // 6. Fusionner les stages et les filtrer
+        // 4. Lookup des affectations de groupe
+        pipeline.push({
+            $lookup: {
+                from: 'affectationfinales',
+                localField: 'groupes._id',
+                foreignField: 'groupe',
+                as: 'affectationsGroupes'
+            }
+        });
+
+        // 5. Combiner toutes les affectations
         pipeline.push({
             $addFields: {
-                allStages: {
+                toutesAffectations: {
+                    $concatArrays: ['$affectationsIndividuelles', '$affectationsGroupes']
+                }
+            }
+        });
+
+        // 6. Filtrer les affectations selon les critères
+        pipeline.push({
+            $addFields: {
+                affectationsFiltrees: {
                     $filter: {
-                        input: { $concatArrays: ['$individualStages', ['$groupStage']] },
-                        as: 'stage',
-                        cond: { $ne: ['$$stage', null] }
+                        input: '$toutesAffectations',
+                        as: 'aff',
+                        cond: {
+                            $and: [
+                                dateDebut ? { $gte: ['$$aff.dateDebut', new Date(dateDebut)] } : true,
+                                dateFin ? { $lte: ['$$aff.dateFin', new Date(dateFin)] } : true,
+                                serviceId ? { $eq: ['$$aff.service', new mongoose.Types.ObjectId(serviceId)] } : true
+                            ]
+                        }
                     }
                 }
             }
         });
-        pipeline.push({
-            $match: { 'allStages._id': { $exists: true } }
-        });
-        if (Object.keys(stageFilters).length > 0) {
+
+        // 7. Ne garder que les stagiaires avec au moins une affectation filtrée
+        if (dateDebut || dateFin || serviceId) {
             pipeline.push({
                 $match: {
-                    'allStages': {
-                        $elemMatch: stageFilters
-                    }
+                    'affectationsFiltrees.0': { $exists: true }
                 }
             });
         }
-        
-        // 7. Agrégation et formatage des données
+
+        // 8. Lookup des stages depuis les affectations
+        pipeline.push({
+            $lookup: {
+                from: 'stages',
+                localField: 'affectationsFiltrees.stage',
+                foreignField: '_id',
+                as: 'stagesFromAffectations'
+            }
+        });
+
+        // 9. Filtrer par statut de stage si nécessaire
+        if (statut) {
+            pipeline.push({
+                $match: {
+                    'stagesFromAffectations.statut': statut
+                }
+            });
+        }
+
+        // 10. Trouver la dernière affectation
+        pipeline.push({
+            $addFields: {
+                derniereAffectation: {
+                    $first: {
+                        $sortArray: {
+                            input: '$affectationsFiltrees',
+                            sortBy: { dateDebut: -1 }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 11. Lookup du stage de la dernière affectation
+        pipeline.push({
+            $lookup: {
+                from: 'stages',
+                localField: 'derniereAffectation.stage',
+                foreignField: '_id',
+                as: 'dernierStageDetails'
+            }
+        });
+
+        // 12. Lookup du service de la dernière affectation
+        pipeline.push({
+            $lookup: {
+                from: 'services',
+                localField: 'derniereAffectation.service',
+                foreignField: '_id',
+                as: 'dernierServiceDetails'
+            }
+        });
+
+        // 13. Lookup de l'établissement
+        pipeline.push({
+            $lookup: {
+                from: 'etablissements',
+                localField: 'parcours.etablissement',
+                foreignField: '_id',
+                as: 'etablissementDetails'
+            }
+        });
+
+        // 14. Lookup de la commune
+        pipeline.push({
+            $lookup: {
+                from: 'communes',
+                localField: 'commune',
+                foreignField: '_id',
+                as: 'communeDetails'
+            }
+        });
+
+        // 15. Projection finale
         pipeline.push({
             $project: {
                 _id: 1,
@@ -377,90 +444,87 @@ export const getStagiaires = async (req, res) => {
                 dateNaissance: 1,
                 lieuNaissance: 1,
                 telephone: 1,
-                commune: 1,
-                parcours: 1,
-                dernierStage: {
-                    $first: {
-                        $sortArray: {
-                            input: '$allStages',
-                            sortBy: { dateDebut: -1 }
+                commune: { $arrayElemAt: ['$communeDetails', 0] },
+                parcours: {
+                    $map: {
+                        input: '$parcours',
+                        as: 'p',
+                        in: {
+                            annee: '$$p.annee',
+                            filiere: '$$p.filiere',
+                            option: '$$p.option',
+                            niveau: '$$p.niveau',
+                            etablissement: {
+                                $arrayElemAt: [
+                                    {
+                                        $filter: {
+                                            input: '$etablissementDetails',
+                                            as: 'etab',
+                                            cond: { $eq: ['$$etab._id', '$$p.etablissement'] }
+                                        }
+                                    },
+                                    0
+                                ]
+                            }
                         }
                     }
-                }
+                },
+                statut: { 
+                    $ifNull: [
+                        { $arrayElemAt: ['$dernierStageDetails.statut', 0] },
+                        'EN_ATTENTE'
+                    ]
+                },
+                periode: {
+                    $cond: {
+                        if: { $ne: ['$derniereAffectation', null] },
+                        then: {
+                            dateDebut: '$derniereAffectation.dateDebut',
+                            dateFin: '$derniereAffectation.dateFin'
+                        },
+                        else: null
+                    }
+                },
+                service: { $arrayElemAt: ['$dernierServiceDetails', 0] }
             }
         });
 
-        // 8. Peupler les champs nécessaires pour l'affichage final
-        pipeline.push({
-            $lookup: {
-                from: 'etablissements',
-                localField: 'parcours.etablissement',
-                foreignField: '_id',
-                as: 'parcours.etablissement'
-            }
-        });
-        pipeline.push({
-            $lookup: {
-                from: 'communes',
-                localField: 'commune',
-                foreignField: '_id',
-                as: 'communeDetails'
-            }
-        });
-        pipeline.push({
-            $addFields: {
-                commune: { $arrayElemAt: ['$communeDetails', 0] }
-            }
-        });
-        // (Ajouter d'autres lookups pour les départements et régions si nécessaire)
-        
-        // 9. Calculer le total et la pagination
+        // 16. Calculer le total
         const countPipeline = [...pipeline, { $count: 'total' }];
-        const paginatedPipeline = [...pipeline, { $skip: (page - 1) * limit }, { $limit: parseInt(limit) }];
+        
+        // 17. Appliquer la pagination
+        const paginatedPipeline = [
+            ...pipeline,
+            { $skip: (parseInt(page) - 1) * parseInt(limit) },
+            { $limit: parseInt(limit) }
+        ];
 
+        // 18. Exécuter les deux pipelines en parallèle
         const [totalResult, paginatedResults] = await Promise.all([
             Stagiaire.aggregate(countPipeline),
             Stagiaire.aggregate(paginatedPipeline),
         ]);
 
         const totalItems = totalResult.length > 0 ? totalResult[0].total : 0;
-        const totalPages = Math.ceil(totalItems / limit);
-
-        // 10. Nettoyer les données pour la réponse
-        const formattedResults = paginatedResults.map(stagiaire => ({
-            _id: stagiaire._id,
-            nom: stagiaire.nom,
-            prenom: stagiaire.prenom,
-            email: stagiaire.email,
-            genre: stagiaire.genre,
-            dateNaissance: stagiaire.dateNaissance,
-            lieuNaissance: stagiaire.lieuNaissance,
-            telephone: stagiaire.telephone,
-            commune: stagiaire.commune,
-            parcours: stagiaire.parcours,
-            statut: stagiaire.dernierStage?.statut || 'EN_ATTENTE',
-            periode: stagiaire.dernierStage?.dateDebut && stagiaire.dernierStage?.dateFin
-                ? { dateDebut: stagiaire.dernierStage.dateDebut, dateFin: stagiaire.dernierStage.dateFin }
-                : null,
-            // Le service est un peu plus complexe à obtenir avec l'agrégation, mais cette structure de base est un bon point de départ
-            service: null, // Ajoutez la logique pour le service si nécessaire
-        }));
+        const totalPages = Math.ceil(totalItems / parseInt(limit));
 
         return res.status(200).json({
             success: true,
             data: {
-                stagiaires: formattedResults,
+                stagiaires: paginatedResults,
                 totalItems,
-                currentPage: page,
+                currentPage: parseInt(page),
                 totalPages,
-                pageSize: limit,
+                pageSize: parseInt(limit),
             },
         });
     } catch (error) {
         console.error("Erreur dans getStagiaires:", error);
         return res.status(500).json({
             success: false,
-            message: `Une erreur est survenue lors de la récupération des stagiaires (${lang})`,
+            message: lang === 'en' 
+                ? 'An error occurred while retrieving interns'
+                : 'Une erreur est survenue lors de la récupération des stagiaires',
             error: error.message,
         });
     }

@@ -28,7 +28,7 @@ router.get('/dropdown/all', authentificate, getCohortesForDropdown);
 
 /*Cohorte utilisateur*/
 router.post('/utilisateur/ajouter', authentificate, addUserToCohorte);
-router.delete('/:cohorteId/utilisateur', authentificate, removeUserFromCohorte);
+router.delete('/:cohorteUtilisateurId/utilisateur', authentificate, removeUserFromCohorte);
 router.get('/:cohorteId/utilisateurs', authentificate, getUsersByCohorte);
 router.get('/utilisateurs/:utilisateurId/cohortes', authentificate, getCohortesByUser);
 

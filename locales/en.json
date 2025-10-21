@@ -260,7 +260,9 @@
     "role": "Role",
     "rapport_utilisateurs": "Users Report",
     "liste_utilisateurs": "Users List",
-    "genere_le": "Generated on"
+    "genere_le": "Generated on",
+    "utilisateur_deja_dans_cohorte":"The user is already in the cohort",
+    "utilisateur_pas_dans_cohorte":"User is not in cohort"
 
 }
   

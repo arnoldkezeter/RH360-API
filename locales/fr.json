@@ -295,7 +295,9 @@
     "ref_stage_requis":"Référence du stage requise pour une note de service d'acceptation de stage",
     "ref_theme_requis":"Référence du thème requise pour une note de service de convocation",
     "type_note_invalide":"Type de note invalide",
-    "note_service_obligatoire":"Note de service obligatoire"
+    "note_service_obligatoire":"Note de service obligatoire",
+    "utilisateur_deja_dans_cohorte":"L'utilisateur est déjà dans la cohorte",
+    "utilisateur_pas_dans_cohorte":"L'utilisateur n'est pas dans la cohorte"
     
 }
   

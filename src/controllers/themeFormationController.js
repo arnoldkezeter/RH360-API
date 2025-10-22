@@ -9,6 +9,9 @@ import BudgetFormation from '../models/BudgetFormation.js';
 import Depense from '../models/Depense.js';
 import Utilisateur from '../models/Utilisateur.js';
 import { addRoleToUser, removeRoleFromUserIfUnused } from '../utils/utilisateurRole.js';
+import { LieuFormation } from '../models/LieuFormation.js';
+import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
+import { Formateur } from '../models/Formateur.js';
 
 
 
@@ -411,6 +414,94 @@ export const supprimerFormateur = async (req, res) => {
         });
     }
 };
+
+
+export const invitation = async (req, res) => {
+    const { themeId } = req.params;
+    const { content, subject, participant } = req.body;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    const toParticipants = participant ? participant.toLowerCase() === 'true' : true;
+
+    if (!themeId || !content || !subject) {
+        return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+    }
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(themeId)) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+        }
+
+        let userEmails = [];
+
+        if (toParticipants) {
+            // Récupérer tous les lieux du thème
+            const lieux = await LieuFormation.find({ theme: themeId })
+                .populate({
+                    path: 'participants',
+                    select: 'email',
+                    model: 'ParticipantFormation'
+                })
+                .select('cohortes participants')
+                .lean();
+
+            // Récupérer les IDs de cohortes
+            const cohorteIds = lieux.flatMap(lieu => lieu.cohortes?.map(id => id.toString()) || []);
+
+            // Récupérer les e-mails des utilisateurs des cohortes
+            let cohortesEmails = [];
+            if (cohorteIds.length > 0) {
+                const cohortesUtilisateurs = await CohorteUtilisateur.find({ cohorte: { $in: cohorteIds } })
+                    .populate({ path: 'utilisateur', select: 'email' })
+                    .lean();
+
+                cohortesEmails = cohortesUtilisateurs
+                    .map(cu => cu.utilisateur?.email)
+                    .filter(email => email);
+            }
+
+            // Récupérer les e-mails des participants directement liés au lieu
+            const participantsDirectsEmails = lieux.flatMap(lieu => 
+                lieu.participants?.map(p => p.email).filter(email => email) || []
+            );
+
+            userEmails = [...new Set([...cohortesEmails, ...participantsDirectsEmails])]; // éviter doublons
+
+        } else {
+            // Pour les formateurs
+            const formateurs = await Formateur.find({ theme: themeId })
+                .populate({ path: 'utilisateur', select: 'email' })
+                .lean();
+
+            userEmails = formateurs
+                .map(f => f.utilisateur?.email)
+                .filter(email => email);
+        }
+
+        if (userEmails.length === 0) {
+            return res.status(404).json({ success: false, message: t('aucun_destinataire_trouve', lang) });
+        }
+
+        // Envoyer les emails en parallèle
+        await Promise.all(userEmails.map(email => sendMailFormation(email, subject, content)));
+
+        res.status(200).json({
+            success: true,
+            message: t('emails_envoyes_succes', lang),
+            count: userEmails.length,
+            destinataires: toParticipants ? 'participants' : 'formateurs'
+        });
+
+    } catch (err) {
+        console.error('Erreur lors de l\'envoi des invitations:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};
+
 
 
 

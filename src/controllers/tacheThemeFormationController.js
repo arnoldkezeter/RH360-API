@@ -407,7 +407,7 @@ export const executerTache = async (req, res) => {
 
 export const changerStatutTache = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { tacheFormationId, currentUser } = req.params;
+  const { tacheFormationId, currentUserId } = req.params;
   const { statut, donnees = "" } = req.body;
 
   // Validation du statut
@@ -431,7 +431,7 @@ export const changerStatutTache = async (req, res) => {
     const tache = await TacheThemeFormation.findById(tacheFormationId)
       .populate({
         path: 'theme',
-        select: 'titreFr titreEn responsables',
+        select: 'titreFr titreEn responsable',
         
       });
     
@@ -464,7 +464,7 @@ export const changerStatutTache = async (req, res) => {
     if (statut === 'TERMINE') {
       tache.dateFin = new Date();
     }
-    tache.executePar = currentUser;
+    tache.executePar = currentUserId;
     tache.statut = statut;
     tache.donnees = donnees;
     await tache.save();
@@ -476,7 +476,7 @@ export const changerStatutTache = async (req, res) => {
           tache,
           ancienStatut,
           nouveauStatut: statut,
-          modifiePar: currentUser,
+          modifiePar: currentUserId,
           theme: tache.theme
         });
       } catch (notifError) {
@@ -487,7 +487,7 @@ export const changerStatutTache = async (req, res) => {
 
     return res.json({ 
       success: true, 
-      message: t('statut_modifie_succes', lang),
+      message: t('modifier_succes', lang),
       data: tache 
     });
   } catch (err) {
@@ -815,7 +815,7 @@ export const updateDate = async (req, res) => {
 
       return res.json({
         success: true,
-        message: t('dates_modifiees_succes', lang),
+        message: t('modifier_succes', lang),
         data: tacheFormation
       });
     } catch (error) {

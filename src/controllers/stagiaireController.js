@@ -1,7 +1,7 @@
 import Stagiaire from '../models/Stagiaire.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
-import { generateRandomPassword } from '../utils/generatePassword.js';
+import { generateRandomPassword } from '../utils/password.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
 import { Groupe } from '../models/Groupe.js';
 import Etablissement from '../models/Etablissement.js';

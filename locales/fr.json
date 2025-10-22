@@ -107,6 +107,7 @@
     "matricule_existant": "Ce matricule est déjà utilisé.",
     "mot_de_passe_incorrect": "Mot de passe actuel incorrect.",
     "mot_de_passe_modifie": "Mot de passe modifié avec succès.",
+    "mot_de_passe_requis":"Le mot de passe est requis",
 
    
     "objectif_theme_existante_fr": "Un objectif avec ce nom français existe déjà pour ce thème.",

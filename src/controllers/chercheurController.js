@@ -2,7 +2,7 @@ import { validationResult } from 'express-validator';
 import bcrypt from 'bcrypt';
 import Chercheur from '../models/Chercheur.js';
 import { t } from '../utils/i18n.js';
-import { generateRandomPassword } from '../utils/generatePassword.js';
+import { generateRandomPassword } from '../utils/password.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
 import Etablissement from '../models/Etablissement.js';
 import BaseUtilisateur from '../models/BaseUtilisateur.js';

@@ -7,7 +7,7 @@ import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
-import { generateRandomPassword } from '../utils/generatePassword.js';
+import { generateRandomPassword } from '../utils/password.js';
 import { sendAccountEmail } from '../utils/sendMail.js';
 import fs from 'fs';
 import path from 'path';
@@ -337,6 +337,56 @@ export const updatePhotoProfil = async (req, res) => {
   } catch (err) {
     if (req.file) fs.unlink(req.file.path, () => {});
     console.error('Erreur lors de la mise à jour de la photo de profil:', err);
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: err.message,
+    });
+  }
+};
+
+
+export const supprimerPhotoProfil = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  const { utilisateurId } = req.params;
+
+  try {
+    // Vérifie que l'utilisateur existe
+    const utilisateur = await Utilisateur.findById(utilisateurId);
+    if (!utilisateur) {
+      return res.status(404).json({
+        success: false,
+        message: t('utilisateur_non_trouve', lang),
+      });
+    }
+
+    // Vérifie qu'il a bien une photo enregistrée
+    if (!utilisateur.photoDeProfil) {
+      return res.status(400).json({
+        success: false,
+        message: t('aucune_photo_profil', lang),
+      });
+    }
+
+    // Chemin du fichier à supprimer
+    const photoPath = path.join(process.cwd(), 'public/uploads/photos_profil', utilisateur.photoDeProfil);
+
+    // Supprime le fichier s'il existe
+    if (fs.existsSync(photoPath)) {
+      fs.unlinkSync(photoPath);
+    }
+
+    // Met à jour l'utilisateur pour retirer la photo
+    utilisateur.photoDeProfil = null;
+    await utilisateur.save();
+
+    return res.status(200).json({
+      success: true,
+      message: t('supprimer_succes', lang),
+    });
+
+  } catch (err) {
+    console.error('Erreur suppression photo :', err);
     return res.status(500).json({
       success: false,
       message: t('erreur_serveur', lang),

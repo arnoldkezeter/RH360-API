@@ -98,6 +98,7 @@
     "matricule_existant": "This matricule is already in use.",
     "mot_de_passe_incorrect": "Incorrect current password.",
     "mot_de_passe_modifie": "Password successfully changed.",
+     "mot_de_passe_requis":"Password is required",
 
     
     

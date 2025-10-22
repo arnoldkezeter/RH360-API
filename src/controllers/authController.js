@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import Utilisateur from '../models/Utilisateur.js';
 import { t } from '../utils/i18n.js';
 import dotenv from 'dotenv';
+import { comparePassword } from '../utils/password.js';
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -74,4 +75,39 @@ export const login = async (req, res) => {
     });
   }
 };
+
+export const verifyPasswordController = async (req, res) => {
+  const { userId } = req.params;
+  const { password } = req.body;
+  const lang = req.headers['accept-language'] || 'fr';
+  if (!password){
+    return res.status(400).json({ 
+      success: false, 
+      message: t('mot_de_passe_requis', lang)
+    });
+  } 
+
+  try {
+    const user = await Utilisateur.findById(userId).select('+motDePasse');
+    if (!user) return res.status(404).json({ success: false, message: t('utilisateur_non_trouve') });
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ 
+        success: false, 
+        message: t('mot_de_passe_incorrect', lang) 
+      });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: t('mot_de_passe_modifie', lang) 
+    });
+  } catch (error) {
+    console.error('verifyPasswordController error:', error);
+    return res.status(500).json({ success: false, message: t('erreur_serveur', lang) });
+  }
+};
+
+
 

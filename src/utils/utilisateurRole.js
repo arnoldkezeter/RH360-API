@@ -1,12 +1,23 @@
 import Utilisateur from "../models/Utilisateur.js";
 
 // ✅ Ajoute un rôle dans la liste des rôles si absent
+// export const addRoleToUser = async (userId, role) => {
+//   if (!userId) return;
+//   await Utilisateur.findByIdAndUpdate(userId, {
+//     $set: { role: newRole }, 
+//     $addToSet: { roles: role } // évite les doublons
+//   });
+// };
+
 export const addRoleToUser = async (userId, role) => {
   if (!userId) return;
   await Utilisateur.findByIdAndUpdate(userId, {
-    $addToSet: { roles: role } // évite les doublons
+    $addToSet: { roles: role }, // Ajoute dans la liste (évite les doublons)
+    $set: { role: role }         // Met à jour le rôle principal/actuel
   });
 };
+
+
 
 // ✅ Retire un rôle si l'utilisateur n'en a plus besoin
 export const removeRoleFromUserIfUnused = async (userId, role, model, field = 'utilisateur') => {

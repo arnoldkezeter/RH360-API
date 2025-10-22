@@ -93,27 +93,30 @@ export const updateTypeEchelleReponse = async (req, res) => {
     try {
         const typeEchelleReponse = await TypeEchelleReponse.findById(id);
         if (!typeEchelleReponse) {
-        return res.status(404).json({
-            success: false,
-            message: t('type_echelle_non_trouve', lang),
-        });
+            return res.status(404).json({
+                success: false,
+                message: t('type_echelle_non_trouve', lang),
+            });
         }
 
         // Vérifier l'unicité du nom
-        const existsFr = await TypeEchelleReponse.findOne({ nomFr, _id: { $ne: TypeEchelleReponse._id } });
-        if (existsFr) {
-        return res.status(409).json({
-            success: false,
-            message: t('type_echelle_existante_fr', lang),
-        });
+        if(typeEchelleReponse.nomFr!==nomFr  ){
+            const existsFr = await TypeEchelleReponse.findOne({ nomFr, _id: { $ne: TypeEchelleReponse._id } });
+            if (existsFr) {
+                return res.status(409).json({
+                    success: false,
+                    message: t('type_echelle_existante_fr', lang),
+                });
+            }
         }
-
-        const existsEn = await TypeEchelleReponse.findOne({ nomEn, _id: { $ne: TypeEchelleReponse._id } });
-        if (existsEn) {
-        return res.status(409).json({
-            success: false,
-            message: t('type_echelle_existante_en', lang),
-        });
+        if(typeEchelleReponse.nomEn!==nomEn  ){
+            const existsEn = await TypeEchelleReponse.findOne({ nomEn, _id: { $ne: TypeEchelleReponse._id } });
+            if (existsEn) {
+            return res.status(409).json({
+                success: false,
+                message: t('type_echelle_existante_en', lang),
+            });
+            }
         }
 
 

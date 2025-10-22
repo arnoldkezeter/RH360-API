@@ -13,7 +13,7 @@ const TacheThemeFormationSchema = new Schema({
     dateExecution: {type: Date},
     statut: {type: String, enum: ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'], default: 'A_FAIRE',},
     commentaires: {type:String},
-    executePar: {type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur', required: true},
+    executePar: {type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
 }, {
   timestamps: true
 });

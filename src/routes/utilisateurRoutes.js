@@ -10,6 +10,7 @@ import {
     searchUtilisateurs,
     getCurrentUserData,
     updatePhotoProfil,
+    supprimerPhotoProfil,
 } from '../controllers/utilisateurController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateFields } from '../middlewares/validateFields/validateUtilisateur.js';
@@ -49,6 +50,7 @@ const upload = multer({ storage, fileFilter });
 router.post('/save-photo-profil/:userId', upload.single('image_profil'),  updatePhotoProfil);
 router.post('/', validateFields, authentificate, createUtilisateur);
 router.put('/:id', validateFields, authentificate, updateUtilisateur);
+router.delete('/:utilisateurId/photo-profil', authentificate, supprimerPhotoProfil);
 router.delete('/:id', authentificate, deleteUtilisateur);
 router.put('/:id/password', validateFieldsPassword, authentificate, updatePassword);
 

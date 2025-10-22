@@ -193,7 +193,7 @@
     "type_echelle_existante_en": "A scale type with the same English name already exists.",
 
 
-    "stagiaire_email_existe": "This email is already associated with an intern.",
+    "stagiaire_email_existe": "This email is already in use.",
     "stagiaire_non_trouve": "Intern not found.",
     "stagiaires_liste": "Interns list retrieved successfully.",
     "parametres_requis": "The required parameters are missing.",
@@ -228,7 +228,7 @@
     "tache_verrouiller": "This task is locked and cannot be modified.",
 
 
-    "chercheur_email_existe": "A researcher with this email already exists.",
+    "chercheur_email_existe": "This email is already in use.",
     "chercheur_non_trouve": "Researcher not found.",
 
     "mandat_non_trouve": "The specified mandate could not be found.",

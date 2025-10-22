@@ -199,21 +199,29 @@ export const searchCohorteByName = async (req, res) => {
 
 
 
-
 export const addUserToCohorte = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
   const { utilisateurId, cohorteId } = req.body;
 
   if (!utilisateurId) {
-    return res.status(400).json({ success: false, message: t('aucun_utilisateur_fourni', lang) });
+    return res.status(400).json({
+      success: false,
+      message: t('aucun_utilisateur_fourni', lang),
+    });
   }
 
   if (!mongoose.Types.ObjectId.isValid(cohorteId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_cohorte_invalide', lang) });
+    return res.status(400).json({
+      success: false,
+      message: t('identifiant_invalide', lang),
+    });
   }
 
   if (!mongoose.Types.ObjectId.isValid(utilisateurId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_utilisateur_invalide', lang) });
+    return res.status(400).json({
+      success: false,
+      message: t('identifiant_invalide', lang),
+    });
   }
 
   try {
@@ -235,24 +243,24 @@ export const addUserToCohorte = async (req, res) => {
     }
 
     // Créer la relation CohorteUtilisateur
-    await CohorteUtilisateur.create({
+    const nouvelleRelation = await CohorteUtilisateur.create({
       utilisateur: utilisateurId,
-      cohorte: cohorteId
+      cohorte: cohorteId,
     });
 
     // Ajouter l'utilisateur aux participants de la cohorte
-    await Cohorte.findByIdAndUpdate(
-      cohorteId,
-      { $addToSet: { participants: utilisateurId } }
-    );
+    await Cohorte.findByIdAndUpdate(cohorteId, {
+      $addToSet: { participants: utilisateurId },
+    });
+
+    // Peupler les informations de la cohorte et de l'utilisateur
+    const relationPeuplee = await CohorteUtilisateur.findById(nouvelleRelation._id)
+      .populate('utilisateur', 'nom prenom email')
 
     return res.status(200).json({
       success: true,
       message: t('ajouter_succes', lang),
-      result: {
-        added: true,
-        utilisateurId: utilisateurId,
-      },
+      data: relationPeuplee,
     });
   } catch (err) {
     return res.status(500).json({
@@ -264,66 +272,33 @@ export const addUserToCohorte = async (req, res) => {
 };
 
 
+
 export const removeUserFromCohorte = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { cohorteId } = req.params;
-  const { utilisateurId } = req.body;
+  const { cohorteUtilisateurId } = req.params;
+ 
 
-  if (!utilisateurId) {
+  if (!mongoose.Types.ObjectId.isValid(cohorteUtilisateurId)) {
     return res.status(400).json({ 
       success: false, 
-      message: t('aucun_utilisateur_fourni', lang) 
+      message: t('identifiant_invalide', lang) 
     });
   }
 
-  if (!mongoose.Types.ObjectId.isValid(cohorteId)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: t('identifiant_cohorte_invalide', lang) 
-    });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(utilisateurId)) {
-    return res.status(400).json({
-      success: false,
-      message: t('identifiant_utilisateur_invalide', lang)
-    });
-  }
 
   try {
-    // Vérifier que la cohorte existe
-    const cohorte = await Cohorte.findById(cohorteId);
-    if (!cohorte) {
-      return res.status(404).json({
-        success: false,
-        message: t('cohorte_introuvable', lang)
-      });
-    }
-
-    // Vérifier si l'utilisateur est dans la cohorte
-    const relation = await CohorteUtilisateur.findOne({
-      utilisateur: utilisateurId,
-      cohorte: cohorteId
-    });
-
-    if (!relation) {
-      return res.status(404).json({
-        success: false,
-        message: t('utilisateur_pas_dans_cohorte', lang),
-        result: {
-          removed: false,
-          notFound: true
-        }
-      });
-    }
-
+  
+    const cohorteUtilisateur = await CohorteUtilisateur.findByIdAndDelete(cohorteUtilisateurId);
     
-    // Supprimer la relation CohorteUtilisateur
-    await CohorteUtilisateur.deleteOne({
-      utilisateur: utilisateurId,
-      cohorte: cohorteId
-    });
+    if (!cohorteUtilisateur) {
+        return res.status(404).json({
+            success: false,
+            message: t('cohorte_non_trouvee', lang),
+        });
+    }
 
+    const cohorteId = cohorteUtilisateur.cohorte
+    const utilisateurId = cohorteUtilisateur.utilisateur
     // Retirer l'utilisateur des participants de la cohorte
     await Cohorte.findByIdAndUpdate(
       cohorteId,
@@ -354,20 +329,70 @@ export const removeUserFromCohorte = async (req, res) => {
 export const getUsersByCohorte = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { cohorteId } = req.params;
+    const page = parseInt(req.query.page) || 1;       
+    const limit = parseInt(req.query.limit) || 10;    
+    const skip = (page - 1) * limit;
+    const search = req.query.search || ''; // Chaîne de recherche optionnelle
 
     if (!mongoose.Types.ObjectId.isValid(cohorteId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
+        // Construire le filtre de recherche
+        const filter = { cohorte: cohorteId };
+        if (search.trim() !== '') {
+            filter.$or = [
+                { 'utilisateur.nom': { $regex: search, $options: 'i' } },
+                { 'utilisateur.prenom': { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Compter le nombre total d’utilisateurs correspondant au filtre
+        const total = await CohorteUtilisateur.countDocuments(filter).populate({
+            path: 'utilisateur',
+            match: search.trim() !== '' ? {
+                $or: [
+                    { nom: { $regex: search, $options: 'i' } },
+                    { prenom: { $regex: search, $options: 'i' } }
+                ]
+            } : {}
+        });
+
+        // Récupérer les utilisateurs avec pagination
         const utilisateurs = await CohorteUtilisateur.find({ cohorte: cohorteId })
-        .populate({path:'utilisateur', select:'nom prenom email'});
-        console.log(utilisateurs)
-        return res.status(200).json(utilisateurs);
+            .populate({
+                path: 'utilisateur',
+                select: 'nom prenom email',
+                match: search.trim() !== '' ? {
+                    $or: [
+                        { nom: { $regex: search, $options: 'i' } },
+                        { prenom: { $regex: search, $options: 'i' } }
+                    ]
+                } : {}
+            })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        // Filtrer les entrées dont utilisateur est null (si search ne correspond à rien)
+        const filteredUsers = utilisateurs.filter(u => u.utilisateur);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                participants: filteredUsers,
+                totalItems: total,
+                currentPage: page,
+                pageSize: limit,
+                totalPages: Math.ceil(total / limit),
+            }
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
+
 
 // Lister les cohortes d'un utilisateur
 export const getCohortesByUser = async (req, res) => {

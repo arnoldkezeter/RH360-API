@@ -46,7 +46,6 @@ export const obtenirNotifications = async (req, res) => {
                 lue: false
             })
         ]);
-        console.log(notifications)
         return res.json({
             success: true,
             data: {

@@ -98,6 +98,7 @@
     "matricule_existant": "This matricule is already in use.",
     "mot_de_passe_incorrect": "Incorrect current password.",
     "mot_de_passe_modifie": "Password successfully changed.",
+     "mot_de_passe_requis":"Password is required",
 
     
     
@@ -260,7 +261,9 @@
     "role": "Role",
     "rapport_utilisateurs": "Users Report",
     "liste_utilisateurs": "Users List",
-    "genere_le": "Generated on"
+    "genere_le": "Generated on",
+    "utilisateur_deja_dans_cohorte":"The user is already in the cohort",
+    "utilisateur_pas_dans_cohorte":"User is not in cohort"
 
 }
   

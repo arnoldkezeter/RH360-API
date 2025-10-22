@@ -17,6 +17,10 @@
     "statut_invalide":"Statut invalide.",
     "type_tache_non_supporte":"Type de tâche non supporté",
     "statut_modifie_succes":"Statut modifié avec succès",
+    "permissions_insuffisantes":"Permissions insuffisantes",
+    "chat_non_trouve":"Chat non trouvé",
+    "non_autorise":"Non autorisé",
+    "chat_desactive_succes":"Chat désactivé",
     
     
     
@@ -103,6 +107,7 @@
     "matricule_existant": "Ce matricule est déjà utilisé.",
     "mot_de_passe_incorrect": "Mot de passe actuel incorrect.",
     "mot_de_passe_modifie": "Mot de passe modifié avec succès.",
+    "mot_de_passe_requis":"Le mot de passe est requis",
 
    
     "objectif_theme_existante_fr": "Un objectif avec ce nom français existe déjà pour ce thème.",
@@ -291,7 +296,9 @@
     "ref_stage_requis":"Référence du stage requise pour une note de service d'acceptation de stage",
     "ref_theme_requis":"Référence du thème requise pour une note de service de convocation",
     "type_note_invalide":"Type de note invalide",
-    "note_service_obligatoire":"Note de service obligatoire"
+    "note_service_obligatoire":"Note de service obligatoire",
+    "utilisateur_deja_dans_cohorte":"L'utilisateur est déjà dans la cohorte",
+    "utilisateur_pas_dans_cohorte":"L'utilisateur n'est pas dans la cohorte"
     
 }
   

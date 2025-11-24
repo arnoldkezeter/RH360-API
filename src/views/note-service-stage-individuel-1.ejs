@@ -13,8 +13,8 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 13px;
-            line-height: 1.4;
+            font-size: 14px;
+            line-height: 1.2;
             color: #000;
         }
         
@@ -68,8 +68,7 @@
             font-size: 16px;
             font-weight: bold;
             color: #000;
-            text-decoration: underline;
-            text-transform: uppercase;
+            line-height: 1;
         }
 
         .body-content {
@@ -97,13 +96,11 @@
             font-weight: bold;
             text-decoration: underline;
             margin-bottom: 15px;
-            font-size: 12px;
         }
         
         .copie-list {
             margin-left: 20px;
             line-height: 1.6;
-            font-size: 11px;
         }
 
         @media print {
@@ -138,7 +135,6 @@
             <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
             <div class="header-section">LA FORMATION CONTINUE</div>
             <div class="separator">----------------------</div>
-            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
         </div>
         
         <div class="header-center">
@@ -159,19 +155,21 @@
             <div class="separator">----------------------</div>
             <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
             <div class="separator">----------------------</div>
-            <div class="date-line">Yaoundé, le _______________</div>
         </div>
     </div>
    
     <!-- Titre du document -->
     <div class="note-title">
-        <h3 class="document-title"><%= noteTitle %></h3>
+        <h3 class="document-title">
+            <p>Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________</p>
+            <p><%= noteTitle %></p>
+        </h3>
     </div>
 
     <!-- Corps du document -->
     <div class="body-content">        
         <p>
-            <span class="highlight"><%= userSexe %> <%= userFullName %></span>, en
+            <span class="highlight"><%= userSexe %> <%= userFullName %></span>, <%= etudiant %> en
             <%= niveau %> de la filière <%= filiere %> à <span class="highlight"><%= userUniversity %></span>,
             admis(e) en stage académique à la Direction Générale des Impôts, effectuera ledit stage à <span class="highlight"><%= userService %></span>
             du <%= dateDebut %> au <%= dateFin %>.
@@ -186,14 +184,13 @@
         </p>
         
         <p>
-            <%= miseEnOeuvre %> est/sont chargé(s), chacun en ce qui le concerne, de la mise en œuvre des termes de la
-            présente note de service. 
+            <%= miseEnOeuvre %> est chargé, de la mise en œuvre des termes de la présente note de service. 
         </p>
     </div>
 
     <!-- Section copie -->
     <div class="copie-section">
-        <div class="copie-title">Copie pour information :</div>
+        <div class="copie-title">Copie :</div>
         <div class="copie-list">
             <% if (copies && copies.length > 0) { %>
                 <% copies.forEach(function(copie) { %>

@@ -10,6 +10,8 @@ import {
   getThemesByFamilleMetier,
   getFilteredThemes,
   invitation,
+  getTargetedUsers,
+  checkUserIsTargeted
 } from '../controllers/themeFormationController.js';
 import { validateFields } from '../middlewares/validateFields/validateTheme.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -32,5 +34,8 @@ router.delete('/:id/formateur/:formateurId', authentificate, supprimerFormateur)
 router.get('/dropdown/formation/:formationId', authentificate, getThemeFormationsForDropdown);
 
 router.get('/famille-metier', authentificate, getThemesByFamilleMetier);
+
+router.get('/:themeId/targeted-users', getTargetedUsers);
+router.get('/:themeId/users/:userId/is-targeted', checkUserIsTargeted);
 
 export default router;

@@ -75,7 +75,7 @@ export const importerDonnees = async (req, res) => {
     // Supprimer tous les utilisateurs sauf les 4 premiers
     const premiersUtilisateurs = await Utilisateur.find({})
       .sort({ _id: 1 })
-      .limit(4)
+      .limit(1)
       .select('_id')
       .lean();
 
@@ -430,12 +430,14 @@ export const importerDonnees = async (req, res) => {
           };
 
           // Ajouter les références si elles existent
+          if (structureId) utilisateurData.structure = structureId;
           if (serviceId) utilisateurData.service = serviceId;
           if (categorieId) utilisateurData.categorieProfessionnelle = categorieId;
           if (posteId) utilisateurData.posteDeTravail = posteId;
           if (gradeId) utilisateurData.grade = gradeId;
           if (familleMetierId) utilisateurData.familleMetier = familleMetierId;
           if (communeId) utilisateurData.commune = communeId;
+
 
           donneesAInserer.utilisateurs.push(utilisateurData);
           caches.utilisateurs.add(email);

@@ -19,7 +19,7 @@ import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
 import ThemeFormation from '../models/ThemeFormation.js';
 
 import { mettreAJourTache } from '../services/tacheThemeFormationService.js';
-
+import PosteDeTravail from '../models/PosteDeTravail.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -293,6 +293,7 @@ export const creerNoteServiceStage = async (req, res) => {
 
         // Créer la note de service
         const nouvelleNote = new NoteService({
+            reference,
             stage,
             typeNote: 'acceptation_stage',
             titreFr: titreFr || "ACCEPTATION DE STAGE",
@@ -304,13 +305,13 @@ export const creerNoteServiceStage = async (req, res) => {
             valideParDG: false
         });
         
-        const noteEnregistree = await nouvelleNote.save({ session });
+        // const noteEnregistree = await nouvelleNote.save({ session });
         const createur = await Utilisateur.findById(creePar).lean();
         // Générer le PDF
         let pdfBuffer;
          if (affectations.length === 1) {
             pdfBuffer = await genererPDFStageIndividuel(
-                noteEnregistree, 
+                nouvelleNote, 
                 stageData, 
                 affectations[0], 
                 lang,
@@ -318,7 +319,7 @@ export const creerNoteServiceStage = async (req, res) => {
             );
         }else{
             pdfBuffer = await genererPDFStageRotations(
-                noteEnregistree, 
+                nouvelleNote, 
                 stageData, 
                 affectations, 
                 lang,
@@ -668,6 +669,7 @@ const genererPDFSelonType = async (note, lang) => {
  * Génère le PDF pour un stage individuel avec une seule affectation
  */
 const genererPDFStageIndividuel = async (note, stageData, affectations, lang, createur) => {
+    console.log("debut de la génration");
     try {
         // Récupérer le parcours le plus récent du stagiaire
         const parcoursActuel = stageData.stagiaire.parcours && stageData.stagiaire.parcours.length > 0
@@ -686,6 +688,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             
             // Informations du stagiaire
             userSexe: stageData.stagiaire.genre === 'M' ? "Monsieur" : "Madame",
+            etudiant: stageData.stagiaire.genre === 'M' ? "étudiant" : "étudiante",
             stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
             userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
@@ -736,13 +739,22 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
                 : ['Intéressé(e)', 'Archives/Chrono'],
             
             // Créateur
-            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système'
-        };
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
 
+            //Date et heure
+            dateTime:new Date().toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                    hour:'numeric',
+                    minute:'numeric',
+                })
+        };
+        console.log("début du chargement du template")
         // Charger le template
         const templatePath = path.join(__dirname, '../views/note-service-stage-individuel-1.ejs');
         const html = await ejs.renderFile(templatePath, templateData);
-
+        console.log("fin du chargement du template")
         // Générer le PDF
         const browser = await puppeteer.launch({
             headless: 'new',
@@ -758,7 +770,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         });
 
         const page = await browser.newPage();
-        
+        console.log("fin utilisation puppeteer")
         await page.setContent(html, {
             waitUntil: 'networkidle0',
             timeout: 30000
@@ -780,6 +792,9 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
                     <div style="text-align: left; flex: 1;">
                         Généré par ${templateData.createurNom}
                     </div>
+                    <div style="text-align: center; flex: 1;">
+                        Le ${templateData.dateTime}
+                    </div>
                     <div style="text-align: right; flex: 1;">
                         Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
                     </div>
@@ -788,6 +803,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         });
 
         await browser.close();
+        console.log("fin de la génération")
         return pdfBuffer;
 
     } catch (error) {
@@ -1442,6 +1458,183 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
 
 
 /**
+ * Résout tous les utilisateurs ciblés par le public cible d'un thème
+ * en tenant compte des restrictions des lieux de formation
+ * @param {Object} theme - Le thème de formation avec publicCible peuplé
+ * @param {Array} lieuxFormation - Les lieux de formation avec leurs familles participantes
+ * @returns {Map} - Map avec userId comme clé et {utilisateur, lieu, dates} comme valeur
+ */
+const resolveUtilisateursCiblesAvecLieux = async (theme, lieuxFormation) => {
+    const participantsMap = new Map();
+
+    if (!theme.publicCible || theme.publicCible.length === 0) {
+        return participantsMap;
+    }
+
+    // Créer un index des familles par lieu pour optimiser les recherches
+    const famillesByLieu = new Map();
+    lieuxFormation.forEach(lieu => {
+        if (lieu.participants && lieu.participants.length > 0) {
+            const familleIds = lieu.participants.map(fam => fam._id.toString());
+            famillesByLieu.set(lieu._id.toString(), {
+                familleIds,
+                lieuInfo: {
+                    lieu: lieu.lieu,
+                    dateDebut: lieu.dateDebut,
+                    dateFin: lieu.dateFin
+                }
+            });
+        }
+    });
+
+    // Parcourir le public cible du thème
+    for (const familleCible of theme.publicCible) {
+        const familleId = familleCible.familleMetier._id || familleCible.familleMetier;
+        
+        // Vérifier si cette famille est présente dans au moins un lieu
+        let lieuConcerne = null;
+        for (const [lieuId, lieuData] of famillesByLieu) {
+            if (lieuData.familleIds.includes(familleId.toString())) {
+                lieuConcerne = lieuData.lieuInfo;
+                break;
+            }
+        }
+
+        // Si la famille n'est pas dans les lieux, passer à la suivante
+        if (!lieuConcerne) continue;
+
+        // Cas 1: Toute la famille (pas de restrictions de postes)
+        if (!familleCible.postes || familleCible.postes.length === 0) {
+            // Récupérer tous les postes de cette famille
+            const postes = await PosteDeTravail.find({
+                famillesMetier: familleId
+            }).select('_id');
+
+            const posteIds = postes.map(p => p._id);
+
+            // Récupérer tous les utilisateurs de ces postes
+            const users = await Utilisateur.find({
+                posteDeTravail: { $in: posteIds }
+            })
+            .populate({
+                path: 'posteDeTravail',
+                select: 'nomFr nomEn famillesMetier'
+            })
+            .populate('service', 'nomFr nomEn')
+            .populate('structure', 'nomFr nomEn')
+            .lean();
+
+            users.forEach(u => {
+                const userId = u._id.toString();
+                if (!participantsMap.has(userId)) {
+                    participantsMap.set(userId, {
+                        utilisateur: u,
+                        lieu: lieuConcerne.lieu,
+                        dateDebut: lieuConcerne.dateDebut,
+                        dateFin: lieuConcerne.dateFin
+                    });
+                }
+            });
+        }
+        // Cas 2: Restrictions par postes
+        else {
+            for (const posteRestriction of familleCible.postes) {
+                const posteId = posteRestriction.poste._id || posteRestriction.poste;
+                
+                // Cas 2a: Toutes les structures du poste
+                if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                    const users = await Utilisateur.find({
+                        posteDeTravail: posteId
+                    })
+                    .populate({
+                        path: 'posteDeTravail',
+                        select: 'nomFr nomEn famillesMetier'
+                    })
+                    .populate('service', 'nomFr nomEn')
+                    .populate('structure', 'nomFr nomEn')
+                    .lean();
+
+                    users.forEach(u => {
+                        const userId = u._id.toString();
+                        if (!participantsMap.has(userId)) {
+                            participantsMap.set(userId, {
+                                utilisateur: u,
+                                lieu: lieuConcerne.lieu,
+                                dateDebut: lieuConcerne.dateDebut,
+                                dateFin: lieuConcerne.dateFin
+                            });
+                        }
+                    });
+                }
+                // Cas 2b: Restrictions par structures
+                else {
+                    for (const structureRestriction of posteRestriction.structures) {
+                        const structureId = structureRestriction.structure._id || structureRestriction.structure;
+                        
+                        // Cas 2b-i: Tous les services de la structure
+                        if (!structureRestriction.services || structureRestriction.services.length === 0) {
+                            const users = await Utilisateur.find({
+                                posteDeTravail: posteId,
+                                structure: structureId
+                            })
+                            .populate({
+                                path: 'posteDeTravail',
+                                select: 'nomFr nomEn famillesMetier'
+                            })
+                            .populate('service', 'nomFr nomEn')
+                            .populate('structure', 'nomFr nomEn')
+                            .lean();
+
+                            users.forEach(u => {
+                                const userId = u._id.toString();
+                                if (!participantsMap.has(userId)) {
+                                    participantsMap.set(userId, {
+                                        utilisateur: u,
+                                        lieu: lieuConcerne.lieu,
+                                        dateDebut: lieuConcerne.dateDebut,
+                                        dateFin: lieuConcerne.dateFin
+                                    });
+                                }
+                            });
+                        }
+                        // Cas 2b-ii: Services spécifiques
+                        else {
+                            const serviceIds = structureRestriction.services.map(s => s.service._id || s.service);
+                            const users = await Utilisateur.find({
+                                posteDeTravail: posteId,
+                                structure: structureId,
+                                service: { $in: serviceIds }
+                            })
+                            .populate({
+                                path: 'posteDeTravail',
+                                select: 'nomFr nomEn famillesMetier'
+                            })
+                            .populate('service', 'nomFr nomEn')
+                            .populate('structure', 'nomFr nomEn')
+                            .lean();
+
+                            users.forEach(u => {
+                                const userId = u._id.toString();
+                                if (!participantsMap.has(userId)) {
+                                    participantsMap.set(userId, {
+                                        utilisateur: u,
+                                        lieu: lieuConcerne.lieu,
+                                        dateDebut: lieuConcerne.dateDebut,
+                                        dateFin: lieuConcerne.dateFin
+                                    });
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return participantsMap;
+};
+
+/**
  * Crée une note de service pour convoquer les participants d'un thème
  */
 export const creerNoteServiceConvocationParticipants = async (req, res) => {
@@ -1461,6 +1654,8 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
 
         // Validation
         if (!theme) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({
                 success: false,
                 message: t('theme_requis', lang)
@@ -1468,18 +1663,26 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         }
 
         if (!mongoose.Types.ObjectId.isValid(theme)) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang)
             });
         }
 
-        // Récupérer le thème
+        // Récupérer le thème avec son public cible peuplé
         const themeData = await ThemeFormation.findById(theme)
-            .select('libelleFr libelleEn dateDebut dateFin')
+            .populate('publicCible.familleMetier')
+            .populate('publicCible.postes.poste')
+            .populate('publicCible.postes.structures.structure')
+            .populate('publicCible.postes.structures.services.service')
+            .select('titreFr titreEn dateDebut dateFin publicCible')
             .lean();
 
         if (!themeData) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({
                 success: false,
                 message: t('theme_non_trouve', lang)
@@ -1489,104 +1692,86 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         // Récupérer tous les lieux de formation pour ce thème
         const lieuxFormation = await LieuFormation.find({ theme: theme })
             .populate({
-                path: 'participants',
-                select: 'utilisateur',
-                populate: {
-                    path: 'utilisateur',
-                    select: 'nom prenom posteDeTravail service',
-                    populate: [
-                        {
-                            path: 'posteDeTravail',
-                            select: 'nomFr nomEn'
-                        },
-                        {
-                            path: 'service',
-                            select: 'nomFr nomEn'
-                        }
-                    ]
-                }
+                path: 'participants', // Ce sont maintenant des FamilleMetier
+                select: 'nomFr nomEn'
             })
             .populate({
                 path: 'cohortes',
-                select: '_id'
+                select: '_id nomFr nomEn'
             })
             .lean();
 
         if (!lieuxFormation || lieuxFormation.length === 0) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({
                 success: false,
                 message: t('aucun_lieu_formation_trouve', lang)
             });
         }
 
+        // ✅ NOUVELLE LOGIQUE: Résoudre les utilisateurs avec restrictions du thème ET des lieux
+        const participantsMap = await resolveUtilisateursCiblesAvecLieux(themeData, lieuxFormation);
+        console.log(participantsMap)
         // Récupérer tous les IDs de cohortes
-        const toutesLesCohortes = lieuxFormation.flatMap(lieu => lieu.cohortes.map(c => c._id));
+        const toutesLesCohortes = lieuxFormation.flatMap(lieu =>
+            lieu.cohortes.map(c => c._id)
+        );
 
-        // Récupérer les utilisateurs des cohortes
-        const cohortesUtilisateurs = await CohorteUtilisateur.find({
-            cohorte: { $in: toutesLesCohortes }
-        })
-        .populate({
-            path: 'utilisateur',
-            select: 'nom prenom posteDeTravail service',
-            populate: [
-                {
-                    path: 'posteDeTravail',
-                    select: 'nomFr nomEn'
-                },
-                {
-                    path: 'service',
-                    select: 'nomFr nomEn'
-                }
-            ]
-        })
-        .lean();
-
-        // Fusionner tous les participants (éviter doublons)
-        const participantsMap = new Map();
-
-        // Ajouter les participants directs de tous les lieux
-        lieuxFormation.forEach(lieu => {
-            if (lieu.participants) {
-                lieu.participants.forEach(participant => {
-                    if (participant.utilisateur) {
-                        const userId = participant.utilisateur._id.toString();
-                        if (!participantsMap.has(userId)) {
-                            participantsMap.set(userId, {
-                                utilisateur: participant.utilisateur,
-                                lieu: lieu.lieu,
-                                dateDebut: lieu.dateDebut,
-                                dateFin: lieu.dateFin
-                            });
+        // ✅ Ajouter les utilisateurs des cohortes (également filtrés par public cible et lieux)
+        if (toutesLesCohortes.length > 0) {
+            const cohortesUtilisateurs = await CohorteUtilisateur.find({
+                cohorte: { $in: toutesLesCohortes }
+            })
+                .populate({
+                    path: 'utilisateur',
+                    select: 'nom prenom posteDeTravail service',
+                    populate: [
+                        {
+                            path: 'posteDeTravail',
+                            select: 'nomFr nomEn famillesMetier'
+                        },
+                        {
+                            path: 'service',
+                            select: 'nomFr nomEn'
                         }
-                    }
+                    ]
+                })
+                .lean();
+
+            for (const cu of cohortesUtilisateurs) {
+                if (!cu.utilisateur) continue;
+
+                const userId = cu.utilisateur._id.toString();
+
+                // ❌ Ne pas dupliquer un utilisateur déjà ajouté
+                if (participantsMap.has(userId)) continue;
+
+                // Trouver le lieu associé à la cohorte
+                const lieuAssocie = lieuxFormation.find(lieu =>
+                    lieu.cohortes.some(c => c._id.toString() === cu.cohorte.toString())
+                );
+
+                // ❌ Si aucun lieu n’est rattaché à la cohorte, on ignore
+                if (!lieuAssocie) continue;
+
+                // ✅ Ajouter TELS QUELS sans restrictions
+                participantsMap.set(userId, {
+                    utilisateur: cu.utilisateur,
+                    lieu: lieuAssocie.lieu,
+                    dateDebut: lieuAssocie.dateDebut,
+                    dateFin: lieuAssocie.dateFin,
+                    source: "cohorte" // utile pour debugging
                 });
             }
-        });
+        }
 
-        // Ajouter les utilisateurs des cohortes
-        cohortesUtilisateurs.forEach(cu => {
-            if (cu.utilisateur) {
-                const userId = cu.utilisateur._id.toString();
-                if (!participantsMap.has(userId)) {
-                    // Trouver le lieu associé à la cohorte
-                    const lieuAssocie = lieuxFormation.find(lieu =>
-                        lieu.cohortes.some(c => c._id.toString() === cu.cohorte.toString())
-                    );
-
-                    participantsMap.set(userId, {
-                        utilisateur: cu.utilisateur,
-                        lieu: lieuAssocie?.lieu || 'Non défini',
-                        dateDebut: lieuAssocie?.dateDebut,
-                        dateFin: lieuAssocie?.dateFin
-                    });
-                }
-            }
-        });
 
         const tousLesParticipants = Array.from(participantsMap.values());
 
         if (tousLesParticipants.length === 0) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({
                 success: false,
                 message: t('aucun_participant_trouve', lang)
@@ -1601,8 +1786,6 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
                 .lean();
         }
 
-        // Générer la référence
-
         // Créer la note de service
         const nouvelleNote = new NoteService({
             theme,
@@ -1615,16 +1798,19 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         });
 
         const noteEnregistree = await nouvelleNote.save({ session });
+
+        // Mettre à jour la tâche si fournie
         if (tacheFormationId) {
-            mettreAJourTache({
+            await mettreAJourTache({
                 tacheFormationId,
                 statut: "EN_ATTENTE",
                 donnees: `Note de convocation générée : ${noteEnregistree._id}`,
                 lang,
-                executePar:creePar,
+                executePar: creePar,
                 session
             });
         }
+
         // Générer le PDF
         const pdfBuffer = await genererPDFConvocationParticipants(
             noteEnregistree,
@@ -1635,7 +1821,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         );
 
         // Définir le nom du fichier
-        const nomFichier = `note-service-convocation-participants.pdf`;
+        const nomFichier = `note-service-convocation-participants-${noteEnregistree._id}.pdf`;
 
         // Valider la transaction
         await session.commitTransaction();

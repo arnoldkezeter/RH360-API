@@ -47,7 +47,7 @@
     "famille_metier_non_trouvee": "Famille métier non trouvée",
     "famille_metier_existante_fr": "Une famille métier avec le même nom en français existe déjà",
     "famille_metier_existante_en": "Une famille métier avec le même nom en anglais existe déjà",
-
+    "participants_hors_public_cible": "Les familles de métier suivantes ne font pas partie du public cible du thème",
 
     "etablissement_non_trouvee": "Établissement non trouvé",
     "etablissement_existante_fr": "Un établissement avec le même nom en français existe déjà",
@@ -109,7 +109,7 @@
     "mot_de_passe_modifie": "Mot de passe modifié avec succès.",
     "mot_de_passe_requis":"Le mot de passe est requis",
 
-   
+    
     "objectif_theme_existante_fr": "Un objectif avec ce nom français existe déjà pour ce thème.",
     "objectif_theme_existante_en": "Un objectif avec ce nom anglais existe déjà pour ce thème.",
     "objectif_theme_non_trouve": "Objectif thème non trouvé.",

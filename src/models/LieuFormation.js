@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const lieuFormationSchema = new mongoose.Schema({
     lieu:{type:String, required:true},
     cohortes: [{type: mongoose.Schema.Types.ObjectId, ref: 'Cohorte',required: true}],
-    participants : [{type: mongoose.Schema.Types.ObjectId, ref: 'ParticipantFormation',required: true}],
+    participants : [{type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier',required: true}],
     dateDebut: {type : Date},
     dateFin: {type : Date},
     dateDebutEffective: {type : Date},

@@ -41,6 +41,7 @@
     "famille_metier_non_trouvee": "Job family not found",
     "famille_metier_existante_fr": "A job family with the same name in French already exists",
     "famille_metier_existante_en": "A job family with the same name in English already exists",
+    "participants_hors_public_cible": "The following job families are not part of the theme's target audience",
 
 
     "etablissement_non_trouvee": "Institution not found",

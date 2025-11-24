@@ -12,8 +12,140 @@ import { addRoleToUser, removeRoleFromUserIfUnused } from '../utils/utilisateurR
 import { LieuFormation } from '../models/LieuFormation.js';
 import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
 import { Formateur } from '../models/Formateur.js';
+import { sendMailFormation } from '../utils/sendMailFormation.js';
+import FamilleMetier from '../models/FamilleMetier.js';
+import Structure from '../models/Structure.js';
+import Service from '../models/Service.js';
 
 
+const isValidObjectId = (id) => {
+    if (!id) return false;
+    return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+/**
+ * Normalise et valide la structure du publicCible côté serveur
+ * Attend un tableau d'objets au format :
+ * [
+ *   {
+ *     familleMetier: { _id: '...' } ou 'idString',
+ *     postes: [
+ *       {
+ *         poste: { _id: '...' } ou 'idString',
+ *         structures: [
+ *           {
+ *             structure: { _id: '...' } ou 'idString',
+ *             services: [{ service: { _id: '...' } || 'idString' }]
+ *           }
+ *         ]
+ *       }
+ *     ]
+ *   }
+ * ]
+ *
+ * Retourne { ok: true, data: formattedArray } ou { ok: false, message: '...' }
+ */
+const validateAndFormatPublicCible = async (publicCible, lang) => {
+    const formatted = [];
+
+    if (!publicCible) return { ok: true, data: [] };
+
+    if (!Array.isArray(publicCible)) {
+        return { ok: false, message: t('identifiant_invalide', lang) };
+    }
+
+    // ✅ CORRECTION 1: Validation de l'existence des familles de métier
+    for (const fam of publicCible) {
+        const famId = fam?.familleMetier?._id || fam?.familleMetier;
+        if (!isValidObjectId(famId)) {
+            return { ok: false, message: t('identifiant_invalide', lang) };
+        }
+
+        // Vérifier que la famille de métier existe
+        const familleExists = await FamilleMetier.findById(famId);
+        if (!familleExists) {
+            return { ok: false, message: `Famille de métier ${famId} introuvable` };
+        }
+
+        const famObj = { familleMetier: famId, postes: [] };
+
+        if (Array.isArray(fam.postes)) {
+            for (const pos of fam.postes) {
+                const posId = pos?.poste?._id || pos?.poste;
+                if (!isValidObjectId(posId)) {
+                    return { ok: false, message: t('identifiant_invalide', lang) };
+                }
+
+                // ✅ CORRECTION 2: Vérifier que le poste existe ET appartient à la famille
+                const poste = await PosteDeTravail.findById(posId);
+                if (!poste) {
+                    return { ok: false, message: `Poste de travail ${posId} introuvable` };
+                }
+                // Vérifier que le poste appartient bien à cette famille (un poste peut avoir plusieurs familles)
+                const appartientALaFamille = poste.famillesMetier.some(
+                    fm => fm.toString() === famId.toString()
+                );
+                if (!appartientALaFamille) {
+                    return { 
+                        ok: false, 
+                        message: `Le poste ${posId} n'appartient pas à la famille de métier ${famId}` 
+                    };
+                }
+
+                const postObj = { poste: posId, structures: [] };
+
+                if (Array.isArray(pos.structures)) {
+                    for (const st of pos.structures) {
+                        const structId = st?.structure?._id || st?.structure;
+                        if (!isValidObjectId(structId)) {
+                            return { ok: false, message: t('identifiant_invalide', lang) };
+                        }
+
+                        // ✅ CORRECTION 3: Vérifier que la structure existe
+                        const structureExists = await Structure.findById(structId);
+                        if (!structureExists) {
+                            return { ok: false, message: `Structure ${structId} introuvable` };
+                        }
+
+                        const structObj = { structure: structId, services: [] };
+
+                        if (Array.isArray(st.services)) {
+                            for (const serv of st.services) {
+                                const servId = serv?.service?._id || serv?.service;
+                                if (!isValidObjectId(servId)) {
+                                    return { ok: false, message: t('identifiant_invalide', lang) };
+                                }
+
+                                // ✅ CORRECTION 4: Vérifier que le service existe ET appartient à la structure
+                                const service = await Service.findById(servId);
+                                if (!service) {
+                                    return { ok: false, message: `Service ${servId} introuvable` };
+                                }
+                                if (service.structure.toString() !== structId.toString()) {
+                                    return { 
+                                        ok: false, 
+                                        message: `Le service ${servId} n'appartient pas à la structure ${structId}` 
+                                    };
+                                }
+
+                                structObj.services.push({ service: servId });
+                            }
+                        }
+
+                        postObj.structures.push(structObj);
+                    }
+                }
+
+                famObj.postes.push(postObj);
+            }
+        }
+
+        formatted.push(famObj);
+    }
+
+    return { ok: true, data: formatted };
+};
 
 // Ajouter
 export const createThemeFormation = async (req, res) => {
@@ -29,87 +161,64 @@ export const createThemeFormation = async (req, res) => {
 
     try {
         const { titreFr, titreEn, dateDebut, dateFin, responsable, formation, publicCible } = req.body;
-        
-        // Validation de l'ID de formation
-        if (formation && !mongoose.Types.ObjectId.isValid(formation._id)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
 
-        // Validation de l'ID de responsable
-        if (responsable && !mongoose.Types.ObjectId.isValid(responsable._id)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
-
-        // Validation et extraction des IDs du public cible
-        const publicCibleIds = [];
-        if (publicCible && Array.isArray(publicCible)) {
-            for (const item of publicCible) {
-                if (!mongoose.Types.ObjectId.isValid(item._id)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: t('identifiant_invalide', lang),
-                    });
-                }
-                publicCibleIds.push(item._id);
+        // Validate formation & responsable (accepte soit objet {_id} soit string id)
+        if (formation) {
+            const formationId = formation._id || formation;
+            if (!isValidObjectId(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
             }
         }
 
-        // Vérification de l'existence du titre français
-        const existsFr = await ThemeFormation.exists({ titreFr });
-        if (existsFr) {
-            return res.status(409).json({
-                success: false,
-                message: t('theme_existante_fr', lang),
-            });
+        if (responsable) {
+            const respId = responsable._id || responsable;
+            if (!isValidObjectId(respId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
         }
 
-        // Vérification de l'existence du titre anglais
-        const existsEn = await ThemeFormation.exists({ titreEn });
-        if (existsEn) {
-            return res.status(409).json({
-                success: false,
-                message: t('theme_existante_en', lang),
-            });
+        // ✅ CORRECTION 5: Validation ASYNCHRONE du publicCible
+        const vc = await validateAndFormatPublicCible(publicCible, lang);
+        if (!vc.ok) {
+            return res.status(400).json({ success: false, message: vc.message });
+        }
+        const publicCibleFormatted = vc.data;
+
+        // Vérification unicité titres
+        if (await ThemeFormation.exists({ titreFr })) {
+            return res.status(409).json({ success: false, message: t('theme_existante_fr', lang) });
+        }
+        if (await ThemeFormation.exists({ titreEn })) {
+            return res.status(409).json({ success: false, message: t('theme_existante_en', lang) });
         }
 
-        
-
-        // Création du thème de formation
+        // Création
         const theme = await ThemeFormation.create({
             titreFr,
             titreEn,
-            publicCible: publicCibleIds, // Utilisation des IDs extraits
-            lieux: [],
             dateDebut,
             dateFin,
-            formateurs: [],
-            responsable: responsable?._id || undefined,
-            supports: [],
-            formation: formation?._id || undefined,
+            responsable: responsable?._id || responsable || undefined,
+            formation: formation?._id || formation || undefined,
+            publicCible: publicCibleFormatted
         });
 
-        if (responsable?._id) {
-            await addRoleToUser(responsable?._id, 'RESPONSABLE-FORMATION');
+        // Gestion rôle responsable
+        const newRespId = responsable?._id || responsable;
+        if (newRespId) {
+            await addRoleToUser(newRespId, 'RESPONSABLE-FORMATION');
         }
 
-        // Population des références pour la réponse
+        // Peupler pour retour
         const themePopule = await ThemeFormation.findById(theme._id)
-             .populate({
-                path: 'formation',
-                populate: {
-                    path: 'programmeFormation'
-                }
-            })
-            .populate({path:'publicCible', option:{strictPopulate:false}})
-            .populate({path:'responsable', option:{strictPopulate:false}});
+            .populate('responsable')
+            .populate('formation')
+            .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
 
-        // Calcul de la durée de la formation
+        // Calcul durée en jours (si fournie)
         let duree = null;
         if (dateDebut && dateFin) {
             const debut = new Date(dateDebut);
@@ -119,23 +228,22 @@ export const createThemeFormation = async (req, res) => {
             duree = diffDays;
         }
 
-        // Ajout de la durée au thème peuplé
         const themeAvecDuree = {
             ...themePopule.toObject(),
-            duree: duree
+            duree
         };
 
         return res.status(201).json({
             success: true,
             message: t('ajouter_succes', lang),
-            data: themeAvecDuree,
+            data: themeAvecDuree
         });
     } catch (err) {
-        console.log(err)
+        console.error(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
-            error: err.message,
+            error: err.message
         });
     }
 };
@@ -145,11 +253,8 @@ export const updateThemeFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
+    if (!isValidObjectId(id)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     const errors = validationResult(req);
@@ -172,101 +277,83 @@ export const updateThemeFormation = async (req, res) => {
             publicCible
         } = req.body;
 
-        // Validation de l'ID de formation si fourni
-        if (formation && !mongoose.Types.ObjectId.isValid(formation._id)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
-
-        // Validation de l'ID de responsable si fourni
-        if (responsable && !mongoose.Types.ObjectId.isValid(responsable._id)) {
-            return res.status(400).json({
-                success: false,
-                message: t('identifiant_invalide', lang),
-            });
-        }
-
-        // Validation et extraction des IDs du public cible si fourni
-        let publicCibleIds = [];
-        if (publicCible && Array.isArray(publicCible)) {
-            for (const item of publicCible) {
-                if (!mongoose.Types.ObjectId.isValid(item._id)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: t('identifiant_invalide', lang),
-                    });
-                }
-                publicCibleIds.push(item._id);
+        // Validate formation & responsable si fournis
+        if (formation) {
+            const formationId = formation._id || formation;
+            if (!isValidObjectId(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
             }
+        }
+        if (responsable) {
+            const respId = responsable._id || responsable;
+            if (!isValidObjectId(respId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+        }
+
+        // ✅ CORRECTION 6: Validation ASYNCHRONE du publicCible si fourni
+        let publicCibleFormatted = undefined;
+        if (publicCible !== undefined) {
+            const vc = await validateAndFormatPublicCible(publicCible, lang);
+            if (!vc.ok) {
+                return res.status(400).json({ success: false, message: vc.message });
+            }
+            publicCibleFormatted = vc.data;
         }
 
         // Recherche du thème existant
         const theme = await ThemeFormation.findById(id);
         if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
         }
-        const oldResponsableId = theme.responsable?.toString();
-        // Vérification de l'unicité du titre français
+
+        const oldResponsableId = theme.responsable ? theme.responsable.toString() : null;
+
+        // Unicité titres (exclure l'ID courant)
         if (titreFr !== undefined) {
             const existsFr = await ThemeFormation.findOne({ titreFr, _id: { $ne: id } });
             if (existsFr) {
-                return res.status(409).json({
-                    success: false,
-                    message: t('theme_existante_fr', lang),
-                });
+                return res.status(409).json({ success: false, message: t('theme_existante_fr', lang) });
             }
         }
-
-        // Vérification de l'unicité du titre anglais
         if (titreEn !== undefined) {
             const existsEn = await ThemeFormation.findOne({ titreEn, _id: { $ne: id } });
             if (existsEn) {
-                return res.status(409).json({
-                    success: false,
-                    message: t('theme_existante_en', lang),
-                });
+                return res.status(409).json({ success: false, message: t('theme_existante_en', lang) });
             }
         }
 
-        // Mise à jour des champs
+        // Mise à jour des champs si fournis
         if (titreFr !== undefined) theme.titreFr = titreFr;
         if (titreEn !== undefined) theme.titreEn = titreEn;
         if (dateDebut !== undefined) theme.dateDebut = dateDebut;
         if (dateFin !== undefined) theme.dateFin = dateFin;
-        if (responsable !== undefined) theme.responsable = responsable?._id || undefined;
-        if (formation !== undefined) theme.formation = formation._id;
-        if (publicCible !== undefined) theme.publicCible = publicCibleIds;
+        if (responsable !== undefined) theme.responsable = responsable?._id || responsable || undefined;
+        if (formation !== undefined) theme.formation = formation?._id || formation || undefined;
+        if (publicCibleFormatted !== undefined) theme.publicCible = publicCibleFormatted;
 
-        // Sauvegarde des modifications
+        // Sauvegarde
         await theme.save();
-        // ✅ Nouveau formateur → rôle ajouté
-        // if (responsable?._id && responsable._id.toString() !== oldResponsableId) {
-            await addRoleToUser(responsable?._id, 'RESPONSABLE-FORMATION');
-    
-            // Ancien formateur → retirer le rôle si plus utilisé
-            if (oldResponsableId) {
-                await removeRoleFromUserIfUnused(oldResponsableId, 'RESPONSABLE-FORMATION', ThemeFormation, "responsable");
-            }
-        // }
-        
 
-        // Population des références pour la réponse
+        // Gestion des rôles responsable (ajout + retrait si nécessaire)
+        const newResponsableId = responsable?._id || responsable;
+        if (newResponsableId) {
+            await addRoleToUser(newResponsableId, 'RESPONSABLE-FORMATION');
+        }
+        if (oldResponsableId && oldResponsableId !== (newResponsableId ? newResponsableId.toString() : null)) {
+            await removeRoleFromUserIfUnused(oldResponsableId, 'RESPONSABLE-FORMATION', ThemeFormation, 'responsable');
+        }
+
+        // Re-peupler pour réponse
         const themePopule = await ThemeFormation.findById(theme._id)
-            .populate({
-                path: 'formation',
-                populate: {
-                    path: 'programmeFormation'
-                }
-            })
-            .populate({path:'publicCible', option:{strictPopulate:false}})
-            .populate({path:'responsable', option:{strictPopulate:false}});
+            .populate('responsable')
+            .populate('formation')
+            .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
 
-        // Calcul de la durée de la formation
+        // Calcul durée
         let duree = null;
         if (themePopule.dateDebut && themePopule.dateFin) {
             const debut = new Date(themePopule.dateDebut);
@@ -276,22 +363,23 @@ export const updateThemeFormation = async (req, res) => {
             duree = diffDays;
         }
 
-        // Ajout de la durée au thème peuplé
         const themeAvecDuree = {
             ...themePopule.toObject(),
-            duree: duree
+            duree
         };
 
         return res.status(200).json({
             success: true,
             message: t('modifier_succes', lang),
-            data: themeAvecDuree,
+            data: themeAvecDuree
         });
+
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
-            error: err.message,
+            error: err.message
         });
     }
 };
@@ -435,7 +523,6 @@ export const invitation = async (req, res) => {
         let userEmails = [];
 
         if (toParticipants) {
-            // Récupérer tous les lieux du thème
             const lieux = await LieuFormation.find({ theme: themeId })
                 .populate({
                     path: 'participants',
@@ -445,10 +532,8 @@ export const invitation = async (req, res) => {
                 .select('cohortes participants')
                 .lean();
 
-            // Récupérer les IDs de cohortes
             const cohorteIds = lieux.flatMap(lieu => lieu.cohortes?.map(id => id.toString()) || []);
 
-            // Récupérer les e-mails des utilisateurs des cohortes
             let cohortesEmails = [];
             if (cohorteIds.length > 0) {
                 const cohortesUtilisateurs = await CohorteUtilisateur.find({ cohorte: { $in: cohorteIds } })
@@ -460,15 +545,13 @@ export const invitation = async (req, res) => {
                     .filter(email => email);
             }
 
-            // Récupérer les e-mails des participants directement liés au lieu
             const participantsDirectsEmails = lieux.flatMap(lieu => 
                 lieu.participants?.map(p => p.email).filter(email => email) || []
             );
 
-            userEmails = [...new Set([...cohortesEmails, ...participantsDirectsEmails])]; // éviter doublons
+            userEmails = [...new Set([...cohortesEmails, ...participantsDirectsEmails])];
 
         } else {
-            // Pour les formateurs
             const formateurs = await Formateur.find({ theme: themeId })
                 .populate({ path: 'utilisateur', select: 'email' })
                 .lean();
@@ -482,7 +565,6 @@ export const invitation = async (req, res) => {
             return res.status(404).json({ success: false, message: t('aucun_destinataire_trouve', lang) });
         }
 
-        // Envoyer les emails en parallèle
         await Promise.all(userEmails.map(email => sendMailFormation(email, subject, content)));
 
         res.status(200).json({
@@ -503,14 +585,11 @@ export const invitation = async (req, res) => {
 };
 
 
-
-
 export const getThemeFormationsForDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
     const { formationId } = req.params;
     
-    // ✅ Récupération du userId du paramètre de requête (optionnel)
     const { userId } = req.query;
 
     try {
@@ -523,10 +602,7 @@ export const getThemeFormationsForDropdown = async (req, res) => {
         
         let query = { formation: formationId };
 
-        // --- Logique de filtrage conditionnel par utilisateur ---
         if (userId) {
-            
-            // 0. Validation de l'ID utilisateur
             if (!mongoose.Types.ObjectId.isValid(userId)) {
                 return res.status(400).json({
                     success: false,
@@ -534,7 +610,6 @@ export const getThemeFormationsForDropdown = async (req, res) => {
                 });
             }
 
-            // 1. Charger l'utilisateur pour vérifier les rôles
             const user = await Utilisateur.findById(userId).select('roles').lean();
             if (!user) {
                 return res.status(404).json({
@@ -546,15 +621,11 @@ export const getThemeFormationsForDropdown = async (req, res) => {
             const userRoles = (user.roles || []).map(r => r.toUpperCase());
             const isAdministrator = userRoles.includes('SUPER-ADMIN') || userRoles.includes('ADMIN');
 
-            // 2. Filtrage basé sur la responsabilité si NON-ADMIN
             if (!isAdministrator) {
-                // Ajouter la restriction 'responsable' à la requête
                 query.responsable = userId;
             }
-        } 
-        // Si userId est manquant ou si l'utilisateur est admin, la query reste simple: { formation: formationId }
+        }
 
-        // 3. Exécuter la requête finale
         const themes = await ThemeFormation.find(query, `titreFr titreEn _id`)
             .sort({ [sortField]: 1 })
             .lean();
@@ -570,7 +641,6 @@ export const getThemeFormationsForDropdown = async (req, res) => {
             },
         });
     } catch (err) {
-        // En cas d'erreur Mongoose ou autre erreur serveur
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -579,7 +649,7 @@ export const getThemeFormationsForDropdown = async (req, res) => {
     }
 };
 
-// Filtrer la liste des thèmes de formation
+// ✅ CORRECTION 7: Refonte complète de getFilteredThemes pour supporter la nouvelle structure
 export const getFilteredThemes = async (req, res) => {
   const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
   const {
@@ -594,7 +664,6 @@ export const getFilteredThemes = async (req, res) => {
 
   const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
   const filters = {};
-  let publicCibleIds = [];
 
   try {
     if (formation) {
@@ -607,6 +676,7 @@ export const getFilteredThemes = async (req, res) => {
       filters.formation = formation;
     }
 
+    // ✅ NOUVELLE LOGIQUE: Filtrer par familleMetier dans la structure publicCible
     if (familleMetier) {
       if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
         return res.status(400).json({
@@ -614,9 +684,8 @@ export const getFilteredThemes = async (req, res) => {
           message: t('identifiant_invalide', lang),
         });
       }
-      const postes = await PosteDeTravail.find({ familleMetier }).select('_id');
-      publicCibleIds = postes.map(p => p._id);
-      filters.publicCible = { $in: publicCibleIds };
+      // Chercher les thèmes qui ont cette famille dans leur publicCible
+      filters['publicCible.familleMetier'] = familleMetier;
     }
 
     if (titre) {
@@ -632,16 +701,19 @@ export const getFilteredThemes = async (req, res) => {
     const total = await ThemeFormation.countDocuments(filters);
 
     const themes = await ThemeFormation.find(filters)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .sort({ [sortField]: 1 })
-      .populate({
-        path: 'formation',
-        populate: { path: 'programmeFormation' }
-      })
-      .populate({ path: 'publicCible', options: { strictPopulate: false } })
-      .populate({ path: 'responsable', options: { strictPopulate: false } })
-      .lean();
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit))
+        .sort({ [sortField]: 1 })
+        .populate({
+            path: 'formation',
+            populate: { path: 'programmeFormation' }
+        })
+        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'responsable', options: { strictPopulate: false } })
+        .lean();
 
     const themeIds = themes.map(t => t._id);
 
@@ -728,7 +800,7 @@ export const getFilteredThemes = async (req, res) => {
 
 
 
-// Liste paginée des thèmes filtrés par familleMetier
+// ✅ CORRECTION 8: Refonte de getThemesByFamilleMetier
 export const getThemesByFamilleMetier = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { familleMetierId } = req.params;
@@ -743,10 +815,8 @@ export const getThemesByFamilleMetier = async (req, res) => {
     }
 
     try {
-        const publics = await PosteDeTravail.find({ familleMetier: familleMetierId }).select('_id');
-        const publicIds = publics.map(p => p._id);
-
-        const query = { publicCible: { $in: publicIds } };
+        // ✅ NOUVELLE LOGIQUE: Chercher dans publicCible.familleMetier au lieu de publicCible
+        const query = { 'publicCible.familleMetier': familleMetierId };
         const total = await ThemeFormation.countDocuments(query);
 
         let themes = await ThemeFormation.find(query)
@@ -754,14 +824,16 @@ export const getThemesByFamilleMetier = async (req, res) => {
         .limit(limit)
         .populate('responsable')
         .populate('formation')
-        .populate({ path: 'publicCible', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
-        .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
         .lean();
 
         const themesAvecCouts = await Promise.all(
             themes.map(async (theme) => {
-                const coutTotalPrevu = calculerCoutTotalPrevu(theme._id);
+                const coutTotalPrevu = await calculerCoutTotalPrevu(theme._id);
                 return { ...theme, coutTotalPrevu };
             })
         );
@@ -808,14 +880,16 @@ export const getThemesByFormation = async (req, res) => {
         .limit(limit)
         .populate('formation')
         .populate('responsable')
-        .populate({ path: 'publicCible', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
-        .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
         .lean();
 
         const themesAvecCouts = await Promise.all(
             themes.map(async (theme) => {
-                const coutTotalPrevu = calculerCoutTotalPrevu(theme._id);
+                const coutTotalPrevu = await calculerCoutTotalPrevu(theme._id);
                 return { ...theme, coutTotalPrevu };
             })
         );
@@ -853,15 +927,16 @@ export const getThemeFormations = async (req, res) => {
             .sort({ createdAt: -1 })
             .populate('responsable')
             .populate('formation')
-            .populate({ path: 'publicCible', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
             .populate({ path: 'formateurs', options: { strictPopulate: false } })
-            .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
-            .lean(); // lean pour améliorer les perfs
+            .lean();
 
-        // Calcul parallèle des coûts prévus
         const themesAvecCouts = await Promise.all(
             themes.map(async (theme) => {
-                const coutTotalPrevu = calculerCoutTotalPrevu(theme._id);
+                const coutTotalPrevu = await calculerCoutTotalPrevu(theme._id);
                 return { ...theme, coutTotalPrevu };
             })
         );
@@ -904,14 +979,16 @@ export const searchThemeFormationByTitre = async (req, res) => {
         })
         .populate('responsable')
         .populate('formation')
-        .populate({ path: 'publicCible', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
-        .populate({ path: 'lieux.cohorte', options: { strictPopulate: false } })
         .lean();
 
         const themesAvecCouts = await Promise.all(
             themes.map(async (theme) => {
-                const coutTotalPrevu = calculerCoutTotalPrevu(theme._id);
+                const coutTotalPrevu = await calculerCoutTotalPrevu(theme._id);
                 return { ...theme, coutTotalPrevu };
             })
         );
@@ -929,9 +1006,235 @@ export const searchThemeFormationByTitre = async (req, res) => {
     }
 };
 
+// ✅ NOUVELLE FONCTION: Obtenir tous les utilisateurs ciblés par un thème
+export const getTargetedUsers = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
 
+    if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
 
+    try {
+        const theme = await ThemeFormation.findById(themeId)
+            .populate('publicCible.familleMetier')
+            .populate('publicCible.postes.poste')
+            .populate('publicCible.postes.structures.structure')
+            .populate('publicCible.postes.structures.services.service');
 
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang),
+            });
+        }
 
+        let userIds = new Set();
 
+        for (const familleCible of theme.publicCible) {
+            // Cas 1: Toute la famille (pas de restrictions)
+            if (!familleCible.postes || familleCible.postes.length === 0) {
+                const postes = await PosteDeTravail.find({ 
+                    familleMetier: familleCible.familleMetier._id 
+                }).select('_id');
+                
+                const posteIds = postes.map(p => p._id);
+                
+                const users = await Utilisateur.find({
+                    posteDeTravail: { $in: posteIds }
+                }).select('_id');
+                
+                users.forEach(u => userIds.add(u._id.toString()));
+            } 
+            // Cas 2: Restrictions par postes
+            else {
+                for (const posteRestriction of familleCible.postes) {
+                    // Cas 2a: Toutes les structures du poste
+                    if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                        const users = await Utilisateur.find({
+                            posteDeTravail: posteRestriction.poste._id
+                        }).select('_id');
+                        
+                        users.forEach(u => userIds.add(u._id.toString()));
+                    }
+                    // Cas 2b: Restrictions par structures
+                    else {
+                        for (const structureRestriction of posteRestriction.structures) {
+                            // Cas 2b-i: Tous les services de la structure
+                            if (!structureRestriction.services || structureRestriction.services.length === 0) {
+                                const users = await Utilisateur.find({
+                                    posteDeTravail: posteRestriction.poste._id,
+                                    structure: structureRestriction.structure._id
+                                }).select('_id');
+                                
+                                users.forEach(u => userIds.add(u._id.toString()));
+                            }
+                            // Cas 2b-ii: Services spécifiques
+                            else {
+                                const serviceIds = structureRestriction.services.map(s => s.service._id);
+                                const users = await Utilisateur.find({
+                                    posteDeTravail: posteRestriction.poste._id,
+                                    service: { $in: serviceIds }
+                                }).select('_id');
+                                
+                                users.forEach(u => userIds.add(u._id.toString()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
+        // Conversion en tableau et pagination
+        const userIdsArray = Array.from(userIds);
+        const total = userIdsArray.length;
+        const startIdx = (page - 1) * limit;
+        const endIdx = startIdx + limit;
+        const paginatedIds = userIdsArray.slice(startIdx, endIdx);
+
+        // Récupération des utilisateurs complets
+        const users = await Utilisateur.find({ _id: { $in: paginatedIds } })
+            .populate('posteDeTravail')
+            .populate('structure')
+            .populate('service')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: users,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getTargetedUsers:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
+// ✅ NOUVELLE FONCTION: Vérifier si un utilisateur est ciblé par un thème
+export const checkUserIsTargeted = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId, userId } = req.params;
+
+    if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const theme = await ThemeFormation.findById(themeId);
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang),
+            });
+        }
+
+        const user = await Utilisateur.findById(userId)
+            .populate({
+                path: 'posteDeTravail',
+                populate: { path: 'famillesMetier' } // ← Important !
+            })
+            .populate('structure')
+            .populate('service');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang),
+            });
+        }
+
+        let isTargeted = false;
+
+        for (const familleCible of theme.publicCible) {
+            // Vérifier si le poste de l'utilisateur appartient à cette famille
+            if (user.posteDeTravail.familleMetier.toString() !== familleCible.familleMetier.toString()) {
+                continue;
+            }
+            
+            // Pas de restriction sur les postes → utilisateur ciblé
+            if (!familleCible.postes || familleCible.postes.length === 0) {
+                isTargeted = true;
+                break;
+            }
+            
+            // Vérifier les restrictions de postes
+            for (const posteRestriction of familleCible.postes) {
+                if (user.posteDeTravail._id.toString() !== posteRestriction.poste.toString()) {
+                    continue;
+                }
+                
+                // Pas de restriction sur les structures → utilisateur ciblé
+                if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                    isTargeted = true;
+                    break;
+                }
+                
+                // Vérifier les restrictions de structures
+                for (const structureRestriction of posteRestriction.structures) {
+                    if (user.structure._id.toString() !== structureRestriction.structure.toString()) {
+                        continue;
+                    }
+                    
+                    // Pas de restriction sur les services → utilisateur ciblé
+                    if (!structureRestriction.services || structureRestriction.services.length === 0) {
+                        isTargeted = true;
+                        break;
+                    }
+                    
+                    // Vérifier les restrictions de services
+                    const serviceIds = structureRestriction.services.map(s => s.service.toString());
+                    if (serviceIds.includes(user.service._id.toString())) {
+                        isTargeted = true;
+                        break;
+                    }
+                }
+                
+                if (isTargeted) break;
+            }
+            
+            if (isTargeted) break;
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                isTargeted,
+                userId,
+                themeId,
+            },
+        });
+
+    } catch (err) {
+        console.error('Erreur dans checkUserIsTargeted:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+}

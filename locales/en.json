@@ -264,7 +264,16 @@
     "liste_utilisateurs": "Users List",
     "genere_le": "Generated on",
     "utilisateur_deja_dans_cohorte":"The user is already in the cohort",
-    "utilisateur_pas_dans_cohorte":"User is not in cohort"
+    "utilisateur_pas_dans_cohorte":"User is not in cohort",
+    "pdf_parametre_invalide": "The parameter must be a file path or a Buffer.",
+    "pdf_erreur_parsing": "Error parsing the PDF. The file might be corrupted.",
+    "pdf_erreur_lecture_contenu": "Error reading the content of the PDF.",
+    "pdf_ref_non_trouvee": "No system reference found in the PDF.",
+    "pdf_ref_correspond": "The reference matches.",
+    "pdf_ref_non_correspondance": "The reference does not match. Expected: %{referenceAttendue}, Found: %{referenceExtraite}.",
+    "pdf_erreur_validation_generique": "Error during validation: %{errorDetail}",
+    "reference_attendue_manquante": "The expected reference for this internship is missing in the database.",
+    "reference_pdf_invalide": "The reference found in the PDF does not match the expected reference."
 
 }
   

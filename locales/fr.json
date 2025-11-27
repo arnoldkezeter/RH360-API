@@ -298,7 +298,17 @@
     "type_note_invalide":"Type de note invalide",
     "note_service_obligatoire":"Note de service obligatoire",
     "utilisateur_deja_dans_cohorte":"L'utilisateur est déjà dans la cohorte",
-    "utilisateur_pas_dans_cohorte":"L'utilisateur n'est pas dans la cohorte"
+    "utilisateur_pas_dans_cohorte":"L'utilisateur n'est pas dans la cohorte",
+    "note_service_non_trouvee":"Note de service non trouvée",
+    "pdf_parametre_invalide": "Le paramètre doit être un chemin de fichier ou un Buffer.",
+    "pdf_erreur_parsing": "Erreur lors de l'analyse du PDF. Le fichier est peut-être corrompu.",
+    "pdf_erreur_lecture_contenu": "Erreur lors de la lecture du contenu du PDF.",
+    "pdf_ref_non_trouvee": "Aucune référence système trouvée dans le PDF.",
+    "pdf_ref_correspond": "La référence correspond.",
+    "pdf_ref_non_correspondance": "La référence ne correspond pas. Attendue: %{referenceAttendue}, Trouvée: %{referenceExtraite}.",
+    "pdf_erreur_validation_generique": "Erreur lors de la validation: %{errorDetail}",
+    "reference_attendue_manquante": "La référence attendue pour ce stage est manquante dans la base de données.",
+    "reference_pdf_invalide": "La référence trouvée dans le PDF ne correspond pas à la référence attendue."
     
 }
   

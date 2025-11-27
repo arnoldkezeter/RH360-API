@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE Posted on 2025-01-01 at 00:00:00 UTC>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -13,8 +13,8 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 13px;
-            line-height: 1.4;
+            font-size: 14px;
+            line-height: 1.6;
             color: #000;
         }
         
@@ -59,28 +59,33 @@
         
         .note-title {
             text-align: center;
-            margin: 50px 0 10px 0;
+            margin: 50px 0 20px 0;
         }
         
         .document-title {
             text-align: center;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             color: #000;
-            text-decoration: underline;
-            text-transform: uppercase;
+            line-height: 1.4;
+        }
+
+        .document-title p {
+            margin: 5px 0;
         }
 
         .description {
             text-align: justify;
             margin: 20px 1cm;
             line-height: 1.6;
+            font-size: 14px;
         }
 
         .body-content {
             text-align: justify;
             line-height: 1.8;
             margin: 0 1cm;
+            font-size: 14px;
         }
         
         .body-content p {
@@ -96,35 +101,76 @@
         .formateurs-list {
             margin: 15px 0 15px 3cm;
             line-height: 1.8;
+            font-size: 12px;
         }
 
         .formateur-item {
             margin-bottom: 8px;
         }
 
-        .formateur-details {
-            margin-left: 20px;
-            font-size: 12px;
-            color: #555;
+        .first-page-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start; /* MODIFICATION ICI pour aligner par le haut */
+            margin-top: 60px;
+            page-break-inside: avoid;
+        }
+
+        .footer-left {
+            flex: 1;
+            margin-left: 1cm;
+        }
+
+        .footer-right {
+            flex: 0 0 200px;
+            margin-right: 1cm;
         }
 
         .copie-section {
-            margin-top: 60px;
-            margin-left: 1cm;
-            page-break-inside: avoid;
+            font-size: 12px;
         }
         
         .copie-title {
             font-weight: bold;
             text-decoration: underline;
             margin-bottom: 15px;
-            font-size: 12px;
         }
         
         .copie-list {
             margin-left: 20px;
             line-height: 1.6;
-            font-size: 11px;
+        }
+
+        .verification-section {
+            text-align: center;
+            padding: 10px;
+            /* border: 2px solid #000; */
+            background-color: #fff;
+        }
+        
+        .qr-code-container {
+            margin-bottom: 8px;
+        }
+        
+        .qr-code-container img {
+            width: 150px;
+            height: 150px;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .reference-systeme {
+            font-size: 10px;
+            font-weight: bold;
+            margin-top: 8px;
+            text-align: center;
+        }
+        
+        .verification-text {
+            font-size: 8px;
+            color: #666;
+            margin-top: 5px;
+            text-align: center;
         }
 
         @media print {
@@ -133,8 +179,8 @@
                 print-color-adjust: exact;
             }
             
-            .page-break {
-                page-break-before: always;
+            .first-page-footer {
+                page-break-inside: avoid;
             }
         }
 
@@ -144,104 +190,120 @@
     </style>
 </head>
 <body>
-    <!-- En-tête officiel -->
-    <div class="header">
-        <div class="header-left">
-            <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-            <div class="header-section">Paix-Travail-Patrie</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">MINISTERE DES FINANCES</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-            <div class="header-section">LA FORMATION CONTINUE</div>
-            <div class="separator">----------------------</div>
-            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
+    <div class="first-page-container">
+        <div class="header">
+            <div class="header-left">
+                <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
+                <div class="header-section">Paix-Travail-Patrie</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">MINISTERE DES FINANCES</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
+                <div class="header-section">LA FORMATION CONTINUE</div>
+                <div class="separator">----------------------</div>
+            </div>
+            
+            <div class="header-center">
+                <% if (logoUrl) { %>
+                    <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+                <% } %>
+            </div>
+            
+            <div class="header-right">
+                <div class="header-section">REPUBLIC OF CAMEROON</div>
+                <div class="header-section">Peace-Work-Fatherland</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">MINISTRY OF FINANCE</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+                <div class="separator">----------------------</div>
+                <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+                <div class="separator">----------------------</div>
+            </div>
         </div>
         
-        <div class="header-center">
-            <% if (logoUrl) { %>
-                <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
-            <% } %>
-        </div>
-        
-        <div class="header-right">
-            <div class="header-section">REPUBLIC OF CAMEROON</div>
-            <div class="header-section">Peace-Work-Fatherland</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">MINISTRY OF FINANCE</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
-            <div class="separator">----------------------</div>
-            <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
-            <div class="separator">----------------------</div>
-            <div class="date-line">Yaoundé, le _______________</div>
-        </div>
-    </div>
-   
-    <!-- Titre du document -->
-    <div class="note-title">
-        <h3 class="document-title"><%= noteTitle %></h3>
-    </div>
-
-    <!-- Description -->
-    <% if (description) { %>
-    <div class="description">
-        <%= description %>
-    </div>
-    <% } %>
-
-    <!-- Corps du document -->
-    <div class="body-content">
-        <p class="formateurs-intro">
-            Il s'agit de Mesdames et Messieurs :
-        </p>
-
-        <div class="formateurs-list">
-            <% formateurs.forEach(function(formateur) { %>
-                <div class="formateur-item">
-                    <%= formateur.numero %>. <span class="highlight"> <%= formateur.nomComplet %></span>
-                </div>
-            <% }); %>
+        <div class="note-title">
+            <h3 class="document-title">
+                <p>Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________</p>
+                <p><%= noteTitle %></p>
+            </h3>
         </div>
 
-        <p>
-            La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
-            dûment justifiée.
-        </p>
+        <% if (description) { %>
+        <div class="description">
+            <%= description %>
+        </div>
+        <% } %>
 
-        <p>
-            Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
-            disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
-            et concernés par cette formation.
-        </p>
+        <div class="body-content">
+            <p class="formateurs-intro">
+                Il s'agit de Mesdames et Messieurs :
+            </p>
 
-        <p>
-            Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
-            présente note de service.
-        </p>
-    </div>
-
-    <!-- Section copie -->
-    <div class="copie-section">
-        <div class="copie-title">Copie pour information :</div>
-        <div class="copie-list">
-            <% if (copies && copies.length > 0) { %>
-                <% copies.forEach(function(copie) { %>
-                    <% if (copie.trim()) { %>
-                        - <%= copie.trim() %><br>
-                    <% } %>
+            <div class="formateurs-list">
+                <% formateurs.forEach(function(formateur) { %>
+                    <div class="formateur-item">
+                        <%= formateur.numero %>. <span class="highlight"><%= formateur.nomComplet %></span>
+                    </div>
                 <% }); %>
-            <% } else { %>
-                - Intéressé(e)s<br>
-                - Chefs de Service concernés<br>
-                - Archives/Chrono.
-            <% } %>
+            </div>
+
+            <p>
+                La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
+                dûment justifiée.
+            </p>
+
+            <p>
+                Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
+                disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
+                et concernés par cette formation.
+            </p>
+
+            <p>
+                Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
+                présente note de service.
+            </p>
+        </div>
+
+        <div class="first-page-footer">
+            <div class="footer-left">
+                <div class="copie-section">
+                    <div class="copie-title">Copie :</div>
+                    <div class="copie-list">
+                        <% if (copies && copies.length > 0) { %>
+                            <% copies.forEach(function(copie) { %>
+                                <% if (copie.trim()) { %>
+                                    - <%= copie.trim() %><br>
+                                <% } %>
+                            <% }); %>
+                        <% } else { %>
+                            - Intéressé(e)s<br>
+                            - Chefs de Service concernés<br>
+                            - Archives/Chrono.
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-right">
+                <div class="verification-section">
+                    <div class="qr-code-container">
+                        <img src="<%= qrCodeUrl %>" alt="QR Code de vérification">
+                    </div>
+                    <div class="reference-systeme">
+                        Réf. Système: <%= referenceSysteme %>
+                    </div>
+                    <div class="verification-text">
+                        Scanner pour vérifier l'authenticité
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </body>

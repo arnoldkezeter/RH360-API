@@ -1,19 +1,40 @@
 // routes/noteService.js
 import express from 'express';
 import { 
+    afficherVerificationNote,
     creerNoteService, 
     creerNoteServiceConvocationFormateurs, 
     creerNoteServiceConvocationParticipants, 
     creerNoteServiceStage, 
     creerNoteServiceStageGroupe, 
+    deleteNoteService, 
     genererFichesPresenceFormateurs, 
     genererFichesPresenceParticipants, 
     genererPDFNote, 
-    obtenirNotesService, 
-    validerNoteService } from '../controllers/noteServiceController.js';
+    getNotesService, 
+    telechargerNoteDeService, 
+    validerNoteService, 
+    verifierNoteService} from '../controllers/noteServiceController.js';
 import { authentificate } from '../middlewares/auth.js';
+import multer from 'multer';
+import path from 'path';
+import fs from "fs";
 
 const router = express.Router();
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(process.cwd(), 'public/uploads/notes_service');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ storage });
 
 /**
  * @route POST /api/notes-service
@@ -24,21 +45,35 @@ const router = express.Router();
  */
 router.post('/note-service/stage', authentificate, creerNoteServiceStage);
 router.post('/note-service/stage/groupe', authentificate, creerNoteServiceStageGroupe);
-router.post('/note-service/convocation/formateurs', authentificate, creerNoteServiceConvocationFormateurs);
+router.post('/convocation/formateurs', authentificate, creerNoteServiceConvocationFormateurs);
 router.post('/note-service/convocation/participants', authentificate, creerNoteServiceConvocationParticipants);
-router.post('/formations/fiches-presence/participants', authentificate, genererFichesPresenceParticipants);
+router.post('/formations/fiches-presence/participants/:lieuId', authentificate, genererFichesPresenceParticipants);
 router.post('/formations/fiches-presence/formateurs', authentificate, genererFichesPresenceFormateurs);
 
 
 router.post('/', authentificate, creerNoteService);
+router.get('/telecharger/:id', authentificate, telechargerNoteDeService);
 
+/**
+ * @route   GET /api/notes-service/verifier/:id
+ * @desc    Vérifie l'authenticité d'une note (retourne JSON)
+ * @access  Public
+ */
+router.get('/verifier/:id', verifierNoteService);
+
+/**
+ * @route   GET /api/notes-service/verification/:id
+ * @desc    Affiche une page HTML de vérification (pour scan QR code)
+ * @access  Public
+ */
+router.get('/verification/:id', afficherVerificationNote);
 /**
  * @route GET /api/notes-service
  * @desc Récupérer toutes les notes de service avec pagination
  * @access Private
  * @query page, limit, typeNote, valideParDG
  */
-router.get('/', obtenirNotesService);
+router.get('/', getNotesService);
 
 /**
  * @route GET /api/notes-service/:noteId/pdf
@@ -83,5 +118,9 @@ router.post('/convocation', async (req, res) => {
     req.body.typeNote = 'convocation';
     return creerNoteService(req, res);
 });
+
+router.delete('/:id', authentificate, deleteNoteService);
+
+router.put('/:noteId', upload.single('noteServiceFile'), authentificate, validerNoteService)
 
 export default router;

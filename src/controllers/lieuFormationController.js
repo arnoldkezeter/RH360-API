@@ -3,59 +3,132 @@ import { t } from '../utils/i18n.js';
 import ThemeFormation from '../models/ThemeFormation.js';
 import { LieuFormation } from '../models/LieuFormation.js';
 import FamilleMetier from '../models/FamilleMetier.js';
+import PosteDeTravail from '../models/PosteDeTravail.js';
+import Structure from '../models/Structure.js';
+import Service from '../models/Service.js';
 
 /**
- * Valide que tous les IDs de familles de métier existent
+ * Vérifie si un ID est valide
  */
-const validateFamillesMetier = async (familleIds, lang) => {
-    if (!Array.isArray(familleIds) || familleIds.length === 0) {
-        return { valid: true }; // Pas de familles à valider
+const isValidObjectId = (id) => {
+    return mongoose.Types.ObjectId.isValid(id);
+};
+
+/**
+ * Valide et formate la structure participants (même logique que publicCible)
+ */
+const validateAndFormatParticipants = async (participants, lang) => {
+    const formatted = [];
+
+    if (!participants) return { ok: true, data: [] };
+
+    if (!Array.isArray(participants)) {
+        return { ok: false, message: t('identifiant_invalide', lang) };
     }
 
-    // Vérifier que tous les IDs sont valides
-    const invalidIds = familleIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
-    if (invalidIds.length > 0) {
-        return {
-            valid: false,
-            message: t('identifiant_invalide', lang) + ': ' + invalidIds.join(', ')
-        };
+    // Validation de l'existence des familles de métier
+    for (const fam of participants) {
+        const famId = fam?.familleMetier?._id || fam?.familleMetier;
+        if (!isValidObjectId(famId)) {
+            return { ok: false, message: t('identifiant_invalide', lang) };
+        }
+
+        // Vérifier que la famille de métier existe
+        const familleExists = await FamilleMetier.findById(famId);
+        if (!familleExists) {
+            return { ok: false, message: `Famille de métier ${famId} introuvable` };
+        }
+
+        const famObj = { familleMetier: famId, postes: [] };
+
+        if (Array.isArray(fam.postes)) {
+            for (const pos of fam.postes) {
+                const posId = pos?.poste?._id || pos?.poste;
+                if (!isValidObjectId(posId)) {
+                    return { ok: false, message: t('identifiant_invalide', lang) };
+                }
+
+                // Vérifier que le poste existe ET appartient à la famille
+                const poste = await PosteDeTravail.findById(posId);
+                if (!poste) {
+                    return { ok: false, message: `Poste de travail ${posId} introuvable` };
+                }
+                
+                // Vérifier que le poste appartient bien à cette famille
+                const appartientALaFamille = poste.famillesMetier.some(
+                    fm => fm.toString() === famId.toString()
+                );
+                if (!appartientALaFamille) {
+                    return { 
+                        ok: false, 
+                        message: `Le poste ${posId} n'appartient pas à la famille de métier ${famId}` 
+                    };
+                }
+
+                const postObj = { poste: posId, structures: [] };
+
+                if (Array.isArray(pos.structures)) {
+                    for (const st of pos.structures) {
+                        const structId = st?.structure?._id || st?.structure;
+                        if (!isValidObjectId(structId)) {
+                            return { ok: false, message: t('identifiant_invalide', lang) };
+                        }
+
+                        // Vérifier que la structure existe
+                        const structureExists = await Structure.findById(structId);
+                        if (!structureExists) {
+                            return { ok: false, message: `Structure ${structId} introuvable` };
+                        }
+
+                        const structObj = { structure: structId, services: [] };
+
+                        if (Array.isArray(st.services)) {
+                            for (const serv of st.services) {
+                                const servId = serv?.service?._id || serv?.service;
+                                if (!isValidObjectId(servId)) {
+                                    return { ok: false, message: t('identifiant_invalide', lang) };
+                                }
+
+                                // Vérifier que le service existe ET appartient à la structure
+                                const service = await Service.findById(servId);
+                                if (!service) {
+                                    return { ok: false, message: `Service ${servId} introuvable` };
+                                }
+                                if (service.structure.toString() !== structId.toString()) {
+                                    return { 
+                                        ok: false, 
+                                        message: `Le service ${servId} n'appartient pas à la structure ${structId}` 
+                                    };
+                                }
+
+                                structObj.services.push({ service: servId });
+                            }
+                        }
+
+                        postObj.structures.push(structObj);
+                    }
+                }
+
+                famObj.postes.push(postObj);
+            }
+        }
+
+        formatted.push(famObj);
     }
 
-    // Vérifier que toutes les familles existent
-    const existingFamilles = await FamilleMetier.find({
-        _id: { $in: familleIds }
-    }).select('_id');
-
-    const existingIds = existingFamilles.map(f => f._id.toString());
-    const missingIds = familleIds.filter(id => !existingIds.includes(id.toString()));
-
-    if (missingIds.length > 0) {
-        return {
-            valid: false,
-            message: t('famille_metier_non_trouvee', lang) + ': ' + missingIds.join(', ')
-        };
-    }
-
-    return { valid: true };
+    return { ok: true, data: formatted };
 };
 
 /**
  * Valide que les participants sont cohérents avec le public cible du thème
- * @param {Array} participantFamilleIds - IDs des familles de métier des participants
- * @param {String} themeId - ID du thème de formation
- * @param {String} lang - Langue
- * @returns {Object} { valid: boolean, message?: string }
  */
-const validateParticipantsAgainstPublicCible = async (participantFamilleIds, themeId, lang) => {
-    if (!participantFamilleIds || participantFamilleIds.length === 0) {
-        return { valid: true }; // Pas de participants à valider
+const validateParticipantsAgainstPublicCible = async (participantsFormatted, themeId, lang) => {
+    if (!participantsFormatted || participantsFormatted.length === 0) {
+        return { valid: true };
     }
 
     // Récupérer le thème avec son public cible
-    const theme = await ThemeFormation.findById(themeId)
-        .populate('publicCible.familleMetier')
-        .lean();
-
+    const theme = await ThemeFormation.findById(themeId).lean();
     if (!theme) {
         return {
             valid: false,
@@ -69,11 +142,14 @@ const validateParticipantsAgainstPublicCible = async (participantFamilleIds, the
     }
 
     // Extraire les IDs des familles ciblées par le thème
-    const famillesCiblees = theme.publicCible.map(pc => pc.familleMetier._id.toString());
+    const famillesCiblees = theme.publicCible.map(pc => pc.familleMetier.toString());
+
+    // Extraire les IDs des familles dans participants
+    const famillesParticipants = participantsFormatted.map(p => p.familleMetier.toString());
 
     // Vérifier que tous les participants font partie du public cible
-    const participantsHorsCible = participantFamilleIds.filter(
-        famId => !famillesCiblees.includes(famId.toString())
+    const participantsHorsCible = famillesParticipants.filter(
+        famId => !famillesCiblees.includes(famId)
     );
 
     if (participantsHorsCible.length > 0) {
@@ -93,20 +169,14 @@ export const ajouterLieuFormation = async (req, res) => {
     const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
 
     // Vérif des champs obligatoires
-    if (
-        !lieu ||
-        (
-            (!Array.isArray(cohortes) || cohortes.length === 0) &&
-            (!Array.isArray(participants) || participants.length === 0)
-        )
-    ) {
+    if (!lieu || !participants || participants.length === 0) {
         return res.status(400).json({
             success: false,
-            message: t('champs_obligatoires', lang) + ' (participants ou cohortes requis)',
+            message: t('champs_obligatoires', lang),
         });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+    if (!isValidObjectId(themeId)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
@@ -122,27 +192,36 @@ export const ajouterLieuFormation = async (req, res) => {
             });
         }
 
-        // ✅ VALIDATION 1: Vérifier que les familles de métier existent
-        if (participants && participants.length > 0) {
-            const participantsIds = participants.map(participant => participant._id);
-            const validationFamilles = await validateFamillesMetier(participantsIds, lang);
-            if (!validationFamilles.valid) {
-                return res.status(400).json({
-                    success: false,
-                    message: validationFamilles.message,
-                });
-            }
+        // Validation ASYNCHRONE des participants
+        const validationParticipants = await validateAndFormatParticipants(participants, lang);
+        if (!validationParticipants.ok) {
+            return res.status(400).json({
+                success: false,
+                message: validationParticipants.message,
+            });
+        }
+        const participantsFormatted = validationParticipants.data;
 
-            // ✅ VALIDATION 2: Vérifier que les participants sont dans le public cible
-            const validationPublicCible = await validateParticipantsAgainstPublicCible(
-                participantsIds,
-                themeId,
-                lang
-            );
-            if (!validationPublicCible.valid) {
+        // Vérifier que les participants sont dans le public cible
+        const validationPublicCible = await validateParticipantsAgainstPublicCible(
+            participantsFormatted,
+            themeId,
+            lang
+        );
+        if (!validationPublicCible.valid) {
+            return res.status(400).json({
+                success: false,
+                message: validationPublicCible.message,
+            });
+        }
+
+        // Valider les cohortes si fournies
+        if (cohortes && Array.isArray(cohortes)) {
+            const invalidCohortes = cohortes.filter(id => !isValidObjectId(id));
+            if (invalidCohortes.length > 0) {
                 return res.status(400).json({
                     success: false,
-                    message: validationPublicCible.message,
+                    message: t('identifiant_invalide', lang) + ': cohortes',
                 });
             }
         }
@@ -150,7 +229,7 @@ export const ajouterLieuFormation = async (req, res) => {
         const nouveauLieu = new LieuFormation({
             lieu,
             cohortes: cohortes || [],
-            participants: participants || [],
+            participants: participantsFormatted,
             dateDebut: dateDebut || null,
             dateFin: dateFin || null,
             theme: themeId,
@@ -163,10 +242,10 @@ export const ajouterLieuFormation = async (req, res) => {
                 path: 'cohortes',
                 select: 'nomFr nomEn participants',
             })
-            .populate({
-                path: 'participants',
-                select: 'nomFr nomEn descriptionFr descriptionEn',
-            })
+            .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
             .lean();
 
         return res.status(201).json({
@@ -191,20 +270,14 @@ export const modifierLieuFormation = async (req, res) => {
     const { lieu, cohortes, participants, dateDebut, dateFin, dateDebutEffective, dateFinEffective } = req.body;
 
     // Vérif des champs obligatoires
-    if (
-        !lieu ||
-        (
-            (!Array.isArray(cohortes) || cohortes.length === 0) &&
-            (!Array.isArray(participants) || participants.length === 0)
-        )
-    ) {
+    if (!lieu || !participants || participants.length === 0) {
         return res.status(400).json({
             success: false,
-            message: t('champs_obligatoires', lang) + ' (participants ou cohortes requis)',
+            message: t('champs_obligatoires', lang),
         });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(lieuId)) {
+    if (!isValidObjectId(lieuId)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
@@ -220,33 +293,43 @@ export const modifierLieuFormation = async (req, res) => {
             });
         }
 
-        // ✅ VALIDATION 1: Vérifier que les familles de métier existent
-        if (participants && participants.length > 0) {
-            const validationFamilles = await validateFamillesMetier(participants, lang);
-            if (!validationFamilles.valid) {
-                return res.status(400).json({
-                    success: false,
-                    message: validationFamilles.message,
-                });
-            }
+        // Validation ASYNCHRONE des participants
+        const validationParticipants = await validateAndFormatParticipants(participants, lang);
+        if (!validationParticipants.ok) {
+            return res.status(400).json({
+                success: false,
+                message: validationParticipants.message,
+            });
+        }
+        const participantsFormatted = validationParticipants.data;
 
-            // ✅ VALIDATION 2: Vérifier que les participants sont dans le public cible
-            const validationPublicCible = await validateParticipantsAgainstPublicCible(
-                participants,
-                lieuFormation.theme._id,
-                lang
-            );
-            if (!validationPublicCible.valid) {
+        // Vérifier que les participants sont dans le public cible
+        const validationPublicCible = await validateParticipantsAgainstPublicCible(
+            participantsFormatted,
+            lieuFormation.theme._id,
+            lang
+        );
+        if (!validationPublicCible.valid) {
+            return res.status(400).json({
+                success: false,
+                message: validationPublicCible.message,
+            });
+        }
+
+        // Valider les cohortes si fournies
+        if (cohortes && Array.isArray(cohortes)) {
+            const invalidCohortes = cohortes.filter(id => !isValidObjectId(id));
+            if (invalidCohortes.length > 0) {
                 return res.status(400).json({
                     success: false,
-                    message: validationPublicCible.message,
+                    message: t('identifiant_invalide', lang) + ': cohortes',
                 });
             }
         }
 
         lieuFormation.lieu = lieu;
         lieuFormation.cohortes = cohortes || [];
-        lieuFormation.participants = participants || [];
+        lieuFormation.participants = participantsFormatted;
         lieuFormation.dateDebut = dateDebut || null;
         lieuFormation.dateFin = dateFin || null;
         lieuFormation.dateDebutEffective = dateDebutEffective || null;
@@ -259,10 +342,10 @@ export const modifierLieuFormation = async (req, res) => {
                 path: 'cohortes',
                 select: 'nomFr nomEn participants',
             })
-            .populate({
-                path: 'participants',
-                select: 'nomFr nomEn descriptionFr descriptionEn',
-            })
+            .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
             .lean();
 
         return res.status(200).json({
@@ -285,7 +368,7 @@ export const supprimerLieuFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { lieuId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(lieuId)) {
+    if (!isValidObjectId(lieuId)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
@@ -315,7 +398,6 @@ export const supprimerLieuFormation = async (req, res) => {
     }
 };
 
-
 // Lister les lieux de formation (avec pagination) pour un thème
 export const getLieuxFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -324,7 +406,7 @@ export const getLieuxFormation = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
-    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+    if (!isValidObjectId(themeId)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
@@ -342,25 +424,25 @@ export const getLieuxFormation = async (req, res) => {
                 path: 'cohortes',
                 select: 'nomFr nomEn participants',
             })
-            .populate({
-                path: 'participants',
-                select: 'nomFr nomEn',
-            })
+            .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
             .lean();
 
             // Retourner le tableau, vide si pas de résultat
             return res.status(200).json({
                 success: true,
                 data: {
-                  lieuFormations: lieuxTrouves,
-                  totalItems: lieuxTrouves.length,
-                  currentPage: 1,
-                  totalPages: 1,
-                  pageSize: lieuxTrouves.length,
+                    lieuFormations: lieuxTrouves,
+                    totalItems: lieuxTrouves.length,
+                    currentPage: 1,
+                    totalPages: 1,
+                    pageSize: lieuxTrouves.length,
                 },
             });
         } else {
-        // Pas de recherche, retour paginé
+            // Pas de recherche, retour paginé
             const total = await LieuFormation.countDocuments({ theme: themeId });
 
             const lieux = await LieuFormation.find({ theme: themeId })
@@ -368,14 +450,14 @@ export const getLieuxFormation = async (req, res) => {
                     path: 'cohortes',
                     select: 'nomFr nomEn participants',
                 })
-                .populate({
-                    path: 'participants',
-                    select: 'nomFr nomEn',
-
-                })
+                .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
+                .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
+                .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
+                .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean();
+
             return res.status(200).json({
                 success: true,
                 data: {
@@ -388,39 +470,126 @@ export const getLieuxFormation = async (req, res) => {
             });
         }
     } catch (error) {
+        console.error('Erreur getLieuxFormation:', error);
         return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: error.message,
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: error.message,
         });
     }
 };
-
 
 // Lister les lieux de formation pour un dropdown (sans pagination, juste _id et lieu)
 export const getLieuxDropdown = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { themeId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+    if (!isValidObjectId(themeId)) {
         return res.status(400).json({
-        success: false,
-        message: t('identifiant_invalide', lang),
+            success: false,
+            message: t('identifiant_invalide', lang),
         });
     }
 
     try {
         const lieux = await LieuFormation.find({ theme: themeId })
-        .select('_id lieu')
-        .lean();
+            .select('_id lieu')
+            .lean();
 
         return res.status(200).json({
-        success: true,
-        data: {
-                lieuFormations:lieux
+            success: true,
+            data: {
+                lieuFormations: lieux
             },
         });
     } catch (error) {
+        console.error('Erreur getLieuxDropdown:', error);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * Obtenir les utilisateurs ciblés par un lieu de formation
+ */
+export const getParticipantsCibles = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { lieuId } = req.params;
+
+    if (!isValidObjectId(lieuId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const lieu = await LieuFormation.findById(lieuId);
+        if (!lieu) {
+            return res.status(404).json({
+                success: false,
+                message: t('lieu_non_trouve', lang),
+            });
+        }
+
+        // Utiliser la méthode du modèle pour résoudre les utilisateurs
+        const utilisateursCibles = await lieu.resolveTargetedUsers();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                utilisateurs: utilisateursCibles,
+                nombre: utilisateursCibles.length
+            },
+        });
+    } catch (error) {
+        console.error('Erreur getParticipantsCibles:', error);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * Obtenir les statistiques des participants par famille de métier
+ */
+export const getParticipantsStats = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { lieuId } = req.params;
+
+    if (!isValidObjectId(lieuId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const lieu = await LieuFormation.findById(lieuId);
+        if (!lieu) {
+            return res.status(404).json({
+                success: false,
+                message: t('lieu_non_trouve', lang),
+            });
+        }
+
+        // Utiliser la méthode du modèle pour obtenir les stats
+        const stats = await lieu.getParticipantsStats();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                statistiques: stats,
+                total: stats.reduce((sum, s) => sum + s.nombreParticipants, 0)
+            },
+        });
+    } catch (error) {
+        console.error('Erreur getParticipantsStats:', error);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),

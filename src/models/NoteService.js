@@ -2,10 +2,18 @@
 import mongoose from 'mongoose';
 
 const noteServiceSchema = new mongoose.Schema({
+    reference: {type:String},
     theme: {type: mongoose.Schema.Types.ObjectId, ref: 'ThemeFormation'},
     stage: {type: mongoose.Schema.Types.ObjectId, ref: 'Stage'},
     mandat: {type: mongoose.Schema.Types.ObjectId, ref: 'StageRecherche'},
-    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat"]},
+    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat", "fiche_presence"]},
+    sousTypeConvocation: {
+        type: String,
+        enum: ['participants', 'formateurs'],
+        required: function() {
+            return this.typeNote === 'convocation';
+        }
+    },
     titreFr:{type:String},
     titreEn:{type:String},
     descriptionFr:{type:String},
@@ -17,7 +25,8 @@ const noteServiceSchema = new mongoose.Schema({
     personnesResponsables:{type:String},
     fichierJoint :  {type:String},// note signée scannée
     creePar:{type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
-    valideParDG: {type:Boolean}
+    valideParDG: {type:Boolean},
+    filePath:{type:String}
 }, { timestamps: true });
 
 const NoteService = mongoose.model('NoteService', noteServiceSchema);

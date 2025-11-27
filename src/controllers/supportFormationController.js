@@ -213,7 +213,7 @@ export const deleteSupportFormation = async (req, res) => {
                 message: t('support_non_trouve', lang),
             });
         }
-
+        const uploadsDir = path.join(process.cwd(), 'public/uploads/supports');
         if (support.fichier) {
             const nomFichier = path.basename(support.fichier); 
             const fichierPhysique = path.join(uploadsDir, nomFichier);

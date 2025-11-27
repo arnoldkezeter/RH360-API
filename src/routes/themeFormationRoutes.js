@@ -9,6 +9,7 @@ import {
   getThemeFormationsForDropdown,
   getThemesByFamilleMetier,
   getFilteredThemes,
+  invitation,
 } from '../controllers/themeFormationController.js';
 import { validateFields } from '../middlewares/validateFields/validateTheme.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -16,6 +17,7 @@ import { authentificate } from '../middlewares/auth.js';
 
 const router = express.Router();
 
+router.post('/:themeId/invitation', authentificate, invitation);
 router.post('/', validateFields, authentificate, createThemeFormation);
 
 router.put('/:id', validateFields, authentificate, updateThemeFormation);

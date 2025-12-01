@@ -5,7 +5,7 @@
     <title><%= documentTitle %></title>
     <style>
         @page {
-            margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+            margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4 landscape;
         }
         
@@ -13,7 +13,7 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 14px;
+            font-size: 16px;
             line-height: 1.4;
             color: #000;
         }
@@ -25,62 +25,54 @@
         .page-container:last-child {
             page-break-after: auto;
         }
-        
+
+        /* HEADER */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 0;
-            margin-bottom: 30px;
-            min-height: 100px;
+            margin-bottom: 40px;
         }
         
         .header-left, .header-right {
             width: 40%;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: bold;
             text-align: center;
-            line-height: 1.2;
         }
         
         .header-center {
-            text-align: center;
             width: 20%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
         }
         
         .header-center img {
-            max-width: 80px;
-            height: auto;
+            max-width: 90px;
         }
-        
+
         .separator {
-            margin: 2px 0;
-            color: #000;
+            margin: 3px 0;
         }
-        
+
         .header-section {
-            margin-bottom: 1px;
+            margin-bottom: 2px;
         }
-        
+
+        /* TITRE */
         .fiche-title {
             text-align: center;
-            margin: 20px 0 10px 0;
+            margin-bottom: 20px;
         }
-        
+
         .document-title {
-            text-align: center;
-            font-size: 15px;
+            font-size: 17px;
             font-weight: bold;
-            color: #000;
             text-decoration: underline;
             text-transform: uppercase;
         }
 
         .lieu-content {
-            margin: 20px 1cm;
+            margin: 20px 0;
         }
 
         .lieu-header {
@@ -88,14 +80,14 @@
         }
 
         .lieu-nom {
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
             color: #2c3e50;
             margin-bottom: 5px;
         }
 
         .lieu-periode {
-            font-size: 14px;
+            font-size: 16px;
             color: #555;
             font-style: italic;
         }
@@ -113,13 +105,13 @@
             border: 1px solid #000;
             font-weight: bold;
             text-align: center;
-            font-size: 14px;
+            font-size: 16px;
         }
 
         .presence-table td {
             padding: 10px 5px;
             border: 1px solid #000;
-            font-size: 14px;
+            font-size: 16px;
         }
 
         .presence-table td.numero {
@@ -170,7 +162,7 @@
 
         .stats {
             margin-top: 10px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
             text-align: right;
             padding-right: 20px;
@@ -180,48 +172,46 @@
 <body>
     <% lieux.forEach(function(lieu, indexLieu) { %>
         <div class="page-container">
-            <!-- En-tête officiel (répété pour chaque lieu) -->
+            <!-- HEADER -->
             <div class="header">
                 <div class="header-left">
-                    <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-                    <div class="header-section">Paix-Travail-Patrie</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">MINISTERE DES FINANCES</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-                    <div class="header-section">LA FORMATION CONTINUE</div>
+                    REPUBLIQUE DU CAMEROUN<br>
+                    Paix - Travail - Patrie<br>
+                    ----------------------<br>
+                    MINISTERE DES FINANCES<br>
+                    ----------------------<br>
+                    DIRECTION GENERALE DES IMPOTS<br>
+                    ----------------------<br>
+                    DIRECTION DES AFFAIRES GENERALES<br>
+                    ----------------------<br>
+                    CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE
                 </div>
                 
                 <div class="header-center">
                     <% if (logoUrl) { %>
-                        <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+                        <img src="<%= logoUrl %>" alt="Armoiries">
                     <% } %>
                 </div>
                 
                 <div class="header-right">
-                    <div class="header-section">REPUBLIC OF CAMEROON</div>
-                    <div class="header-section">Peace-Work-Fatherland</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">MINISTRY OF FINANCE</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
-                    <div class="separator">----------------------</div>
-                    <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+                    REPUBLIC OF CAMEROON<br>
+                    Peace - Work - Fatherland<br>
+                    ----------------------<br>
+                    MINISTRY OF FINANCE<br>
+                    ----------------------<br>
+                    DIRECTORATE GENERAL OF TAXATION<br>
+                    ----------------------<br>
+                    DEPARTMENT OF GENERAL AFFAIRS<br>
+                    ----------------------<br>
+                    TRAINING AND SKILLS PERFECTION UNIT
                 </div>
             </div>
 
-            <!-- Titre de la fiche -->
+            <!-- TITRE -->
             <div class="fiche-title">
                 <h3 class="document-title">FICHE DE PRESENCE DES PARTICIPANTS</h3>
             </div>
 
-            <!-- Contenu du lieu -->
             <div class="lieu-content">
                 <div class="lieu-header">
                     <div class="lieu-nom">Formation : <%= themeLibelle %></div>
@@ -230,7 +220,6 @@
                     <div class="lieu-nom">Journée du <%= journee %></div>
                 </div>
 
-                <!-- Tableau des participants -->
                 <table class="presence-table">
                     <thead>
                         <tr>

@@ -5,7 +5,7 @@
     <title><%= documentTitle %></title>
     <style>
         @page {
-            margin: 2cm 2cm 2cm 2cm;
+            margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4;
         }
         
@@ -13,18 +13,17 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 12px;
-            line-height: 1.6;
+            font-size: 16px;
+            line-height: 1.4;
             color: #000;
         }
-        
+
+        /* HEADER */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 0;
             margin-bottom: 40px;
-            min-height: 120px;
         }
         
         .header-left, .header-right {
@@ -32,66 +31,56 @@
             font-size: 10px;
             font-weight: bold;
             text-align: center;
-            line-height: 1.2;
         }
         
         .header-center {
-            text-align: center;
             width: 20%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
         }
         
         .header-center img {
-            max-width: 100px;
-            height: auto;
+            max-width: 90px;
         }
-        
+
         .separator {
             margin: 3px 0;
-            color: #000;
         }
-        
+
         .header-section {
             margin-bottom: 2px;
         }
-        
+
+        /* TITRE */
         .note-title {
             text-align: center;
-            margin: 50px 0 20px 0;
+            margin-bottom: 20px;
         }
-        
+
         .document-title {
-            text-align: center;
-            font-size: 15px;
+            font-size: 17px;
             font-weight: bold;
-            color: #000;
-            line-height: 1.3;
+            margin-bottom: 20px;
+            line-height: 1.4;
         }
 
         .document-title p {
             margin: 5px 0;
         }
 
+        /* CONTENU */
         .body-content {
             text-align: justify;
-            line-height: 1.8;
-            margin: 0 1cm;
-            font-size: 14px;
+            line-height: 1.5;
+            font-size: 16px;
         }
         
         .body-content p {
-            text-indent: 1.5cm;
-            margin-bottom: 15px;
-        }
-        
-        .body-content p:first-child {
-            text-indent: 1.5cm;
+            text-indent: 1.2cm;
+            margin-bottom: 12px;
         }
 
         .rotations-section {
-            margin: 20px 1cm;
+            margin: 20px 0;
             padding: 15px;
             border: 1px solid #000;
             background-color: #f9f9f9;
@@ -102,14 +91,14 @@
             margin-bottom: 15px;
             text-align: center;
             text-decoration: underline;
-            font-size: 14px;
+            font-size: 16px;
         }
 
         .rotation-item {
             margin: 10px 0;
             padding-left: 20px;
             line-height: 1.6;
-            font-size: 12px;
+            font-size: 16px;
         }
 
         .rotation-periode {
@@ -120,85 +109,53 @@
             margin-left: 10px;
         }
 
-        .first-page-container {
-            position: relative;
-            min-height: calc(297mm - 4cm);
-        }
-
-        /* CORRECTION: align-items: flex-start pour aligner les deux colonnes par le haut */
-        .first-page-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start; /* MODIFICATION ICI pour aligner par le haut */
-            margin-top: 60px;
-            page-break-inside: avoid;
-        }
-
-        .footer-left {
-            flex: 1;
-            margin-left: 1cm;
-        }
-
-        .footer-right {
-            flex: 0 0 200px;
-            margin-right: 1cm;
-        }
-
+        /* COPIE */
         .copie-section {
-            font-size: 14px;
+            margin-top: 40px;
+            page-break-inside: avoid;
+            font-size: 16px;
         }
-        
+
         .copie-title {
             font-weight: bold;
             text-decoration: underline;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
-        
+
         .copie-list {
             margin-left: 20px;
             line-height: 1.6;
         }
 
+        /* QR CODE sous la section copie */
         .verification-section {
+            margin-top: 20px;
+            width: 150px;
             text-align: center;
-            padding: 10px;
-            /* border: 2px solid #000; */
-            background-color: #fff;
+            page-break-inside: avoid;
         }
-        
-        .qr-code-container {
-            margin-bottom: 8px;
-        }
-        
+
         .qr-code-container img {
-            width: 130px;
-            height: 130px;
-            display: block;
-            margin: 0 auto;
+            width: 85px;
+            height: 85px;
         }
-        
+
         .reference-systeme {
             font-size: 10px;
             font-weight: bold;
-            margin-top: 8px;
-            text-align: center;
+            margin-top: 5px;
         }
-        
+
         .verification-text {
             font-size: 8px;
-            color: #666;
-            margin-top: 5px;
-            text-align: center;
+            color: #555;
+            margin-top: 3px;
         }
 
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-            }
-            
-            .first-page-footer {
-                page-break-inside: avoid;
             }
         }
 
@@ -208,120 +165,118 @@
     </style>
 </head>
 <body>
-    <div class="first-page-container">
-        <div class="header">
-            <div class="header-left">
-                <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-                <div class="header-section">Paix-Travail-Patrie</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTERE DES FINANCES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-                <div class="header-section">LA FORMATION CONTINUE</div>
-                <div class="separator">----------------------</div>
-            </div>
-            
-            <div class="header-center">
-                <% if (logoUrl) { %>
-                    <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
-                <% } %>
-            </div>
-            
-            <div class="header-right">
-                <div class="header-section">REPUBLIC OF CAMEROON</div>
-                <div class="header-section">Peace-Work-Fatherland</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTRY OF FINANCE</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
-                <div class="separator">----------------------</div>
-            </div>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            REPUBLIQUE DU CAMEROUN<br>
+            Paix - Travail - Patrie<br>
+            ----------------------<br>
+            MINISTERE DES FINANCES<br>
+            ----------------------<br>
+            DIRECTION GENERALE DES IMPOTS<br>
+            ----------------------<br>
+            DIRECTION DES AFFAIRES GENERALES<br>
+            ----------------------<br>
+            CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+            ----------------------
         </div>
+
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries">
+            <% } %>
+        </div>
+
+        <div class="header-right">
+            REPUBLIC OF CAMEROON<br>
+            Peace - Work - Fatherland<br>
+            ----------------------<br>
+            MINISTRY OF FINANCE<br>
+            ----------------------<br>
+            DIRECTORATE GENERAL OF TAXATION<br>
+            ----------------------<br>
+            DEPARTMENT OF GENERAL AFFAIRS<br>
+            ----------------------<br>
+            TRAINING AND SKILLS PERFECTION UNIT<br>
+            ----------------------
+        </div>
+    </div>
+
+    <!-- TITRE -->
+    <div class="note-title">
+        <h3 class="document-title">
+            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+            <%= noteTitle %>
+        </h3>
+    </div>
+
+    <!-- CONTENU -->
+    <div class="body-content">        
+        <p>
+            <span class="highlight"><%= userSexe %> <%= userFullName %></span>, <%= etudiant %> en
+            <%= niveau %> de la filière <%= filiere %> à <span class="highlight"><%= userUniversity %></span>,
+            est <%= mise %> en stage académique auprès des structures de la Direction Générale des Impôts 
+            du <%= dateDebutStage %> au <%= dateFinStage %>, suivant le calendrier ci-après :
+        </p>
+    </div>
+
+    <div class="rotations-section">
+        <div class="rotations-title">CALENDRIER DES ROTATIONS</div>
+        <% rotations.forEach(function(rotation) { %>
+            <div class="rotation-item">
+                <span class="rotation-periode">- <%= rotation.periode %> :</span>
+                <span class="rotation-service"><%= rotation.service %></span>
+            </div>
+        <% }); %>
+    </div>
+
+    <div class="body-content">
+        <p>
+            Chaque Chef de Service accueillant <%= stagiaire %> désignera un tuteur pour l'encadrement 
+            et le suivi <%= leditStagiaire %> durant la période de rotation dans son service.
+        </p>
         
-        <div class="note-title">
-            <h3 class="document-title">
-                <p>Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________</p>
-                <p><%= noteTitle %></p>
-            </h3>
+        <p>
+            A l'issue de la période de stage, <%= stagiaire %> soumettra au Directeur Général des Impôts 
+            un rapport global y afférent.
+        </p>
+        
+        <p>
+            <%= directeursEnCharge %> sont chargés, chacun en ce qui le concerne, de la mise en œuvre 
+            des termes de la présente note de service.
+        </p>
+    </div>
+
+    <!-- SECTION COPIE -->
+    <div class="copie-section">
+        <div class="copie-title">Copie :</div>
+        <div class="copie-list">
+            <% if (copies && copies.length > 0) { %>
+                <% copies.forEach(function(copie) { %>
+                    <% if (copie.trim()) { %>
+                        - <%= copie.trim() %><br>
+                    <% } %>
+                <% }); %>
+            <% } else { %>
+                - Intéressé(e)<br>
+                - Directeurs concernés<br>
+                - Archives/Chrono.
+            <% } %>
+        </div>
+    </div>
+
+    <!-- QR CODE sous la copie -->
+    <div class="verification-section">
+        <div class="qr-code-container">
+            <img src="<%= qrCodeUrl %>" alt="QR Code">
         </div>
 
-        <div class="body-content">        
-            <p>
-                <span class="highlight"><%= userSexe %> <%= userFullName %></span>, <%= etudiant %> en
-                <%= niveau %> de la filière <%= filiere %> à <span class="highlight"><%= userUniversity %></span>,
-                est <%= mise %> en stage académique auprès des structures de la Direction Générale des Impôts 
-                du <%= dateDebutStage %> au <%= dateFinStage %>, suivant le calendrier ci-après :
-            </p>
+        <div class="reference-systeme">
+            Réf. Système : <%= referenceSysteme %>
         </div>
 
-        <div class="rotations-section">
-            <div class="rotations-title">CALENDRIER DES ROTATIONS</div>
-            <% rotations.forEach(function(rotation) { %>
-                <div class="rotation-item">
-                    <span class="rotation-periode">- <%= rotation.periode %> :</span>
-                    <span class="rotation-service"><%= rotation.service %></span>
-                </div>
-            <% }); %>
-        </div>
-
-        <div class="body-content">
-            <p>
-                Chaque Chef de Service accueillant <%= stagiaire %> désignera un tuteur pour l'encadrement 
-                et le suivi <%= leditStagiaire %> durant la période de rotation dans son service.
-            </p>
-            
-            <p>
-                A l'issue de la période de stage, <%= stagiaire %> soumettra au Directeur Général des Impôts 
-                un rapport global y afférent.
-            </p>
-            
-            <p>
-                <%= directeursEnCharge %> sont chargés, chacun en ce qui le concerne, de la mise en œuvre 
-                des termes de la présente note de service.
-            </p>
-        </div>
-
-        <div class="first-page-footer">
-            <div class="footer-left">
-                <div class="copie-section">
-                    <div class="copie-title">Copie :</div>
-                    <div class="copie-list">
-                        <% if (copies && copies.length > 0) { %>
-                            <% copies.forEach(function(copie) { %>
-                                <% if (copie.trim()) { %>
-                                    - <%= copie.trim() %><br>
-                                <% } %>
-                            <% }); %>
-                        <% } else { %>
-                            - Intéressé(e)<br>
-                            - Directeurs concernés<br>
-                            - Archives/Chrono.
-                        <% } %>
-                    </div>
-                </div>
-            </div>
-
-            <div class="footer-right">
-                <div class="verification-section">
-                    <div class="qr-code-container">
-                        <img src="<%= qrCodeUrl %>" alt="QR Code de vérification">
-                    </div>
-                    <div class="reference-systeme">
-                        Réf. Système: <%= referenceSysteme %>
-                    </div>
-                    <div class="verification-text">
-                        Scanner pour vérifier l'authenticité
-                    </div>
-                </div>
-            </div>
+        <div class="verification-text">
+            Scanner pour vérifier l'authenticité
         </div>
     </div>
 </body>

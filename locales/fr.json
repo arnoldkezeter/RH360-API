@@ -308,7 +308,8 @@
     "pdf_ref_non_correspondance": "La référence ne correspond pas. Attendue: %{referenceAttendue}, Trouvée: %{referenceExtraite}.",
     "pdf_erreur_validation_generique": "Erreur lors de la validation: %{errorDetail}",
     "reference_attendue_manquante": "La référence attendue pour ce stage est manquante dans la base de données.",
-    "reference_pdf_invalide": "La référence trouvée dans le PDF ne correspond pas à la référence attendue."
+    "reference_pdf_invalide": "La référence trouvée dans le PDF ne correspond pas à la référence attendue.",
+    "note_service_deja_validee_DG":"Impossible de supprimer cette note car elle a déjà été validée."
     
 }
   

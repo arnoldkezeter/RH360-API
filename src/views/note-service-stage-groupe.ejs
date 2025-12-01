@@ -5,7 +5,7 @@
     <title><%= documentTitle %></title>
     <style>
         @page {
-            margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+            margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4;
         }
         
@@ -13,18 +13,17 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 12px;
-            line-height: 1.6;
+            font-size: 16px;
+            line-height: 1.4;
             color: #000;
         }
-        
+
+        /* HEADER */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 0;
-            margin-bottom: 30px;
-            min-height: 100px;
+            margin-bottom: 40px;
         }
         
         .header-left, .header-right {
@@ -32,54 +31,48 @@
             font-size: 10px;
             font-weight: bold;
             text-align: center;
-            line-height: 1.2;
         }
         
         .header-center {
-            text-align: center;
             width: 20%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
         }
         
         .header-center img {
-            max-width: 80px;
-            height: auto;
+            max-width: 90px;
         }
-        
+
         .separator {
-            margin: 2px 0;
-            color: #000;
+            margin: 3px 0;
         }
-        
+
         .header-section {
-            margin-bottom: 1px;
+            margin-bottom: 2px;
         }
-        
+
+        /* TITRE */
         .note-title {
             text-align: center;
-            margin: 20px 0 10px 0;
+            margin-bottom: 20px;
         }
-        
+
         .document-title {
-            text-align: center;
-            font-size: 15px;
+            font-size: 17px;
             font-weight: bold;
-            color: #000;
-            line-height: 1.3;
+            margin-bottom: 20px;
+            line-height: 1.4;
         }
-        
+
         .document-title p {
             margin: 5px 0;
         }
 
         .description {
             text-align: justify;
-            margin: 20px 2cm;
+            margin: 20px 0;
             font-style: italic;
-            line-height: 1.6;
-            font-size: 12px;
+            line-height: 1.5;
+            font-size: 16px;
         }
 
         .stagiaires-table {
@@ -95,14 +88,14 @@
             border: 1px solid #000;
             font-weight: bold;
             text-align: center;
-            font-size: 12px;
+            font-size: 16px;
         }
 
         .stagiaires-table td {
             padding: 8px;
             border: 1px solid #000;
             text-align: center;
-            font-size: 11px;
+            font-size: 16px;
         }
 
         .stagiaires-table .groupe-cell {
@@ -111,108 +104,80 @@
             background-color: #ecf0f1;
         }
 
+        /* CONTENU */
         .body-content {
             text-align: justify;
-            line-height: 1.6;
-            margin: 20px 2cm;
-            font-size: 14px;
+            line-height: 1.5;
+            font-size: 16px;
         }
 
         .body-content p {
-            text-indent: 1.5cm;
-            margin-bottom: 15px;
+            text-indent: 1.2cm;
+            margin-bottom: 12px;
         }
 
         .dispositions-list {
-            margin: 15px 0 15px 3cm;
-            line-height: 1.8;
-            font-size: 12px;
+            margin: 15px 0 15px 2cm;
+            line-height: 1.6;
+            font-size: 16px;
         }
 
         .dispositions-list li {
             margin-bottom: 8px;
         }
 
-        /* CORRECTION: Retrait de flex-end pour que les éléments s'alignent sur le haut */
-        .first-page-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start; /* Changement ici: aligne les deux colonnes en haut */
+        /* COPIE */
+        .copie-section {
             margin-top: 40px;
             page-break-inside: avoid;
+            font-size: 16px;
         }
 
-        .footer-left {
-            flex: 1;
-            margin-left: 2cm;
-            /* Pas besoin de margin-bottom: auto car flex-start est utilisé */
-        }
-
-        .footer-right {
-            flex: 0 0 200px;
-            margin-right: 1.5cm; /* Aligné sur la marge @page */
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-        }
-
-        .copie-section {
-            font-size: 14px;
-        }
-        
         .copie-title {
             font-weight: bold;
             text-decoration: underline;
             margin-bottom: 10px;
         }
-        
+
         .copie-list {
             margin-left: 20px;
-            line-height: 1.4;
+            line-height: 1.6;
         }
 
+        /* QR CODE sous la section copie */
         .verification-section {
-            text-align: center;
-            padding: 10px;
-            /* border: 2px solid #000; */
-            background-color: #fff;
-            width: 180px; /* Définir une largeur pour le QR code */
-        }
-        
-        .qr-code-container {
-            margin-bottom: 8px;
-        }
-        
-        .qr-code-container img {
+            margin-top: 20px;
             width: 150px;
-            height: 150px;
-            display: block;
-            margin: 0 auto;
+            text-align: center;
+            page-break-inside: avoid;
         }
-        
+
+        .qr-code-container img {
+            width: 85px;
+            height: 85px;
+        }
+
         .reference-systeme {
             font-size: 10px;
             font-weight: bold;
-            margin-top: 8px;
-            text-align: center;
+            margin-top: 5px;
         }
-        
+
         .verification-text {
             font-size: 8px;
-            color: #666;
-            margin-top: 5px;
-            text-align: center;
+            color: #555;
+            margin-top: 3px;
         }
 
         /* ANNEXE */
         .annexe-section {
             page-break-before: always;
-            margin: 20px 1cm;
+            margin: 20px 0;
         }
 
         .annexe-title {
             text-align: center;
-            font-size: 14px;
+            font-size: 17px;
             font-weight: bold;
             text-decoration: underline;
             margin: 20px 0;
@@ -232,14 +197,14 @@
             border: 1px solid #000;
             font-weight: bold;
             text-align: center;
-            font-size: 11px;
+            font-size: 14px;
         }
 
         .chronogramme-table td {
             padding: 6px;
             border: 1px solid #000;
             text-align: center;
-            font-size: 10px;
+            font-size: 12px;
         }
 
         .service-name {
@@ -250,7 +215,7 @@
         }
 
         .periode-cell {
-            font-size: 9px;
+            font-size: 11px;
             line-height: 1.3;
         }
 
@@ -259,7 +224,7 @@
         }
 
         .affectations-title {
-            font-size: 13px;
+            font-size: 15px;
             font-weight: bold;
             text-decoration: underline;
             margin-bottom: 15px;
@@ -275,7 +240,7 @@
         .affectation-groupe h4 {
             margin: 0 0 10px 0;
             color: #2c3e50;
-            font-size: 12px;
+            font-size: 14px;
         }
 
         @media print {
@@ -295,147 +260,144 @@
     </style>
 </head>
 <body>
-    <div class="first-page-container">
-        <div class="header">
-            <div class="header-left">
-                <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-                <div class="header-section">Paix-Travail-Patrie</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTERE DES FINANCES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-                <div class="header-section">LA FORMATION CONTINUE</div>
-                <div class="separator">----------------------</div>
-            </div>
-            
-            <div class="header-center">
-                <% if (logoUrl) { %>
-                    <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
-                <% } %>
-            </div>
-            
-            <div class="header-right">
-                <div class="header-section">REPUBLIC OF CAMEROON</div>
-                <div class="header-section">Peace-Work-Fatherland</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTRY OF FINANCE</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
-                <div class="separator">----------------------</div>
-            </div>
-        </div>
-        
-        <div class="note-title">
-            <h3 class="document-title">
-                <p>Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________</p>
-                <p><%= noteTitle %></p>
-            </h3>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            REPUBLIQUE DU CAMEROUN<br>
+            Paix - Travail - Patrie<br>
+            ----------------------<br>
+            MINISTERE DES FINANCES<br>
+            ----------------------<br>
+            DIRECTION GENERALE DES IMPOTS<br>
+            ----------------------<br>
+            DIRECTION DES AFFAIRES GENERALES<br>
+            ----------------------<br>
+            CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+            ----------------------
         </div>
 
-        <% if (description) { %>
-        <div class="description">
-            <%= description %>
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries">
+            <% } %>
         </div>
+
+        <div class="header-right">
+            REPUBLIC OF CAMEROON<br>
+            Peace - Work - Fatherland<br>
+            ----------------------<br>
+            MINISTRY OF FINANCE<br>
+            ----------------------<br>
+            DIRECTORATE GENERAL OF TAXATION<br>
+            ----------------------<br>
+            DEPARTMENT OF GENERAL AFFAIRS<br>
+            ----------------------<br>
+            TRAINING AND SKILLS PERFECTION UNIT<br>
+            ----------------------
+        </div>
+    </div>
+
+    <!-- TITRE -->
+    <div class="note-title">
+        <h3 class="document-title">
+            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+            <%= noteTitle %>
+        </h3>
+    </div>
+
+    <% if (description) { %>
+    <div class="description">
+        <%= description %>
+    </div>
+    <% } %>
+
+    <table class="stagiaires-table">
+        <thead>
+            <tr>
+                <th style="width: 10%;">N°</th>
+                <th style="width: 60%;">Noms et Prénoms des stagiaires</th>
+                <th style="width: 30%;">Groupes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% let numeroGlobal = 1; groupesAvecStagiaires.forEach(function(groupe) { %>
+                <% groupe.stagiaires.forEach(function(stagiaire, index) { %>
+                    <tr>
+                        <td><%= numeroGlobal++ %></td>
+                        <td style="text-align: left; padding-left: 20px;">
+                            <%= stagiaire.nom %> <%= stagiaire.prenom %>
+                        </td>
+                        <% if (index === 0) { %>
+                            <td class="groupe-cell" rowspan="<%= groupe.nombreStagiaires %>">
+                                Groupe <%= groupe.numero %>
+                            </td>
+                        <% } %>
+                    </tr>
+                <% }); %>
+            <% }); %>
+        </tbody>
+    </table>
+
+    <div class="body-content">
+        <p>
+            Les chefs de Centres Régionaux des Impôts concernés prendront toutes les dispositions utiles 
+            pour un séjour des stagiaires dans leurs services suivant les dispositions ci-après :
+        </p>
+
+        <% if (dispositions && dispositions.length > 0) { %>
+        <ul class="dispositions-list">
+            <% dispositions.forEach(function(disposition) { %>
+                <li><%= disposition %></li>
+            <% }); %>
+        </ul>
         <% } %>
 
-        <table class="stagiaires-table">
-            <thead>
-                <tr>
-                    <th style="width: 10%;">N°</th>
-                    <th style="width: 60%;">Noms et Prénoms des stagiaires</th>
-                    <th style="width: 30%;">Groupes</th>
-                </tr>
-            </thead>
-            <tbody>
-                <% let numeroGlobal = 1; groupesAvecStagiaires.forEach(function(groupe) { %>
-                    <% groupe.stagiaires.forEach(function(stagiaire, index) { %>
-                        <tr>
-                            <td><%= numeroGlobal++ %></td>
-                            <td style="text-align: left; padding-left: 20px;">
-                                <%= stagiaire.nom %> <%= stagiaire.prenom %>
-                            </td>
-                            <% if (index === 0) { %>
-                                <td class="groupe-cell" rowspan="<%= groupe.nombreStagiaires %>">
-                                    Groupe <%= groupe.numero %>
-                                </td>
-                            <% } %>
-                        </tr>
-                    <% }); %>
-                <% }); %>
-            </tbody>
-        </table>
+        <p>
+            En tout état de cause, les stagiaires devront être associés à l'exécution des tâches conduisant 
+            à l'acquisition progressive des compétences attachées aux différentes fonctions fiscales.
+        </p>
 
-        <div class="body-content">
-            <p>
-                Les chefs de Centres Régionaux des Impôts concernés prendront toutes les dispositions utiles 
-                pour un séjour des stagiaires dans leurs services suivant les dispositions ci-après :
-            </p>
+        <p>
+            A l'issue de la période de stage, <%= personnesResponsables %> s'assureront de l'acheminement 
+            des carnets de stage dûment annotés à la Direction des Affaires Générales.
+        </p>
 
-            <% if (dispositions && dispositions.length > 0) { %>
-            <ul class="dispositions-list">
-                <% dispositions.forEach(function(disposition) { %>
-                    <li><%= disposition %></li>
+        <p>
+            <%= miseEnOeuvre %> sont chargés, chacun en ce qui le concerne, de la mise en œuvre des termes 
+            de la présente note de service.
+        </p>
+    </div>
+
+    <!-- SECTION COPIE -->
+    <div class="copie-section">
+        <div class="copie-title">Copie :</div>
+        <div class="copie-list">
+            <% if (copies && copies.length > 0) { %>
+                <% copies.forEach(function(copie) { %>
+                    <% if (copie.trim()) { %>
+                        - <%= copie.trim() %><br>
+                    <% } %>
                 <% }); %>
-            </ul>
+            <% } else { %>
+                - Intéressé(e)s<br>
+                - Chefs de Service concernés<br>
+                - Archives/Chrono.
             <% } %>
+        </div>
+    </div>
 
-            <p>
-                En tout état de cause, les stagiaires devront être associés à l'exécution des tâches conduisant 
-                à l'acquisition progressive des compétences attachées aux différentes fonctions fiscales.
-            </p>
-
-            <p>
-                A l'issue de la période de stage, <%= personnesResponsables %> s'assureront de l'acheminement 
-                des carnets de stage dûment annotés à la Direction des Affaires Générales.
-            </p>
-
-            <p>
-                <%= miseEnOeuvre %> sont chargés, chacun en ce qui le concerne, de la mise en œuvre des termes 
-                de la présente note de service.
-            </p>
+    <!-- QR CODE sous la copie -->
+    <div class="verification-section">
+        <div class="qr-code-container">
+            <img src="<%= qrCodeUrl %>" alt="QR Code">
         </div>
 
-        <div class="first-page-footer">
-            <div class="footer-left">
-                <div class="copie-section">
-                    <div class="copie-title">Copie :</div>
-                    <div class="copie-list">
-                        <% if (copies && copies.length > 0) { %>
-                            <% copies.forEach(function(copie) { %>
-                                <% if (copie.trim()) { %>
-                                    - <%= copie.trim() %><br>
-                                <% } %>
-                            <% }); %>
-                        <% } else { %>
-                            - Intéressé(e)s<br>
-                            - Chefs de Service concernés<br>
-                            - Archives/Chrono.
-                        <% } %>
-                    </div>
-                </div>
-            </div>
+        <div class="reference-systeme">
+            Réf. Système : <%= referenceSysteme %>
+        </div>
 
-            <div class="footer-right">
-                <div class="verification-section">
-                    <div class="qr-code-container">
-                        <img src="<%= qrCodeUrl %>" alt="QR Code de vérification">
-                    </div>
-                    <div class="reference-systeme">
-                        Réf. Système: <%= referenceSysteme %>
-                    </div>
-                    <div class="verification-text">
-                        Scanner pour vérifier l'authenticité
-                    </div>
-                </div>
-            </div>
+        <div class="verification-text">
+            Scanner pour vérifier l'authenticité
         </div>
     </div>
 

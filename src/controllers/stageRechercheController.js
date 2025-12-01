@@ -587,7 +587,17 @@ export const listeStageRecherches = async (req, res) => {
         const pipeline = [
             // Filtre initial
             ...(Object.keys(matchFilters).length > 0 ? [{ $match: matchFilters }] : []),
-            
+            /** -------------------------------
+             *  AJOUT : Lookup Note de Service
+             *  ------------------------------- */
+            {
+                $lookup: {
+                    from: 'noteservices',
+                    localField: '_id',
+                    foreignField: 'mandat',
+                    as: 'noteService'
+                }
+            },
             {
                 $lookup: {
                     from: 'chercheurs', // Collection des chercheurs
@@ -658,6 +668,14 @@ export const listeStageRecherches = async (req, res) => {
                     statut: 1,
                     createdAt: 1,
                     updatedAt: 1,
+                    /** NOTE DE SERVICE (si elle existe) */
+                    noteService: {
+                        $cond: [
+                            { $gt: [{ $size: '$noteService' }, 0] },
+                            { $arrayElemAt: ['$noteService', 0] },
+                            null
+                        ]
+                    }
                 },
             },
         ];

@@ -4202,31 +4202,52 @@ export const deleteNoteService = async (req, res) => {
   try {
     const { id } = req.params;
     const lang = req.headers['accept-language'] || 'fr';
+
     // Vérifie si la note existe
     const note = await NoteService.findById(id);
     if (!note) {
-      return res.status(404).json({ success: false, message: t('note_service_non_trouvee', lang) });
+      return res.status(404).json({
+        success: false,
+        message: t('note_service_non_trouvee', lang)
+      });
+    }
+
+    // Vérifie si la note est déjà validée par le DG
+    if (note.valideParDG === true) {
+      return res.status(400).json({
+        success: false,
+        message: t('note_service_deja_validee_DG', lang)  // <-- Ajoute cette clé dans tes traductions
+      });
     }
 
     // Supprime le fichier si filePath existe
     const uploadsDir = path.join(process.cwd(), 'public/uploads/notes_service');
     if (note.filePath) {
-        const nomFichier = path.basename(note.filePath); 
-        const fichierPhysique = path.join(uploadsDir, nomFichier);
-        fs.unlink(fichierPhysique, (err) => {
-            if (err) console.error('Erreur suppression fichier:', err);
-        });
+      const nomFichier = path.basename(note.filePath);
+      const fichierPhysique = path.join(uploadsDir, nomFichier);
+      fs.unlink(fichierPhysique, (err) => {
+        if (err) console.error('Erreur suppression fichier:', err);
+      });
     }
-    
+
     // Supprime la note de service en base
     await note.deleteOne();
 
-    return res.json({ success: true, message: t('supprimer_succes', lang) });
+    return res.json({
+      success: true,
+      message: t('supprimer_succes', lang)
+    });
+
   } catch (err) {
     console.error('deleteNoteService error:', err);
-    return res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: err.message
+    });
   }
 };
+
 
 
 export const telechargerNoteDeService = async (req, res) => {

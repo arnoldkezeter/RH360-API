@@ -1572,7 +1572,6 @@ export const listeStages = async (req, res) => {
         // Construction du filtre de recherche
         const matchFilters = {};
 
-        // Filtre par recherche (nomFr ou nomEn)
         if (search && search.trim() !== '') {
             matchFilters.$or = [
                 { nomFr: { $regex: search, $options: 'i' } },
@@ -1580,52 +1579,69 @@ export const listeStages = async (req, res) => {
             ];
         }
 
-        // Filtre par type
         if (type && type !== 'ALL') {
             matchFilters.type = type;
         }
 
-        // Filtre par statut
         if (statut && statut !== 'ALL') {
             matchFilters.statut = statut;
         }
 
         const pipeline = [
-            // Filtre initial
             ...(Object.keys(matchFilters).length > 0 ? [{ $match: matchFilters }] : []),
-            
+
+            /** -------------------------------
+             *  AJOUT : Lookup Note de Service
+             *  ------------------------------- */
             {
                 $lookup: {
-                    from: 'stagiaires', // Collection des stagiaires
+                    from: 'noteservices',
+                    localField: '_id',
+                    foreignField: 'stage',
+                    as: 'noteService'
+                }
+            },
+
+            // Stagiaire
+            {
+                $lookup: {
+                    from: 'stagiaires',
                     localField: 'stagiaire',
                     foreignField: '_id',
                     as: 'stagiaireInfo',
                 },
             },
+
+            // Groupes
             {
                 $lookup: {
-                    from: 'groupes', // Collection des groupes
+                    from: 'groupes',
                     localField: 'groupes',
                     foreignField: '_id',
                     as: 'groupesInfo',
                 },
             },
+
+            // Rotations
             {
                 $lookup: {
-                    from: 'rotations', // Collection des rotations
+                    from: 'rotations',
                     localField: '_id',
                     foreignField: 'stage',
                     as: 'rotations',
                 },
             },
+
+            // Affectations finales
             {
                 $lookup: {
-                    from: 'affectationfinales', // Collection des affectations finales
+                    from: 'affectationfinales',
                     localField: '_id',
                     foreignField: 'stage',
                     as: 'affectations',
                 },
             },
+
             {
                 $addFields: {
                     nom: {
@@ -1635,7 +1651,7 @@ export const listeStages = async (req, res) => {
                             '$nomFr'
                         ]
                     },
-                    // Nombre de stagiaires selon le type
+
                     nombreStagiaires: {
                         $cond: [
                             { $eq: ['$type', 'INDIVIDUEL'] },
@@ -1649,8 +1665,9 @@ export const listeStages = async (req, res) => {
                             }
                         ]
                     },
+
                     nombreGroupes: { $size: '$groupesInfo' },
-                    // Dates basées sur les rotations ou affectations
+
                     dateDebutCalculee: {
                         $cond: [
                             { $gt: [{ $size: '$rotations' }, 0] },
@@ -1664,6 +1681,7 @@ export const listeStages = async (req, res) => {
                             }
                         ]
                     },
+
                     dateFinCalculee: {
                         $cond: [
                             { $gt: [{ $size: '$rotations' }, 0] },
@@ -1679,15 +1697,14 @@ export const listeStages = async (req, res) => {
                     },
                 },
             },
-            {
-                $sort: { createdAt: -1 }, // Tri par date de création
-            },
-            {
-                $skip: (parseInt(page) - 1) * parseInt(limit),
-            },
-            {
-                $limit: parseInt(limit),
-            },
+
+            { $sort: { createdAt: -1 } },
+            { $skip: (parseInt(page) - 1) * parseInt(limit) },
+            { $limit: parseInt(limit) },
+
+            /** -----------------------------------------
+             *  PROJECTION : inclure la note de service
+             *  ----------------------------------------- */
             {
                 $project: {
                     _id: 1,
@@ -1705,19 +1722,27 @@ export const listeStages = async (req, res) => {
                     statut: 1,
                     createdAt: 1,
                     updatedAt: 1,
+
+                    /** NOTE DE SERVICE (si elle existe) */
+                    noteService: {
+                        $cond: [
+                            { $gt: [{ $size: '$noteService' }, 0] },
+                            { $arrayElemAt: ['$noteService', 0] },
+                            null
+                        ]
+                    }
                 },
             },
         ];
 
-        // Exécution de l'agrégation
         const stages = await Stage.aggregate(pipeline);
 
-        // Compter le total avec les mêmes filtres
+        // Total
         const totalPipeline = [
             ...(Object.keys(matchFilters).length > 0 ? [{ $match: matchFilters }] : []),
             { $count: "total" }
         ];
-        
+
         const totalResult = await Stage.aggregate(totalPipeline);
         const total = totalResult.length > 0 ? totalResult[0].total : 0;
 
@@ -1731,7 +1756,6 @@ export const listeStages = async (req, res) => {
                 totalPages: Math.ceil(total / parseInt(limit)),
                 hasNextPage: parseInt(page) < Math.ceil(total / parseInt(limit)),
                 hasPrevPage: parseInt(page) > 1,
-                // Informations de filtrage
                 filters: {
                     search: search || '',
                     type: type || 'ALL',
@@ -1739,6 +1763,7 @@ export const listeStages = async (req, res) => {
                 }
             },
         });
+
     } catch (error) {
         console.error('Erreur dans listeStages:', error);
         return res.status(500).json({
@@ -1748,6 +1773,7 @@ export const listeStages = async (req, res) => {
         });
     }
 };
+
 
 //Liste des stages par établissement
 export const listeStagesParEtablissement = async (req, res) => {

@@ -510,6 +510,7 @@ export const executerTache = async (req, res) => {
       .populate('tache');
 
     if (!tacheFormation) {
+      console.log("non trouvee")
       return res.status(404).json({ 
         success: false, 
         message: t('tache_non_trouvee', lang) 

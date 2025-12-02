@@ -510,7 +510,7 @@ export const invitation = async (req, res) => {
     const { themeId } = req.params;
     const { content, subject, participant } = req.body;
     const lang = req.headers['accept-language'] || 'fr';
-    
+    console.log(participant)
     const toParticipants = participant;
     
     if (!themeId || !content || !subject) {

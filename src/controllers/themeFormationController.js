@@ -18,6 +18,8 @@ import Structure from '../models/Structure.js';
 import Service from '../models/Service.js';
 import { isUserInPublicCible } from '../services/formationService.js';
 import { checkUserTargeting } from './noteServiceController.js';
+import TacheGenerique from '../models/TacheGenerique.js';
+import TacheThemeFormation from '../models/TacheThemeFormation.js';
 
 
 const isValidObjectId = (id) => {
@@ -1818,4 +1820,493 @@ export const getThemeById = async (req, res) => {
             error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
+};
+
+// Controller: getThemesEnCoursResponsable
+export const getThemesEnCoursResponsable = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { userId } = req.params;
+
+    // Validation de l'ID utilisateur
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const today = new Date();
+
+        // Récupérer les thèmes en cours où l'utilisateur est responsable
+        const themes = await ThemeFormation.find({
+            responsable: userId,
+            dateDebut: { $lte: today }, // Déjà commencé
+            dateFin: { $gte: today }    // Pas encore terminé
+        })
+        .select('titreFr titreEn dateDebut dateFin')
+        .sort({ dateDebut: -1 })
+        .limit(10)
+        .lean();
+
+        if (themes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    themes: [],
+                    totalItems: 0
+                }
+            });
+        }
+
+        const themeIds = themes.map(t => t._id);
+
+        // Récupérer le nombre total de tâches génériques actives
+        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+        // Récupérer les tâches exécutées pour ces thèmes
+        const tachesExecutees = await TacheThemeFormation.aggregate([
+            {
+                $match: {
+                    theme: { $in: themeIds },
+                    estExecutee: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$theme',
+                    nombreTachesExecutees: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Créer un map pour accès rapide
+        const tachesExecuteesParTheme = {};
+        for (const item of tachesExecutees) {
+            tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
+        }
+
+        // Enrichir les thèmes avec la progression
+        const enrichedThemes = themes.map(theme => {
+            const tid = theme._id.toString();
+            const tachesExecutees = tachesExecuteesParTheme[tid] || 0;
+            const progression = totalTachesGeneriques > 0
+                ? Math.round((tachesExecutees / totalTachesGeneriques) * 100)
+                : 0;
+
+            return {
+                _id: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                dateDebut: theme.dateDebut,
+                dateFin: theme.dateFin,
+                progression
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                themes: enrichedThemes,
+                totalItems: enrichedThemes.length
+            }
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getThemesEnCoursResponsable:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+    }
+};
+
+// Controller: getThemesEnCoursParticipant
+export const getThemesEnCoursParticipant = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { userId } = req.params;
+
+    // Validation de l'ID utilisateur
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const today = new Date();
+
+        // Récupérer l'utilisateur avec ses informations
+        const user = await Utilisateur.findById(userId)
+            .select('posteDeTravail structure service familleMetier')
+            .populate('posteDeTravail')
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang),
+            });
+        }
+
+        // Récupérer tous les thèmes en cours
+        const themesEnCours = await ThemeFormation.find({
+            dateDebut: { $lte: today },
+            dateFin: { $gte: today }
+        })
+        .select('titreFr titreEn dateDebut dateFin publicCible')
+        .lean();
+
+        // Filtrer les thèmes où l'utilisateur fait partie du public cible
+        const themesParticipant = [];
+        for (const theme of themesEnCours) {
+            const isTargeted = await isUserInPublicCible(theme, user);
+            if (isTargeted) {
+                themesParticipant.push(theme);
+            }
+        }
+
+        // Limiter à 10 résultats
+        const themesLimited = themesParticipant.slice(0, 10);
+
+        if (themesLimited.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    themes: [],
+                    totalItems: 0
+                }
+            });
+        }
+
+        const themeIds = themesLimited.map(t => t._id);
+
+        // Récupérer le nombre total de tâches génériques actives
+        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+        // Récupérer les tâches exécutées pour ces thèmes
+        const tachesExecutees = await TacheThemeFormation.aggregate([
+            {
+                $match: {
+                    theme: { $in: themeIds },
+                    estExecutee: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$theme',
+                    nombreTachesExecutees: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Créer un map pour accès rapide
+        const tachesExecuteesParTheme = {};
+        for (const item of tachesExecutees) {
+            tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
+        }
+
+        // Enrichir les thèmes avec la progression
+        const enrichedThemes = themesLimited.map(theme => {
+            const tid = theme._id.toString();
+            const tachesExecutees = tachesExecuteesParTheme[tid] || 0;
+            const progression = totalTachesGeneriques > 0
+                ? Math.round((tachesExecutees / totalTachesGeneriques) * 100)
+                : 0;
+
+            return {
+                _id: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                dateDebut: theme.dateDebut,
+                dateFin: theme.dateFin,
+                progression
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                themes: enrichedThemes,
+                totalItems: enrichedThemes.length
+            }
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getThemesEnCoursParticipant:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+    }
+};
+
+// Controller: getFormationsUtilisateur
+export const getFormationsUtilisateur = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    // Validation de l'ID utilisateur
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        const today = new Date();
+
+        // Récupérer l'utilisateur
+        const user = await Utilisateur.findById(userId)
+            .select('posteDeTravail structure service familleMetier')
+            .populate('posteDeTravail')
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang),
+            });
+        }
+
+        // 1. Récupérer les thèmes où l'utilisateur est responsable (en cours ou à venir)
+        const themesResponsable = await ThemeFormation.find({
+            responsable: userId,
+            dateFin: { $gte: today } // Pas encore terminé
+        })
+        .select('_id formation titreFr titreEn dateDebut dateFin')
+        .populate('formation', 'titreFr titreEn')
+        .lean();
+
+        // 2. Récupérer tous les thèmes en cours ou à venir
+        const themesEnCoursOuAVenir = await ThemeFormation.find({
+            dateFin: { $gte: today }
+        })
+        .select('_id formation titreFr titreEn dateDebut dateFin publicCible')
+        .populate('formation', 'titreFr titreEn')
+        .lean();
+
+        // 3. Filtrer les thèmes où l'utilisateur est participant
+        const themesParticipant = [];
+        for (const theme of themesEnCoursOuAVenir) {
+            // Ne pas inclure les thèmes où l'utilisateur est déjà responsable
+            const isResponsable = themesResponsable.some(t => t._id.toString() === theme._id.toString());
+            if (!isResponsable) {
+                const isTargeted = await isUserInPublicCible(theme, user);
+                if (isTargeted) {
+                    themesParticipant.push(theme);
+                }
+            }
+        }
+
+        // 4. Combiner et organiser par formation
+        const formationMap = new Map();
+
+        // Ajouter les thèmes responsable
+        for (const theme of themesResponsable) {
+            const formationId = theme.formation._id.toString();
+            if (!formationMap.has(formationId)) {
+                formationMap.set(formationId, {
+                    _id: theme.formation._id,
+                    titreFr: theme.formation.titreFr,
+                    titreEn: theme.formation.titreEn,
+                    themes: [],
+                    role: 'responsable',
+                    dateDebut: null,
+                    dateFin: null
+                });
+            }
+            formationMap.get(formationId).themes.push(theme);
+        }
+
+        // Ajouter les thèmes participant
+        for (const theme of themesParticipant) {
+            const formationId = theme.formation._id.toString();
+            if (!formationMap.has(formationId)) {
+                formationMap.set(formationId, {
+                    _id: theme.formation._id,
+                    titreFr: theme.formation.titreFr,
+                    titreEn: theme.formation.titreEn,
+                    themes: [],
+                    role: 'participant',
+                    dateDebut: null,
+                    dateFin: null
+                });
+            }
+            formationMap.get(formationId).themes.push(theme);
+        }
+
+        // 5. Convertir en tableau et calculer dates et progression
+        const formationsArray = Array.from(formationMap.values());
+
+        // Récupérer le nombre total de tâches génériques
+        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+        // Récupérer tous les IDs de thèmes
+        const allThemeIds = [];
+        formationsArray.forEach(formation => {
+            formation.themes.forEach(theme => allThemeIds.push(theme._id));
+        });
+
+        // Récupérer les tâches exécutées
+        const tachesExecutees = await TacheThemeFormation.aggregate([
+            {
+                $match: {
+                    theme: { $in: allThemeIds },
+                    estExecutee: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$theme',
+                    nombreTachesExecutees: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const tachesExecuteesParTheme = {};
+        for (const item of tachesExecutees) {
+            tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
+        }
+
+        // 6. Enrichir chaque formation
+        const enrichedFormations = formationsArray.map(formation => {
+            const themes = formation.themes;
+            const nombreThemes = themes.length;
+
+            // Calculer dateDebut (la plus ancienne) et dateFin (la plus récente)
+            if (nombreThemes > 0) {
+                const datesDebut = themes.map(t => new Date(t.dateDebut).getTime()).filter(d => !isNaN(d));
+                const datesFin = themes.map(t => new Date(t.dateFin).getTime()).filter(d => !isNaN(d));
+
+                formation.dateDebut = datesDebut.length > 0 ? new Date(Math.min(...datesDebut)) : null;
+                formation.dateFin = datesFin.length > 0 ? new Date(Math.max(...datesFin)) : null;
+            }
+
+            // Calculer la progression
+            const totalTachesAttendu = totalTachesGeneriques * nombreThemes;
+            let totalTachesExecutees = 0;
+
+            themes.forEach(theme => {
+                const tid = theme._id.toString();
+                totalTachesExecutees += (tachesExecuteesParTheme[tid] || 0);
+            });
+
+            const progression = totalTachesAttendu > 0
+                ? Math.round((totalTachesExecutees / totalTachesAttendu) * 100)
+                : 0;
+
+            // Déterminer l'état
+            let etat = t('etat_pas_commence', lang);
+            if (formation.dateDebut) {
+                if (today < new Date(formation.dateDebut)) {
+                    etat = t('etat_pas_commence', lang);
+                } else if (today > new Date(formation.dateFin)) {
+                    etat = t('etat_termine', lang);
+                } else {
+                    etat = t('etat_en_cours', lang);
+                }
+            }
+
+            return {
+                _id: formation._id,
+                titreFr: formation.titreFr,
+                titreEn: formation.titreEn,
+                dateDebut: formation.dateDebut,
+                dateFin: formation.dateFin,
+                progression,
+                role: formation.role,
+                etat
+            };
+        });
+
+        // 7. Tri par date de début (plus récent d'abord)
+        enrichedFormations.sort((a, b) => {
+            if (!a.dateDebut) return 1;
+            if (!b.dateDebut) return -1;
+            return new Date(b.dateDebut) - new Date(a.dateDebut);
+        });
+
+        // 8. Pagination
+        const total = enrichedFormations.length;
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedFormations = enrichedFormations.slice(startIndex, endIndex);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                formations: paginatedFormations,
+                pagination: {
+                    totalItems: total,
+                    currentPage: page,
+                    totalPages: Math.ceil(total / limit),
+                    pageSize: limit
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getFormationsUtilisateur:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+    }
+};
+
+// Fonction utilitaire (à réutiliser ou importer)
+const isUserInPublicCible = async (theme, user) => {
+    if (!theme.publicCible || theme.publicCible.length === 0) {
+        return false;
+    }
+
+    const userPoste = user.posteDeTravail?._id || user.posteDeTravail;
+    const userFamilleMetier = user.posteDeTravail?.familleMetier || user.familleMetier;
+    const userStructure = user.structure;
+    const userService = user.service;
+
+    for (const familleCible of theme.publicCible) {
+        if (userFamilleMetier?.toString() !== familleCible.familleMetier.toString()) {
+            continue;
+        }
+
+        if (!familleCible.postes || familleCible.postes.length === 0) {
+            return true;
+        }
+
+        for (const posteRestriction of familleCible.postes) {
+            if (userPoste?.toString() !== posteRestriction.poste.toString()) {
+                continue;
+            }
+
+            if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                return true;
+            }
+
+            for (const structureRestriction of posteRestriction.structures) {
+                if (userStructure?.toString() !== structureRestriction.structure.toString()) {
+                    continue;
+                }
+
+                if (!structureRestriction.services || structureRestriction.services.length === 0) {
+                    return true;
+                }
+
+                const serviceIds = structureRestriction.services.map(s => s.service.toString());
+                if (userService && serviceIds.includes(userService.toString())) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
 };

@@ -16,6 +16,8 @@ import { sendMailFormation } from '../utils/sendMailFormation.js';
 import FamilleMetier from '../models/FamilleMetier.js';
 import Structure from '../models/Structure.js';
 import Service from '../models/Service.js';
+import { isUserInPublicCible } from '../services/formationService.js';
+import { checkUserTargeting } from './noteServiceController.js';
 
 
 const isValidObjectId = (id) => {
@@ -508,9 +510,9 @@ export const invitation = async (req, res) => {
     const { themeId } = req.params;
     const { content, subject, participant } = req.body;
     const lang = req.headers['accept-language'] || 'fr';
-
-    const toParticipants = participant ? participant.toLowerCase() === 'true' : true;
-
+    
+    const toParticipants = participant;
+    
     if (!themeId || !content || !subject) {
         return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
     }
@@ -523,54 +525,159 @@ export const invitation = async (req, res) => {
         let userEmails = [];
 
         if (toParticipants) {
-            const lieux = await LieuFormation.find({ theme: themeId })
+            // Récupérer tous les lieux de formation pour ce thème
+            const lieuxFormation = await LieuFormation.find({ theme: themeId })
                 .populate({
-                    path: 'participants',
-                    select: 'email',
-                    model: 'ParticipantFormation'
+                    path: 'cohortes',
+                    select: '_id nomFr nomEn'
                 })
-                .select('cohortes participants')
                 .lean();
 
-            const cohorteIds = lieux.flatMap(lieu => lieu.cohortes?.map(id => id.toString()) || []);
-
-            let cohortesEmails = [];
-            if (cohorteIds.length > 0) {
-                const cohortesUtilisateurs = await CohorteUtilisateur.find({ cohorte: { $in: cohorteIds } })
-                    .populate({ path: 'utilisateur', select: 'email' })
-                    .lean();
-
-                cohortesEmails = cohortesUtilisateurs
-                    .map(cu => cu.utilisateur?.email)
-                    .filter(email => email);
+            if (!lieuxFormation || lieuxFormation.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('aucun_lieu_formation_trouve', lang)
+                });
             }
 
-            const participantsDirectsEmails = lieux.flatMap(lieu => 
-                lieu.participants?.map(p => p.email).filter(email => email) || []
-            );
-
-            userEmails = [...new Set([...cohortesEmails, ...participantsDirectsEmails])];
-
-        } else {
-            const formateurs = await Formateur.find({ theme: themeId })
-                .populate({ path: 'utilisateur', select: 'email' })
+            // --- LOGIQUE DE CONSOLIDATION DES PARTICIPANTS ---
+            const participantsMap = new Map();
+            
+            // 1. RESOLUTION DES UTILISATEURS CIBLÉS PAR LES RESTRICTIONS DGI (LieuxFormation)
+            const allUsers = await Utilisateur.find({ actif: true })
+                .select('_id nom prenom email posteDeTravail structure service')
+                .populate({
+                    path: 'posteDeTravail',
+                    select: 'famillesMetier nomFr nomEn'
+                })
+                .populate({
+                    path: 'service',
+                    select: 'nomFr nomEn'
+                })
                 .lean();
 
+            // Filtrer les utilisateurs selon les restrictions de tous les Lieux du Thème
+            const checkPromises = allUsers.map(user => checkUserTargeting(user, lieuxFormation));
+            const targetedParticipantsResults = await Promise.all(checkPromises);
+
+            // Ajouter les participants ciblés à la Map
+            targetedParticipantsResults.filter(p => p !== null).forEach(participant => {
+                const userId = participant.utilisateur._id.toString();
+                const email = participant.utilisateur.email;
+                
+                if (email && email.trim() !== '') {
+                    participantsMap.set(userId, {
+                        ...participant,
+                        email: email.trim()
+                    });
+                }
+            });
+
+            // 2. AJOUT DES UTILISATEURS DES COHORTES
+            const toutesLesCohortes = lieuxFormation.flatMap(lieu =>
+                lieu.cohortes.map(c => c._id)
+            );
+
+            if (toutesLesCohortes.length > 0) {
+                const cohortesUtilisateurs = await CohorteUtilisateur.find({
+                    cohorte: { $in: toutesLesCohortes }
+                })
+                .populate({
+                    path: 'utilisateur',
+                    select: '_id nom prenom email posteDeTravail service',
+                    populate: [
+                        {
+                            path: 'posteDeTravail',
+                            select: 'nomFr nomEn'
+                        },
+                        {
+                            path: 'service',
+                            select: 'nomFr nomEn'
+                        }
+                    ]
+                })
+                .lean();
+
+                for (const cu of cohortesUtilisateurs) {
+                    if (!cu.utilisateur) continue;
+                    
+                    const userId = cu.utilisateur._id.toString();
+                    const email = cu.utilisateur.email;
+
+                    // Ne pas écraser si l'utilisateur existe déjà
+                    if (participantsMap.has(userId)) continue;
+
+                    // Vérifier que l'email existe et est valide
+                    if (!email || email.trim() === '') continue;
+
+                    const lieuAssocie = lieuxFormation.find(lieu =>
+                        lieu.cohortes.some(c => c._id.equals(cu.cohorte))
+                    );
+
+                    if (!lieuAssocie) continue;
+
+                    participantsMap.set(userId, {
+                        utilisateur: cu.utilisateur,
+                        lieu: lieuAssocie.lieu,
+                        dateDebut: lieuAssocie.dateDebut,
+                        dateFin: lieuAssocie.dateFin,
+                        email: email.trim(),
+                        source: "cohorte"
+                    });
+                }
+            }
+
+            // Extraire tous les emails uniques
+            userEmails = Array.from(participantsMap.values())
+                .map(p => p.email)
+                .filter(email => email && email.trim() !== '');
+
+        } else {
+            // Récupérer les formateurs
+            const formateurs = await Formateur.find({ theme: themeId })
+                .populate({ 
+                    path: 'utilisateur', 
+                    select: 'email',
+                    match: { email: { $exists: true, $ne: null, $ne: '' } }
+                })
+                .lean();
+           
             userEmails = formateurs
                 .map(f => f.utilisateur?.email)
-                .filter(email => email);
+                .filter(email => email && email.trim() !== '');
         }
+
+        // Validation des emails avec regex
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        userEmails = [...new Set(userEmails)].filter(email => emailRegex.test(email));
 
         if (userEmails.length === 0) {
-            return res.status(404).json({ success: false, message: t('aucun_destinataire_trouve', lang) });
+            return res.status(404).json({ 
+                success: false, 
+                message: t('aucun_destinataire_trouve', lang) 
+            });
         }
 
-        await Promise.all(userEmails.map(email => sendMailFormation(email, subject, content)));
+        // Envoyer les emails avec gestion des erreurs individuelles
+        const emailPromises = userEmails.map(email => 
+            sendMailFormation(email, subject, content)
+                .catch(error => {
+                    console.error(`Erreur envoi email à ${email}:`, error);
+                    return { email, error: error.message };
+                })
+        );
+
+        const results = await Promise.allSettled(emailPromises);
+        
+        const successCount = results.filter(r => r.status === 'fulfilled' && !r.value?.error).length;
+        const failureCount = results.length - successCount;
 
         res.status(200).json({
             success: true,
             message: t('emails_envoyes_succes', lang),
-            count: userEmails.length,
+            count: successCount,
+            total: userEmails.length,
+            echecs: failureCount,
             destinataires: toParticipants ? 'participants' : 'formateurs'
         });
 
@@ -649,6 +756,102 @@ export const getThemeFormationsForDropdown = async (req, res) => {
     }
 };
 
+// Pour les menus déroulants - Thèmes (Public Cible)
+export const getThemeFormationsForDropdownByPublicCible = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+    const { formationId } = req.params;
+    const { userId } = req.query;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(formationId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
+        
+        let query = { formation: formationId };
+
+        if (userId) {
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            const user = await Utilisateur.findById(userId)
+                .select('roles role posteDeTravail structure service familleMetier')
+                .populate('posteDeTravail')
+                .lean();
+                
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            // Vérifier si l'utilisateur est admin
+            const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
+            const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
+
+            // Si l'utilisateur n'est pas admin, filtrer par public cible
+            if (!isAdministrator) {
+                // Récupérer tous les thèmes de cette formation
+                const allThemes = await ThemeFormation.find(query).lean();
+
+                // Filtrer les thèmes où l'utilisateur fait partie du public cible
+                const targetedThemeIds = [];
+                
+                for (const theme of allThemes) {
+                    const isTargeted = await isUserInPublicCible(theme, user);
+                    if (isTargeted) {
+                        targetedThemeIds.push(theme._id);
+                    }
+                }
+
+                if (targetedThemeIds.length === 0) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            themeFormations: [],
+                            totalItems: 0,
+                            currentPage: 1,
+                            totalPages: 0,
+                            pageSize: 0
+                        },
+                    });
+                }
+
+                query._id = { $in: targetedThemeIds };
+            }
+        }
+
+        const themes = await ThemeFormation.find(query, 'titreFr titreEn _id')
+            .sort({ [sortField]: 1 })
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                themeFormations: themes,
+                totalItems: themes.length,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize: themes.length
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
 // ✅ CORRECTION 7: Refonte complète de getFilteredThemes pour supporter la nouvelle structure
 export const getFilteredThemes = async (req, res) => {
   const lang = req.headers['accept-language']?.toLowerCase() || 'fr';
@@ -658,6 +861,8 @@ export const getFilteredThemes = async (req, res) => {
     titre,
     debut,
     fin,
+    userId,
+    filterType = 'all', // 'all', 'responsable', 'publicCible'
     page = 1,
     limit = 10,
   } = req.query;
@@ -676,7 +881,7 @@ export const getFilteredThemes = async (req, res) => {
       filters.formation = formation;
     }
 
-    // ✅ NOUVELLE LOGIQUE: Filtrer par familleMetier dans la structure publicCible
+    // Filtrer par familleMetier dans la structure publicCible
     if (familleMetier) {
       if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
         return res.status(400).json({
@@ -684,7 +889,6 @@ export const getFilteredThemes = async (req, res) => {
           message: t('identifiant_invalide', lang),
         });
       }
-      // Chercher les thèmes qui ont cette famille dans leur publicCible
       filters['publicCible.familleMetier'] = familleMetier;
     }
 
@@ -696,6 +900,67 @@ export const getFilteredThemes = async (req, res) => {
     if (debut && fin) {
       filters.dateDebut = { $gte: new Date(debut) };
       filters.dateFin = { $lte: new Date(fin) };
+    }
+
+    // Gestion du filtrage par utilisateur
+    if (userId) {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: t('identifiant_invalide', lang),
+        });
+      }
+
+      const user = await Utilisateur.findById(userId)
+        .select('roles role posteDeTravail structure service familleMetier')
+        .populate('posteDeTravail')
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+        success: false,
+        message: t('utilisateur_non_trouve', lang),
+        });
+      }
+
+      // Vérifier si l'utilisateur est admin
+      const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
+      const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
+
+      // Si l'utilisateur n'est pas admin, appliquer les filtres
+      if (!isAdministrator || filterType) {
+        if (filterType === 'responsable') {
+        // Filtrer par responsabilité
+            filters.responsable = userId;
+
+        } else if (filterType === 'publicCible') {
+            // Filtrer par public cible
+            const allThemes = await ThemeFormation.find(filters).lean();
+            const targetedThemeIds = [];
+
+            for (const theme of allThemes) {
+                const isTargeted = await isUserInPublicCible(theme, user);
+                if (isTargeted) {
+                    targetedThemeIds.push(theme._id);
+                }
+            }
+
+            if (targetedThemeIds.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        themeFormations: [],
+                        totalItems: 0,
+                        currentPage: parseInt(page),
+                        totalPages: 0,
+                        pageSize: parseInt(limit),
+                    },
+                });
+            }
+
+            filters._id = { $in: targetedThemeIds };
+        }
+      }
     }
 
     const total = await ThemeFormation.countDocuments(filters);
@@ -797,7 +1062,6 @@ export const getFilteredThemes = async (req, res) => {
     });
   }
 };
-
 
 
 // ✅ CORRECTION 8: Refonte de getThemesByFamilleMetier
@@ -1010,10 +1274,48 @@ export const searchThemeFormationByTitre = async (req, res) => {
 export const getTargetedUsers = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { themeId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const {
+        familleMetier,
+        poste,
+        structure,
+        service,
+        nom,
+        prenom,
+        search, // Recherche combinée nom + prénom
+        page = 1,
+        limit = 50
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
 
     if (!themeId || !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    // Validation des filtres ObjectId
+    if (familleMetier && !mongoose.Types.ObjectId.isValid(familleMetier)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+    if (poste && !mongoose.Types.ObjectId.isValid(poste)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+    if (structure && !mongoose.Types.ObjectId.isValid(structure)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+    if (service && !mongoose.Types.ObjectId.isValid(service)) {
         return res.status(400).json({
             success: false,
             message: t('identifiant_invalide', lang),
@@ -1025,7 +1327,8 @@ export const getTargetedUsers = async (req, res) => {
             .populate('publicCible.familleMetier')
             .populate('publicCible.postes.poste')
             .populate('publicCible.postes.structures.structure')
-            .populate('publicCible.postes.structures.services.service');
+            .populate('publicCible.postes.structures.services.service')
+            .lean();
 
         if (!theme) {
             return res.status(404).json({
@@ -1036,6 +1339,7 @@ export const getTargetedUsers = async (req, res) => {
 
         let userIds = new Set();
 
+        // Parcourir le public cible pour récupérer tous les utilisateurs ciblés
         for (const familleCible of theme.publicCible) {
             // Cas 1: Toute la famille (pas de restrictions)
             if (!familleCible.postes || familleCible.postes.length === 0) {
@@ -1090,28 +1394,122 @@ export const getTargetedUsers = async (req, res) => {
             }
         }
 
-        // Conversion en tableau et pagination
+        // Conversion en tableau
         const userIdsArray = Array.from(userIds);
-        const total = userIdsArray.length;
-        const startIdx = (page - 1) * limit;
-        const endIdx = startIdx + limit;
-        const paginatedIds = userIdsArray.slice(startIdx, endIdx);
 
-        // Récupération des utilisateurs complets
-        const users = await Utilisateur.find({ _id: { $in: paginatedIds } })
+        // Construction de la requête avec filtres
+        let filterQuery = { _id: { $in: userIdsArray } };
+
+        // Filtrer par famille de métier
+        if (familleMetier) {
+            const postesInFamille = await PosteDeTravail.find({
+                familleMetier: familleMetier
+            }).select('_id').lean();
+            
+            const posteIdsInFamille = postesInFamille.map(p => p._id.toString());
+            
+            filterQuery.posteDeTravail = { $in: posteIdsInFamille };
+        }
+
+        // Filtrer par poste
+        if (poste) {
+            filterQuery.posteDeTravail = poste;
+        }
+
+        // Filtrer par structure
+        if (structure) {
+            filterQuery.structure = structure;
+        }
+
+        // Filtrer par service
+        if (service) {
+            filterQuery.service = service;
+        }
+
+        // Filtrer par nom et/ou prénom
+        if (search) {
+            // Recherche combinée sur nom et prénom
+            filterQuery.$or = [
+                { nom: { $regex: new RegExp(search, 'i') } },
+                { prenom: { $regex: new RegExp(search, 'i') } }
+            ];
+        } else {
+            // Recherche séparée
+            if (nom) {
+                filterQuery.nom = { $regex: new RegExp(nom, 'i') };
+            }
+            if (prenom) {
+                filterQuery.prenom = { $regex: new RegExp(prenom, 'i') };
+            }
+        }
+
+        // Compter le total après filtrage
+        const total = await Utilisateur.countDocuments(filterQuery);
+
+        // Récupération des utilisateurs avec pagination et population
+        const users = await Utilisateur.find(filterQuery)
             .populate('posteDeTravail')
             .populate('structure')
             .populate('service')
+            .populate('familleMetier')
+            .populate('grade')
+            .populate('categorieProfessionnelle')
+            .skip((pageNum - 1) * limitNum)
+            .limit(limitNum)
+            .sort({ nom: 1, prenom: 1 }) // Tri alphabétique
             .lean();
+
+        // Enrichir les données des utilisateurs
+        const enrichedUsers = users.map(user => ({
+            _id: user._id,
+            matricule: user.matricule,
+            nom: user.nom,
+            prenom: user.prenom,
+            email: user.email,
+            genre: user.genre,
+            telephone: user.telephone,
+            photoDeProfil: user.photoDeProfil,
+            posteDeTravail: user.posteDeTravail ? {
+                _id: user.posteDeTravail._id,
+                nomFr: user.posteDeTravail.nomFr,
+                nomEn: user.posteDeTravail.nomEn,
+            } : null,
+            structure: user.structure ? {
+                _id: user.structure._id,
+                nomFr: user.structure.nomFr,
+                nomEn: user.structure.nomEn,
+            } : null,
+            service: user.service ? {
+                _id: user.service._id,
+                nomFr: user.service.nomFr,
+                nomEn: user.service.nomEn,
+            } : null,
+            familleMetier: user.familleMetier ? {
+                _id: user.familleMetier._id,
+                nomFr: user.familleMetier.nomFr,
+                nomEn: user.familleMetier.nomEn,
+            } : null,
+            grade: user.grade ? {
+                _id: user.grade._id,
+                nomFr: user.grade.nomFr,
+                nomEn: user.grade.nomEn,
+            } : null,
+            categorieProfessionnelle: user.categorieProfessionnelle ? {
+                _id: user.categorieProfessionnelle._id,
+                nomFr: user.categorieProfessionnelle.nomFr,
+                nomEn: user.categorieProfessionnelle.nomEn,
+            } : null,
+        }));
 
         return res.status(200).json({
             success: true,
-            data: users,
-            pagination: {
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit),
+            data: {
+                utilisateurs: enrichedUsers,
+                totalItems: total,
+                currentPage: pageNum,
+                totalPages: Math.ceil(total / limitNum),
+                pageSize: limitNum,
+                
             },
         });
 
@@ -1120,7 +1518,7 @@ export const getTargetedUsers = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
-            error: err.message,
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
         });
     }
 };
@@ -1238,3 +1636,186 @@ export const checkUserIsTargeted = async (req, res) => {
         });
     }
 }
+
+export const getThemeById = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
+
+    // Validation de l'ID
+    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        // Récupérer le thème avec toutes les populations nécessaires
+        const theme = await ThemeFormation.findById(themeId)
+            .populate({
+                path: 'formation',
+                populate: { 
+                    path: 'programmeFormation axeStrategique familleMetier',
+                    options: { strictPopulate: false }
+                }
+            })
+            .populate({ 
+                path: 'publicCible.familleMetier', 
+                options: { strictPopulate: false } 
+            })
+            .populate({ 
+                path: 'publicCible.postes.poste', 
+                options: { strictPopulate: false } 
+            })
+            .populate({ 
+                path: 'publicCible.postes.structures.structure', 
+                options: { strictPopulate: false } 
+            })
+            .populate({ 
+                path: 'publicCible.postes.structures.services.service', 
+                options: { strictPopulate: false } 
+            })
+            .populate({ 
+                path: 'responsable', 
+                select: 'nom prenom email matricule photoDeProfil',
+                options: { strictPopulate: false } 
+            })
+            .populate({ 
+                path: 'formateurs.formateur', 
+                select: 'nom prenom email matricule photoDeProfil',
+                options: { strictPopulate: false } 
+            })
+            .lean();
+
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang),
+            });
+        }
+
+        // // Récupérer les budgets associés au thème
+        // const budgets = await BudgetFormation.find({ theme: themeId }).lean();
+        // const budgetIds = budgets.map(b => b._id);
+
+        // // Récupérer les dépenses associées aux budgets
+        // const depenses = await Depense.find({ budget: { $in: budgetIds } })
+        //     .populate({
+        //         path: 'taxes',
+        //         select: 'taux nomFr nomEn',
+        //         options: { strictPopulate: false }
+        //     })
+        //     .lean();
+
+        // Calculer les montants budgétaires
+        // let budgetEstimatif = 0;
+        // let budgetReel = 0;
+
+        // depenses.forEach(dep => {
+        //     const quantite = dep.quantite ?? 1;
+        //     const tauxTotal = (dep.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+
+        //     const montantPrevuHT = dep.montantUnitairePrevu || 0;
+        //     const montantReelHT = dep.montantUnitaireReel ?? montantPrevuHT;
+
+        //     const montantPrevuTTC = montantPrevuHT * quantite * (1 + tauxTotal / 100);
+        //     const montantReelTTC = montantReelHT * quantite * (1 + tauxTotal / 100);
+
+        //     budgetEstimatif += montantPrevuTTC;
+        //     budgetReel += montantReelTTC;
+        // });
+
+        // Calculer la durée du thème
+        // const duree = (theme.dateDebut && theme.dateFin)
+        //     ? Math.ceil((new Date(theme.dateFin) - new Date(theme.dateDebut)) / (1000 * 60 * 60 * 24))
+        //     : null;
+
+        // // Compter le nombre d'utilisateurs dans le public cible
+        // let totalPublicCible = 0;
+        // if (theme.publicCible && theme.publicCible.length > 0) {
+        //     const userIds = new Set();
+
+        //     for (const familleCible of theme.publicCible) {
+        //         // Cas 1: Toute la famille
+        //         if (!familleCible.postes || familleCible.postes.length === 0) {
+        //             const postes = await PosteDeTravail.find({ 
+        //                 familleMetier: familleCible.familleMetier._id 
+        //             }).select('_id');
+                    
+        //             const posteIds = postes.map(p => p._id);
+        //             const users = await Utilisateur.find({
+        //                 posteDeTravail: { $in: posteIds }
+        //             }).select('_id');
+                    
+        //             users.forEach(u => userIds.add(u._id.toString()));
+        //         } 
+        //         // Cas 2: Restrictions par postes
+        //         else {
+        //             for (const posteRestriction of familleCible.postes) {
+        //                 if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+        //                     const users = await Utilisateur.find({
+        //                         posteDeTravail: posteRestriction.poste._id
+        //                     }).select('_id');
+        //                     users.forEach(u => userIds.add(u._id.toString()));
+        //                 } else {
+        //                     for (const structureRestriction of posteRestriction.structures) {
+        //                         if (!structureRestriction.services || structureRestriction.services.length === 0) {
+        //                             const users = await Utilisateur.find({
+        //                                 posteDeTravail: posteRestriction.poste._id,
+        //                                 structure: structureRestriction.structure._id
+        //                             }).select('_id');
+        //                             users.forEach(u => userIds.add(u._id.toString()));
+        //                         } else {
+        //                             const serviceIds = structureRestriction.services.map(s => s.service._id);
+        //                             const users = await Utilisateur.find({
+        //                                 posteDeTravail: posteRestriction.poste._id,
+        //                                 service: { $in: serviceIds }
+        //                             }).select('_id');
+        //                             users.forEach(u => userIds.add(u._id.toString()));
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+
+        //     totalPublicCible = userIds.size;
+        // }
+
+        // Récupérer le nombre de tâches
+        // const totalTaches = await TacheThemeFormation.countDocuments({ theme: themeId });
+        // const tachesExecutees = await TacheThemeFormation.countDocuments({ 
+        //     theme: themeId, 
+        //     estExecutee: true 
+        // });
+
+        // Construire la réponse enrichie
+        // const enrichedTheme = {
+        //     ...theme,
+        //     budgetEstimatif: Math.round(budgetEstimatif * 100) / 100,
+        //     budgetReel: Math.round(budgetReel * 100) / 100,
+        //     duree,
+        //     totalPublicCible,
+        //     nombreBudgets: budgets.length,
+        //     nombreDepenses: depenses.length,
+        //     totalTaches,
+        //     tachesExecutees,
+        //     tauxCompletionTaches: totalTaches > 0 
+        //         ? Math.round((tachesExecutees / totalTaches) * 100) 
+        //         : 0,
+        // };
+
+        return res.status(200).json({
+            success: true,
+            data: theme,
+        });
+
+    } catch (err) {
+        console.error('Erreur dans getThemeById:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        });
+    }
+};

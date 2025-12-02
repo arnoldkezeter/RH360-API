@@ -1,7 +1,7 @@
 import express from 'express';
 import { authentificate } from '../middlewares/auth.js';
 import { 
-  ajouterTacheAuTheme,
+  executerTacheTheme,
   getTachesParTheme,
   executerTache,
   changerStatutTache,
@@ -21,7 +21,7 @@ import {
 const router = express.Router();
 
 router.post('/ajouter-tache-theme/all', authentificate, enregistrerTachesThemeFormation);
-router.post('/', authentificate, ajouterTacheAuTheme);
+router.post('/', authentificate, executerTacheTheme);
 
 router.put('/:tacheFormationId/executer/:currentUserId', authentificate, executerTache);
 router.put('/:tacheFormationId/dates', authentificate, updateDate);

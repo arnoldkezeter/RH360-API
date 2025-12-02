@@ -29,9 +29,9 @@ const checkUserPermission = (user, tache, action = 'read') => {
 
 
 
-export const ajouterTacheAuTheme = async (req, res) => {
+export const executerTacheTheme = async (req, res) => {
   const lang = req.headers['accept-language'] || 'fr';
-  const { themeId, tacheId, dateDebut, dateFin } = req.body;
+  const { themeId, tacheId, statut } = req.body;
   const currentUser = req.user;
 
   // Validation des IDs
@@ -39,6 +39,15 @@ export const ajouterTacheAuTheme = async (req, res) => {
     return res.status(400).json({ 
       success: false, 
       message: t('identifiant_invalide', lang) 
+    });
+  }
+
+  const statutsValides = ['A_FAIRE', 'EN_ATTENTE', 'EN_COURS', 'TERMINE'];
+  if (!statutsValides.includes(statut)) {
+    return res.status(400).json({ 
+      success: false, 
+      message: t('statut_invalide', lang),
+      statutsValides 
     });
   }
 
@@ -71,28 +80,68 @@ export const ajouterTacheAuTheme = async (req, res) => {
     }
 
     // Vérifier si déjà lié
-    const existingLink = await TacheThemeFormation.findOne({ theme: themeId, tache: tacheId });
+    const existingLink = await TacheThemeFormation.findOne({ 
+      theme: themeId, 
+      tache: tacheId })
+      .populate({ path: 'theme', select:'titreFr titreEn', options: { strictPopulate: false } })
+      .populate({ path: 'tache', options: { strictPopulate: false } })
     if (existingLink) {
-      return res.status(409).json({ 
-        success: false, 
-        message: t('tache_deja_liee', lang) 
-      });
-    }
+        // Sauvegarder l'ancien statut
+        const ancienStatut = existingLink.statut;
 
-    // Validation des dates
-    if (dateDebut && dateFin && new Date(dateDebut) >= new Date(dateFin)) {
-      return res.status(400).json({
-        success: false,
-        message: t('dates_invalides', lang)
-      });
+        // Logique métier pour les changements de statut
+        if (statut === 'TERMINE' && !existingLink.estExecutee) {
+          return res.status(400).json({
+            success: false,
+            message: t('tache_non_executee', lang)
+          });
+        }
+
+        if (statut === 'EN_ATTENTE') {
+          existingLink.dateExecution = new Date();
+          existingLink.dateFin = new Date();
+        }
+
+        if (statut === 'EN_COURS') {
+          existingLink.dateExecution = new Date();
+        }
+
+        if (statut === 'TERMINE') {
+          existingLink.dateExecution = new Date();
+        }
+        existingLink.executePar = currentUser._id;
+        existingLink.statut = statut;
+        // tache.donnees = donnees;
+        await existingLink.save();
+
+        if (ancienStatut !== statut) {
+          try {
+            await notifierChangementStatutTache({
+              tache:existingLink,
+              ancienStatut,
+              nouveauStatut: statut,
+              modifiePar: currentUser._id,
+              theme: existingLink.theme
+            });
+          } catch (notifError) {
+            // Logger l'erreur mais ne pas bloquer la réponse
+            console.error('Erreur envoi notifications:', notifError);
+          }
+        }
+
+        return res.json({ 
+          success: true, 
+          message: t('modifier_succes', lang),
+          data: existingLink 
+        });
     }
 
     // Création du lien tâche <-> thème
     const tacheTheme = new TacheThemeFormation({
       theme: themeId,
       tache: tacheId,
-      dateDebut: dateDebut ? new Date(dateDebut) : undefined,
-      dateFin: dateFin ? new Date(dateFin) : undefined,
+      dateDebut: new Date(),
+      statut:statut
     });
     await tacheTheme.save();
 
@@ -109,8 +158,21 @@ export const ajouterTacheAuTheme = async (req, res) => {
 
     // Populer les données pour la réponse
     await tacheTheme.populate([
-      { path: 'tache', select: 'code nomFr nomEn type' },
+      { path: 'tache'},
+      { path: 'theme', select: 'titreFr titreEn' },
     ]);
+    try {
+      await notifierChangementStatutTache({
+        tache:tacheTheme,
+        ancienStatut:"A_FAIRE",
+        nouveauStatut: statut,
+        modifiePar: currentUser._id,
+        theme: theme
+      });
+    } catch (notifError) {
+      // Logger l'erreur mais ne pas bloquer la réponse
+      console.error('Erreur envoi notifications:', notifError);
+    }
 
     return res.status(201).json({
       success: true,
@@ -129,12 +191,137 @@ export const ajouterTacheAuTheme = async (req, res) => {
 };
 
 
+// export const getTachesParTheme = async (req, res) => {
+//   const { themeId } = req.params;
+//   const lang = req.headers['accept-language'] || 'fr';
+//   const search = req.query.nom?.trim() || '';
+//   const statut = req.query.statut;
+//   const estExecutee = req.query.estExecutee;
+//   const page = Math.max(1, parseInt(req.query.page) || 1);
+//   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+
+//   if (!validateObjectId(themeId)) {
+//     return res.status(400).json({
+//       success: false,
+//       message: t('identifiant_invalide', lang),
+//     });
+//   }
+
+//   try {
+//     // Vérifier l'existence du thème
+//     const theme = await ThemeFormation.findById(themeId);
+//     if (!theme) {
+//       return res.status(404).json({
+//         success: false,
+//         message: t('theme_non_trouve', lang),
+//       });
+//     }
+
+//     // Construction de la requête de base
+//     let query = { theme: themeId };
+
+//     // Filtres additionnels
+//     if (statut) {
+//       query.statut = statut;
+//     }
+
+//     if (estExecutee !== undefined) {
+//       query.estExecutee = estExecutee === 'true';
+//     }
+
+//     // Si on a une recherche, on doit d'abord chercher les tâches qui matchent
+//     let tacheIds = null;
+//     if (search && search.trim() !== '') {
+//       const tachesMatching = await TacheGenerique.find({
+//         $or: [
+//           { nomFr: { $regex: new RegExp(search, 'i') } },
+//           { nomEn: { $regex: new RegExp(search, 'i') } }
+//         ]
+//       }).select('_id');
+      
+//       tacheIds = tachesMatching.map(t => t._id);
+      
+//       // Si aucune tâche ne correspond à la recherche, retourner un résultat vide
+//       if (tacheIds.length === 0) {
+//         return res.status(200).json({
+//           success: true,
+//           data: {
+//             tachesThemeFormation: [],
+//             totalItems: 0,
+//             currentPage: page,
+//             totalPages: 0,
+//             pageSize: limit,
+//           },
+//         });
+//       }
+      
+//       query.tache = { $in: tacheIds };
+//     }
+
+//     // Compter le total
+//     const total = await TacheThemeFormation.countDocuments(query);
+
+//     // Récupérer TOUTES les tâches (sans pagination d'abord) pour pouvoir trier
+//     const allTaches = await TacheThemeFormation.find(query)
+//     .populate({
+//           path: 'theme',
+//           select: 'titreFr titreEn formation responsable',
+//           options: { strictPopulate: false },
+//           populate: {
+//               path: 'formation',
+//               select: 'titreFr titreEn'
+//           },
+//           populate: {
+//               path: 'responsable',
+//               select: 'nom prenom'
+//           }
+//       })
+//       .populate({ 
+//         path: 'tache', 
+//         select: 'nomFr nomEn type obligatoire code',
+//         options: { strictPopulate: false } 
+//       })
+//       .lean();
+
+//     // Tri par ordre alphabétique sur le nom des tâches selon la langue
+//     const sortedTaches = allTaches.sort((a, b) => {
+//       const nameA = lang === 'fr' ? (a.tache?.nomFr || '') : (a.tache?.nomEn || '');
+//       const nameB = lang === 'fr' ? (b.tache?.nomFr || '') : (b.tache?.nomEn || '');
+//       return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' });
+//     });
+
+//     // Appliquer la pagination APRÈS le tri
+//     const startIndex = (page - 1) * limit;
+//     const endIndex = startIndex + limit;
+//     const paginatedTaches = sortedTaches.slice(startIndex, endIndex);
+
+//     return res.status(200).json({
+//       success: true,
+//       data: {
+//         tachesThemeFormation: paginatedTaches,
+//         totalItems: total,
+//         currentPage: page,
+//         totalPages: Math.ceil(total / limit),
+//         pageSize: limit,
+//       },
+//     });
+//   } catch (err) {
+//     console.error('Erreur getTachesParTheme:', err);
+//     return res.status(500).json({
+//       success: false,
+//       message: t('erreur_serveur', lang),
+//       error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+//     });
+//   }
+// };
+
 export const getTachesParTheme = async (req, res) => {
   const { themeId } = req.params;
   const lang = req.headers['accept-language'] || 'fr';
   const search = req.query.nom?.trim() || '';
   const statut = req.query.statut;
   const estExecutee = req.query.estExecutee;
+  const niveau = req.query.niveau; // 'pre-formation', 'pendant-formation', 'post-formation'
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
@@ -147,7 +334,12 @@ export const getTachesParTheme = async (req, res) => {
 
   try {
     // Vérifier l'existence du thème
-    const theme = await ThemeFormation.findById(themeId);
+    const theme = await ThemeFormation.findById(themeId)
+      .select('titreFr titreEn formation responsable')
+      .populate('formation', 'titreFr titreEn')
+      .populate('responsable', 'nom prenom')
+      .lean();
+      
     if (!theme) {
       return res.status(404).json({
         success: false,
@@ -155,83 +347,125 @@ export const getTachesParTheme = async (req, res) => {
       });
     }
 
-    // Construction de la requête de base
-    let query = { theme: themeId };
+    // Construction de la requête pour les tâches génériques
+    let queryTachesGeneriques = { actif: true };
 
-    // Filtres additionnels
+    // Filtre par niveau si spécifié
+    if (niveau) {
+      queryTachesGeneriques.niveau = niveau;
+    }
+
+    // Filtre par recherche sur le nom
+    if (search && search.trim() !== '') {
+      queryTachesGeneriques.$or = [
+        { nomFr: { $regex: new RegExp(search, 'i') } },
+        { nomEn: { $regex: new RegExp(search, 'i') } },
+        { code: { $regex: new RegExp(search, 'i') } }
+      ];
+    }
+
+    // Récupérer toutes les tâches génériques correspondant aux critères
+    const tachesGeneriques = await TacheGenerique.find(queryTachesGeneriques)
+      .sort({ ordre: 1 }) // Tri par ordre défini dans TacheGenerique
+      .lean();
+
+    if (tachesGeneriques.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          tachesThemeFormation: [],
+          totalItems: 0,
+          currentPage: page,
+          totalPages: 0,
+          pageSize: limit,
+        },
+      });
+    }
+
+    // Récupérer les tâches déjà associées au thème
+    const tachesTheme = await TacheThemeFormation.find({ 
+      theme: themeId 
+    })
+    .populate('executePar', 'nom prenom')
+    .lean();
+
+    // Créer un map pour accès rapide par tâche ID
+    const tachesThemeMap = tachesTheme.reduce((acc, tacheTheme) => {
+      acc[tacheTheme.tache.toString()] = tacheTheme;
+      return acc;
+    }, {});
+
+    // Enrichir les tâches génériques avec les données du thème
+    let tachesEnrichies = tachesGeneriques.map(tacheGenerique => {
+      const tacheThemeData = tachesThemeMap[tacheGenerique._id.toString()];
+
+      return {
+        _id: tacheThemeData?._id || null, // ID de TacheThemeFormation si existe
+        tache: {
+          _id: tacheGenerique._id,
+          code: tacheGenerique.code,
+          nomFr: tacheGenerique.nomFr,
+          nomEn: tacheGenerique.nomEn,
+          descriptionFr: tacheGenerique.descriptionFr,
+          descriptionEn: tacheGenerique.descriptionEn,
+          niveau: tacheGenerique.niveau,
+          type: tacheGenerique.type,
+          obligatoire: tacheGenerique.obligatoire,
+          ordre: tacheGenerique.ordre,
+        },
+        theme: {
+          _id: theme._id,
+          titreFr: theme.titreFr,
+          titreEn: theme.titreEn,
+          formation: theme.formation,
+          responsable: theme.responsable,
+        },
+        // Données de TacheThemeFormation si la tâche est déjà associée
+        dateDebut: tacheThemeData?.dateDebut || null,
+        dateFin: tacheThemeData?.dateFin || null,
+        estExecutee: tacheThemeData?.estExecutee || false,
+        fichierJoint: tacheThemeData?.fichierJoint || null,
+        donnees: tacheThemeData?.donnees || null,
+        dateExecution: tacheThemeData?.dateExecution || null,
+        statut: tacheThemeData?.statut || 'A_FAIRE',
+        commentaires: tacheThemeData?.commentaires || null,
+        executePar: tacheThemeData?.executePar || null,
+        createdAt: tacheThemeData?.createdAt || null,
+        updatedAt: tacheThemeData?.updatedAt || null,
+      };
+    });
+
+    // Appliquer les filtres sur les données enrichies
     if (statut) {
-      query.statut = statut;
+      tachesEnrichies = tachesEnrichies.filter(t => t.statut === statut);
     }
 
     if (estExecutee !== undefined) {
-      query.estExecutee = estExecutee === 'true';
+      const isExecuted = estExecutee === 'true';
+      tachesEnrichies = tachesEnrichies.filter(t => t.estExecutee === isExecuted);
     }
 
-    // Si on a une recherche, on doit d'abord chercher les tâches qui matchent
-    let tacheIds = null;
-    if (search && search.trim() !== '') {
-      const tachesMatching = await TacheGenerique.find({
-        $or: [
-          { nomFr: { $regex: new RegExp(search, 'i') } },
-          { nomEn: { $regex: new RegExp(search, 'i') } }
-        ]
-      }).select('_id');
-      
-      tacheIds = tachesMatching.map(t => t._id);
-      
-      // Si aucune tâche ne correspond à la recherche, retourner un résultat vide
-      if (tacheIds.length === 0) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            tachesThemeFormation: [],
-            totalItems: 0,
-            currentPage: page,
-            totalPages: 0,
-            pageSize: limit,
-          },
-        });
+    // Tri par ordre (déjà trié par TacheGenerique.ordre)
+    // Mais on peut aussi trier par nom si nécessaire
+    const sortField = lang === 'fr' ? 'nomFr' : 'nomEn';
+    tachesEnrichies.sort((a, b) => {
+      // D'abord par ordre
+      if (a.tache.ordre !== b.tache.ordre) {
+        return a.tache.ordre - b.tache.ordre;
       }
-      
-      query.tache = { $in: tacheIds };
-    }
-
-    // Compter le total
-    const total = await TacheThemeFormation.countDocuments(query);
-
-    // Récupérer TOUTES les tâches (sans pagination d'abord) pour pouvoir trier
-    const allTaches = await TacheThemeFormation.find(query)
-    .populate({
-          path: 'theme',
-          select: 'titreFr titreEn formation responsable',
-          options: { strictPopulate: false },
-          populate: {
-              path: 'formation',
-              select: 'titreFr titreEn'
-          },
-          populate: {
-              path: 'responsable',
-              select: 'nom prenom'
-          }
-      })
-      .populate({ 
-        path: 'tache', 
-        select: 'nomFr nomEn type obligatoire code',
-        options: { strictPopulate: false } 
-      })
-      .lean();
-
-    // Tri par ordre alphabétique sur le nom des tâches selon la langue
-    const sortedTaches = allTaches.sort((a, b) => {
-      const nameA = lang === 'fr' ? (a.tache?.nomFr || '') : (a.tache?.nomEn || '');
-      const nameB = lang === 'fr' ? (b.tache?.nomFr || '') : (b.tache?.nomEn || '');
+      // Ensuite par nom alphabétique
+      const nameA = a.tache[sortField] || '';
+      const nameB = b.tache[sortField] || '';
       return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' });
     });
 
-    // Appliquer la pagination APRÈS le tri
+    // Calculer le total après filtrage
+    const total = tachesEnrichies.length;
+
+    // Appliquer la pagination
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    const paginatedTaches = sortedTaches.slice(startIndex, endIndex);
+    const paginatedTaches = tachesEnrichies.slice(startIndex, endIndex);
 
     return res.status(200).json({
       success: true,
@@ -886,7 +1120,7 @@ export const getTacheProgressionByTheme = async (req, res) => {
         const filter = { theme: themeId };
         
         // Obtenir le nombre total de tâches pour ce thème
-        const totalTaches = await TacheThemeFormation.countDocuments(filter);
+        const totalTaches = await TacheGenerique.countDocuments();
         
         // Si aucune tâche n'est trouvée pour ce thème, retourner 0% de progression
         if (totalTaches === 0) {
@@ -936,13 +1170,33 @@ export const getTacheProgressionByTheme = async (req, res) => {
 export const statsTaches = async (req, res) => {
     try {
       const lang = req.headers['accept-language'] || 'fr';
+      const { themeId } = req.query; // Optionnel : stats pour un thème spécifique
 
+      // Récupérer toutes les tâches génériques actives
+      const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+      let query = {};
+      
+      // Si un themeId est fourni, filtrer par thème
+      if (themeId) {
+        if (!mongoose.Types.ObjectId.isValid(themeId)) {
+          return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+          });
+        }
+        query.theme = themeId;
+      }
+
+      // Agréger les statistiques des tâches associées aux thèmes
       const stats = await TacheThemeFormation.aggregate([
+        { $match: query },
         {
           $group: {
             _id: null,
-            totalTaches: { $sum: 1 },
+            totalTachesAssociees: { $sum: 1 },
             tachesExecutees: { $sum: { $cond: ['$estExecutee', 1, 0] } },
+            tachesAFaire: { $sum: { $cond: [{ $eq: ['$statut', 'A_FAIRE'] }, 1, 0] } },
             tachesEnAttente: { $sum: { $cond: [{ $eq: ['$statut', 'EN_ATTENTE'] }, 1, 0] } },
             tachesEnCours: { $sum: { $cond: [{ $eq: ['$statut', 'EN_COURS'] }, 1, 0] } },
             tachesTerminees: { $sum: { $cond: [{ $eq: ['$statut', 'TERMINE'] }, 1, 0] } }
@@ -950,34 +1204,95 @@ export const statsTaches = async (req, res) => {
         }
       ]);
 
-      const result = stats[0] || {
-        totalTaches: 0,
+      const statsResult = stats[0] || {
+        totalTachesAssociees: 0,
         tachesExecutees: 0,
+        tachesAFaire: 0,
         tachesEnAttente: 0,
         tachesEnCours: 0,
         tachesTerminees: 0
       };
 
-      const tauxExecution = result.totalTaches > 0 
-        ? Math.round((result.tachesExecutees / result.totalTaches) * 100) 
+      // Si c'est pour un thème spécifique
+      if (themeId) {
+        const tauxExecution = totalTachesGeneriques > 0 
+          ? Math.round((statsResult.tachesExecutees / totalTachesGeneriques) * 100) 
+          : 0;
+
+        const tauxProgression = totalTachesGeneriques > 0
+          ? Math.round((statsResult.totalTachesAssociees / totalTachesGeneriques) * 100)
+          : 0;
+
+        return res.json({
+          success: true,
+          data: {
+            totalTachesDisponibles: totalTachesGeneriques, // Toutes les tâches génériques
+            totalTachesAssociees: statsResult.totalTachesAssociees, // Tâches liées au thème
+            tachesNonAssociees: totalTachesGeneriques - statsResult.totalTachesAssociees,
+            tachesExecutees: statsResult.tachesExecutees,
+            tachesRestantes: statsResult.totalTachesAssociees - statsResult.tachesExecutees,
+            parStatut: {
+              aFaire: statsResult.tachesAFaire,
+              enAttente: statsResult.tachesEnAttente,
+              enCours: statsResult.tachesEnCours,
+              terminees: statsResult.tachesTerminees
+            },
+            tauxExecution, // % de tâches exécutées par rapport au total disponible
+            tauxProgression, // % de tâches associées par rapport au total disponible
+          }
+        });
+      }
+
+      // Statistiques globales (tous les thèmes)
+      const totalThemes = await ThemeFormation.countDocuments();
+      
+      // Calculer le nombre moyen de tâches par thème
+      const moyenneTachesParTheme = totalThemes > 0 
+        ? Math.round(statsResult.totalTachesAssociees / totalThemes) 
+        : 0;
+
+      // Taux d'exécution global
+      const tauxExecutionGlobal = statsResult.totalTachesAssociees > 0 
+        ? Math.round((statsResult.tachesExecutees / statsResult.totalTachesAssociees) * 100) 
+        : 0;
+
+      // Nombre de tâches potentielles (toutes les tâches × tous les thèmes)
+      const totalTachesPotentielles = totalTachesGeneriques * totalThemes;
+      const tauxAssociationGlobal = totalTachesPotentielles > 0
+        ? Math.round((statsResult.totalTachesAssociees / totalTachesPotentielles) * 100)
         : 0;
 
       return res.json({
         success: true,
         data: {
-          ...result,
-          tauxExecution,
-          tachesRestantes: result.totalTaches - result.tachesExecutees
+          global: {
+            totalTachesDisponibles: totalTachesGeneriques,
+            totalThemes,
+            totalTachesPotentielles, // Toutes les tâches × tous les thèmes
+            totalTachesAssociees: statsResult.totalTachesAssociees,
+            tachesExecutees: statsResult.tachesExecutees,
+            tachesRestantes: statsResult.totalTachesAssociees - statsResult.tachesExecutees,
+            moyenneTachesParTheme,
+            tauxExecutionGlobal,
+            tauxAssociationGlobal,
+          },
+          parStatut: {
+            aFaire: statsResult.tachesAFaire,
+            enAttente: statsResult.tachesEnAttente,
+            enCours: statsResult.tachesEnCours,
+            terminees: statsResult.tachesTerminees
+          }
         }
       });
     } catch (error) {
+      console.error('Erreur statsTaches:', error);
       return res.status(500).json({
         success: false,
         message: t('erreur_serveur', lang),
         error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-}
+};
 
 
 

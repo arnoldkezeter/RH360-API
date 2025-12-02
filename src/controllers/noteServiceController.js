@@ -1700,7 +1700,7 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
  * @param {Array<object>} lieuxFormation - Liste des LieuxFormation pour le thème
  * @returns {Promise<object|null>} L'objet participant formaté s'il est ciblé, sinon null.
  */
-const checkUserTargeting = async (utilisateur, lieuxFormation) => {
+export const checkUserTargeting = async (utilisateur, lieuxFormation) => {
     // Transformer l'objet lean en document Mongoose pour utiliser la méthode d'instance
     // (Ceci suppose que l'utilisateur a été peuplé correctement avant, notamment posteDeTravail)
     const LieuFormationModel = mongoose.model('LieuFormation');
@@ -1760,6 +1760,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
             .lean();
 
         if (!themeData) {
+            console.log("theme ", themeData)
             await session.abortTransaction();
             session.endSession();
             return res.status(404).json({

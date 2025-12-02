@@ -21,6 +21,7 @@ const utilisateurSchema = new mongoose.Schema({
     roles:[{type:String}],
     dateEntreeEnService:{type:Date},
     service: { type: mongoose.Schema.Types.ObjectId, ref: 'Service'},
+    structure: { type: mongoose.Schema.Types.ObjectId, ref: 'Structure'},
     grade: { type: mongoose.Schema.Types.ObjectId, ref: 'Grade' },
     categorieProfessionnelle: { type: mongoose.Schema.Types.ObjectId, ref: 'CategorieProfessionnelle' },
     familleMetier:{ type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier' },

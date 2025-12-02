@@ -77,7 +77,7 @@ export const createStagiaire = async (req, res) => {
         const stagiairePopulate = await stagiaire.populate('parcours.etablissement');
 
         // Envoi de l'email de création de compte
-        await sendAccountEmail(email, email, password);
+        // await sendAccountEmail(email, email, password);
         return res.status(201).json({
             success: true,
             message: t('ajouter_succes', lang),

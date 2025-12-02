@@ -11,6 +11,8 @@ import fs from "fs";
 import path from "path";
 import { promisify } from 'util';
 import { sendEmail } from '../utils/sendMailNotificationStatutStage.js';
+import NoteService from '../models/NoteService.js';
+import { validerReferencePDF } from '../utils/pdfHelper.js';
 
 const isValidDateRange = (start, end) => new Date(start) <= new Date(end);
 
@@ -1072,6 +1074,7 @@ export const deleteStage = async (req, res) => {
 const unlinkAsync = promisify(fs.unlink);
 const existsAsync = promisify(fs.exists);
 
+
 export const changerStatutStage = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { stageId } = req.params;
@@ -1082,7 +1085,8 @@ export const changerStatutStage = async (req, res) => {
     const cleanupUploadedFile = async () => {
         if (req.file?.path) {
             try {
-                await unlinkAsync(req.file.path);
+                // Utilisation de unlinkAsync (doit être définie, e.g. promisify(fs.unlink))
+                await unlinkAsync(req.file.path); 
             } catch (error) {
                 console.error('Erreur lors de la suppression du fichier uploadé:', error);
             }
@@ -1110,44 +1114,63 @@ export const changerStatutStage = async (req, res) => {
             });
         }
 
-        // Démarrer la transaction
-        session.startTransaction();
-
         // Récupérer le stage avec vérification d'existence
-        const stage = await Stage.findById(stageId).session(session);
+        const stage = await Stage.findById(stageId); // Pas besoin de session pour la lecture initiale
         if (!stage) {
             await cleanupUploadedFile();
-            await session.abortTransaction();
-            session.endSession();
             return res.status(404).json({
                 success: false,
                 message: t('stage_non_trouve', lang)
             });
         }
 
-        
-
-        let noteServicePath = null;
         let noteServiceRelatif = null;
+        let noteServicePath = null;
+        let note = null; // Déclarer note ici pour la rendre accessible à la vérification
 
         // Gestion de la note de service pour ACCEPTE
         if (statut === 'ACCEPTE') {
             if (!req.file) {
-                await session.abortTransaction();
-                session.endSession();
                 return res.status(400).json({
                     success: false,
                     message: t('note_service_obligatoire', lang)
                 });
             }
+            
+            // Récupérer la note de service associée pour obtenir la référence attendue
+            note = await NoteService.findOne({ stage: stage._id });
+            if (!note || !note.reference) {
+                await cleanupUploadedFile();
+                return res.status(404).json({
+                    success: false,
+                    message: t('reference_attendue_manquante', lang) // Message d'erreur spécifique
+                });
+            }
 
-            // Validation du type de fichier
+            // --- ⚠️ SECTION D'AJOUT DE LA VÉRIFICATION PDF ---
+            // Le fichier est obligatoirement un PDF ou un format supporté pour ACCEPTE
+            // Nous allons vérifier la référence UNIQUEMENT si le fichier est un PDF (pour éviter de parser DOCX/DOC)
+            if (req.file.mimetype === 'application/pdf' || path.extname(req.file.originalname).toLowerCase() === '.pdf') {
+                
+                const resultat = await validerReferencePDF(req.file.path, note.reference, t, lang);
+
+                if (!resultat.valide) {
+                    // Supprimer le fichier uploadé si la validation échoue
+                    await cleanupUploadedFile();
+
+                    return res.status(400).json({
+                        success: false,
+                        message: resultat.message, // Utiliser une clé de traduction spécifique
+                    });
+                }
+            }
+            // ---------------------------------------------------
+
+            // Validation du type de fichier (après la vérification PDF, car le fichier pourrait être non-PDF mais valide)
             const extensionsAutorisees = ['.pdf', '.doc', '.docx'];
             const extension = path.extname(req.file.originalname).toLowerCase();
             if (!extensionsAutorisees.includes(extension)) {
                 await cleanupUploadedFile();
-                await session.abortTransaction();
-                session.endSession();
                 return res.status(400).json({
                     success: false,
                     message: t('format_fichier_invalide', lang),
@@ -1159,17 +1182,23 @@ export const changerStatutStage = async (req, res) => {
             const maxSize = 5 * 1024 * 1024; // 5MB
             if (req.file.size > maxSize) {
                 await cleanupUploadedFile();
-                await session.abortTransaction();
-                session.endSession();
                 return res.status(400).json({
                     success: false,
                     message: t('fichier_trop_volumineux', lang),
                     tailleMax: '5MB'
                 });
             }
+            
+            // Les validations sont passées, on peut lancer la transaction
 
-            // Supprimer l'ancienne note si elle existe
+            // Démarrer la transaction
+            session.startTransaction();
+
+            // Supprimer l'ancienne note si elle existe (DOIT ÊTRE DANS LA TRANSACTION si on veut rollbacker son chemin DB)
             if (stage.noteService) {
+                 // Supprimer le fichier physique (on continue même si ça échoue)
+                 // NOTE: La suppression physique n'est pas rollbackée, c'est pourquoi on la place souvent hors transaction.
+                 // Cependant, pour la propreté, on le laisse avant le reste des opérations DB.
                 const oldFilePath = path.join(
                     process.cwd(), 
                     'public/uploads/notes_service', 
@@ -1180,11 +1209,11 @@ export const changerStatutStage = async (req, res) => {
                         await unlinkAsync(oldFilePath);
                     }
                 } catch (error) {
-                    console.error('Erreur lors de la suppression de l\'ancienne note:', error);
-                    // On continue quand même, ce n'est pas bloquant
+                    console.error('Erreur lors de la suppression de l\'ancienne note physique:', error);
                 }
             }
-
+            
+            // Mise à jour des chemins
             noteServiceRelatif = `/files/notes_service/${req.file.filename}`;
             noteServicePath = path.join(
                 process.cwd(), 
@@ -1196,6 +1225,8 @@ export const changerStatutStage = async (req, res) => {
             if (!(await existsAsync(noteServicePath))) {
                 await session.abortTransaction();
                 session.endSession();
+                // Si le fichier existe physiquement ici, il a survécu au cleanup initial, mais il devrait être supprimé ici
+                // car l'erreur est fatale. Cependant, on a déjà appelé cleanupUploadedFile au début du catch.
                 return res.status(500).json({
                     success: false,
                     message: t('erreur_upload_fichier', lang)
@@ -1203,11 +1234,32 @@ export const changerStatutStage = async (req, res) => {
             }
 
             stage.noteService = noteServiceRelatif;
+
+        } else {
+             // Si statut est REFUSE, lancer la transaction ici
+            session.startTransaction();
+            // On s'assure que le fichier uploadé est supprimé s'il y en avait un malgré le statut REFUSE
+            await cleanupUploadedFile();
         }
 
         // Mettre à jour le statut
         stage.statut = statut;
         await stage.save({ session });
+
+        // 🔵 SYNCHRONISATION : Mettre à jour la Note de Service liée au stage
+        // On récupère la note ici si on ne l'a pas déjà fait pour ACCEPTE, 
+        // ou on réutilise la variable 'note' déjà chargée.
+        if (!note) {
+             note = await NoteService.findOne({ stage: stage._id });
+        }
+       
+        if (note) {
+            note.valideParDG = true;
+            if (noteServiceRelatif) note.filePath = noteServiceRelatif;
+            await note.save({ session });
+        }
+        
+        // ... (Le reste du code reste inchangé, car il est déjà dans la transaction ou après)
 
         // Récupérer les affectations avec gestion des cas vides
         const affectations = await AffectationFinale.find({ stage: stage._id })
@@ -1246,11 +1298,13 @@ export const changerStatutStage = async (req, res) => {
 
         const stagiaires = Array.from(stagiairesMap.values());
 
-        // Valider la transaction avant d'envoyer les emails
+        // Valider la transaction
         await session.commitTransaction();
         session.endSession();
 
         // Envoyer les emails (après la transaction pour ne pas bloquer)
+        // ... (La suite du code d'envoi d'emails est inchangée)
+
         const emailPromises = [];
         const emailErrors = [];
 

@@ -11,7 +11,7 @@ const utilisateurSchema = new mongoose.Schema({
     genre: { type: String, enum: ['M', 'F'], required:true },
     dateNaissance: {type:Date},
     lieuNaissance:{type:String},
-    telephone:{type:Number},
+    telephone:{type:String},
     role: {
       type: String,
       enum: ['SUPER-ADMIN', 'ADMIN', 'RESPONSABLE-FORMATION', 'UTILISATEUR', 'FORMATEUR'],

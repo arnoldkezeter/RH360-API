@@ -1283,7 +1283,7 @@ export const getTargetedUsers = async (req, res) => {
         service,
         nom,
         prenom,
-        search, // Recherche combinée nom + prénom
+        search,
         page = 1,
         limit = 50
     } = req.query;
@@ -1299,37 +1299,35 @@ export const getTargetedUsers = async (req, res) => {
     }
 
     // Validation des filtres ObjectId
-    if (familleMetier && !mongoose.Types.ObjectId.isValid(familleMetier)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-    if (poste && !mongoose.Types.ObjectId.isValid(poste)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-    if (structure && !mongoose.Types.ObjectId.isValid(structure)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-    if (service && !mongoose.Types.ObjectId.isValid(service)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
+    const objectIdFilters = { familleMetier, poste, structure, service };
+    for (const [key, value] of Object.entries(objectIdFilters)) {
+        if (value && !mongoose.Types.ObjectId.isValid(value)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang),
+            });
+        }
     }
 
     try {
+        // CORRECTION DU POPULATE
         const theme = await ThemeFormation.findById(themeId)
-            .populate('publicCible.familleMetier')
-            .populate('publicCible.postes.poste')
-            .populate('publicCible.postes.structures.structure')
-            .populate('publicCible.postes.structures.services.service')
+            .populate({
+                path: 'publicCible.familleMetier',
+                select: 'nomFr nomEn code'
+            })
+            .populate({
+                path: 'publicCible.postes.poste',
+                select: 'nomFr nomEn code'
+            })
+            .populate({
+                path: 'publicCible.postes.structures.structure',
+                select: 'nomFr nomEn code'
+            })
+            .populate({
+                path: 'publicCible.postes.structures.services.service',
+                select: 'nomFr nomEn code'
+            })
             .lean();
 
         if (!theme) {
@@ -1339,56 +1337,98 @@ export const getTargetedUsers = async (req, res) => {
             });
         }
 
-        let userIds = new Set();
+        // Vérifier que publicCible existe et n'est pas vide
+        if (!theme.publicCible || theme.publicCible.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    utilisateurs: [],
+                    totalItems: 0,
+                    currentPage: pageNum,
+                    totalPages: 0,
+                    pageSize: limitNum,
+                },
+            });
+        }
+
+        const userIds = new Set();
 
         // Parcourir le public cible pour récupérer tous les utilisateurs ciblés
         for (const familleCible of theme.publicCible) {
+            // Vérifier que familleMetier est peuplé
+            if (!familleCible.familleMetier || !familleCible.familleMetier._id) {
+                console.warn('FamilleMetier non peuplée dans publicCible');
+                continue;
+            }
+
             // Cas 1: Toute la famille (pas de restrictions)
             if (!familleCible.postes || familleCible.postes.length === 0) {
                 const postes = await PosteDeTravail.find({ 
                     familleMetier: familleCible.familleMetier._id 
-                }).select('_id');
+                }).select('_id').lean();
                 
-                const posteIds = postes.map(p => p._id);
-                
-                const users = await Utilisateur.find({
-                    posteDeTravail: { $in: posteIds }
-                }).select('_id');
-                
-                users.forEach(u => userIds.add(u._id.toString()));
+                if (postes.length > 0) {
+                    const posteIds = postes.map(p => p._id);
+                    
+                    const users = await Utilisateur.find({
+                        posteDeTravail: { $in: posteIds },
+                        actif: true // Filtrer les utilisateurs actifs
+                    }).select('_id').lean();
+                    
+                    users.forEach(u => userIds.add(u._id.toString()));
+                }
             } 
             // Cas 2: Restrictions par postes
             else {
                 for (const posteRestriction of familleCible.postes) {
+                    // Vérifier que poste est peuplé
+                    if (!posteRestriction.poste || !posteRestriction.poste._id) {
+                        console.warn('Poste non peuplé dans postes');
+                        continue;
+                    }
+
                     // Cas 2a: Toutes les structures du poste
                     if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
                         const users = await Utilisateur.find({
-                            posteDeTravail: posteRestriction.poste._id
-                        }).select('_id');
+                            posteDeTravail: posteRestriction.poste._id,
+                            actif: true
+                        }).select('_id').lean();
                         
                         users.forEach(u => userIds.add(u._id.toString()));
                     }
                     // Cas 2b: Restrictions par structures
                     else {
                         for (const structureRestriction of posteRestriction.structures) {
+                            // Vérifier que structure est peuplée
+                            if (!structureRestriction.structure || !structureRestriction.structure._id) {
+                                console.warn('Structure non peuplée dans structures');
+                                continue;
+                            }
+
                             // Cas 2b-i: Tous les services de la structure
                             if (!structureRestriction.services || structureRestriction.services.length === 0) {
                                 const users = await Utilisateur.find({
                                     posteDeTravail: posteRestriction.poste._id,
-                                    structure: structureRestriction.structure._id
-                                }).select('_id');
-                                
+                                    structure: structureRestriction.structure._id,
+                                    actif: true
+                                }).select('_id').lean();
                                 users.forEach(u => userIds.add(u._id.toString()));
                             }
                             // Cas 2b-ii: Services spécifiques
                             else {
-                                const serviceIds = structureRestriction.services.map(s => s.service._id);
-                                const users = await Utilisateur.find({
-                                    posteDeTravail: posteRestriction.poste._id,
-                                    service: { $in: serviceIds }
-                                }).select('_id');
+                                const serviceIds = structureRestriction.services
+                                    .filter(s => s.service && s.service._id)
+                                    .map(s => s.service._id);
                                 
-                                users.forEach(u => userIds.add(u._id.toString()));
+                                if (serviceIds.length > 0) {
+                                    const users = await Utilisateur.find({
+                                        posteDeTravail: posteRestriction.poste._id,
+                                        service: { $in: serviceIds },
+                                        actif: true
+                                    }).select('_id').lean();
+                                    
+                                    users.forEach(u => userIds.add(u._id.toString()));
+                                }
                             }
                         }
                     }
@@ -1399,8 +1439,24 @@ export const getTargetedUsers = async (req, res) => {
         // Conversion en tableau
         const userIdsArray = Array.from(userIds);
 
+        if (userIdsArray.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    utilisateurs: [],
+                    totalItems: 0,
+                    currentPage: pageNum,
+                    totalPages: 0,
+                    pageSize: limitNum,
+                },
+            });
+        }
+
         // Construction de la requête avec filtres
-        let filterQuery = { _id: { $in: userIdsArray } };
+        const filterQuery = { 
+            _id: { $in: userIdsArray },
+            actif: true
+        };
 
         // Filtrer par famille de métier
         if (familleMetier) {
@@ -1408,9 +1464,22 @@ export const getTargetedUsers = async (req, res) => {
                 familleMetier: familleMetier
             }).select('_id').lean();
             
-            const posteIdsInFamille = postesInFamille.map(p => p._id.toString());
-            
-            filterQuery.posteDeTravail = { $in: posteIdsInFamille };
+            if (postesInFamille.length > 0) {
+                const posteIdsInFamille = postesInFamille.map(p => p._id);
+                filterQuery.posteDeTravail = { $in: posteIdsInFamille };
+            } else {
+                // Aucun poste trouvé pour cette famille
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        utilisateurs: [],
+                        totalItems: 0,
+                        currentPage: pageNum,
+                        totalPages: 0,
+                        pageSize: limitNum,
+                    },
+                });
+            }
         }
 
         // Filtrer par poste
@@ -1430,13 +1499,11 @@ export const getTargetedUsers = async (req, res) => {
 
         // Filtrer par nom et/ou prénom
         if (search) {
-            // Recherche combinée sur nom et prénom
             filterQuery.$or = [
                 { nom: { $regex: new RegExp(search, 'i') } },
                 { prenom: { $regex: new RegExp(search, 'i') } }
             ];
         } else {
-            // Recherche séparée
             if (nom) {
                 filterQuery.nom = { $regex: new RegExp(nom, 'i') };
             }
@@ -1450,15 +1517,15 @@ export const getTargetedUsers = async (req, res) => {
 
         // Récupération des utilisateurs avec pagination et population
         const users = await Utilisateur.find(filterQuery)
-            .populate('posteDeTravail')
-            .populate('structure')
-            .populate('service')
-            .populate('familleMetier')
-            .populate('grade')
-            .populate('categorieProfessionnelle')
+            .populate('posteDeTravail', 'nomFr nomEn code')
+            .populate('structure', 'nomFr nomEn code')
+            .populate('service', 'nomFr nomEn code')
+            .populate('familleMetier', 'nomFr nomEn code')
+            .populate('grade', 'nomFr nomEn')
+            .populate('categorieProfessionnelle', 'nomFr nomEn')
             .skip((pageNum - 1) * limitNum)
             .limit(limitNum)
-            .sort({ nom: 1, prenom: 1 }) // Tri alphabétique
+            .sort({ nom: 1, prenom: 1 })
             .lean();
 
         // Enrichir les données des utilisateurs
@@ -1511,7 +1578,6 @@ export const getTargetedUsers = async (req, res) => {
                 currentPage: pageNum,
                 totalPages: Math.ceil(total / limitNum),
                 pageSize: limitNum,
-                
             },
         });
 

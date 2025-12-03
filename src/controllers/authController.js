@@ -21,6 +21,7 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
+    console.log("login")
     const lang = req.headers['accept-language'] || 'fr'; // Langue par défaut: 'fr'
     const { email, motDePasse } = req.body;
 
@@ -40,13 +41,11 @@ export const login = async (req, res) => {
           message: t('utilisateur_non_trouve', lang) 
         });
     }
-
     // Vérification du mot de passe
     const isMatch = await utilisateur.comparePassword(motDePasse); // Supposons que la méthode comparePassword est définie dans le modèle
     if (!isMatch) {
       return res.status(401).json({ error: t('mp_incorrect', lang) });
     }
-
     // Génération du token JWT
     const token = jwt.sign(
       { _id: utilisateur._id, role: utilisateur.role, roles:utilisateur?.roles||[utilisateur.role], nom:utilisateur.nom, prenom:utilisateur.prenom, email:utilisateur.email, genre:utilisateur.genre, actif:utilisateur.actif, photoDeProfil:utilisateur.photoDeProfil }, // Payload

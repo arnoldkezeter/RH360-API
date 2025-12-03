@@ -50,10 +50,10 @@ export const importerDonnees = async (req, res) => {
   const fichierCSV = req.file ? req.file.path : "./FICHIER_DU_PERSONNEL.csv";
 
   try {
-    // Lecture du fichier CSV avec virgule comme séparateur
+    // Lecture du fichier CSV
     const stream = fs.createReadStream(fichierCSV, { encoding: 'utf8' })
       .pipe(csv({ 
-        separator: ";", // ✅ Changé de ";" à ","
+        separator: ";",
         mapHeaders: ({ header }) => header.trim(),
         skipLinesWithError: true,
         encoding: 'utf8'
@@ -72,7 +72,7 @@ export const importerDonnees = async (req, res) => {
       Service.deleteMany({})
     ]);
     
-    // Supprimer tous les utilisateurs sauf les 4 premiers
+    // Supprimer tous les utilisateurs sauf le premier
     const premiersUtilisateurs = await Utilisateur.find({})
       .sort({ _id: 1 })
       .limit(1)
@@ -82,7 +82,7 @@ export const importerDonnees = async (req, res) => {
     const idsASauvegarder = premiersUtilisateurs.map(u => u._id);
     await Utilisateur.deleteMany({ _id: { $nin: idsASauvegarder } });
 
-    // Lire toutes les données du CSV d'abord
+    // Lire toutes les données du CSV
     const lignes = [];
     for await (const ligne of stream) {
       lignes.push(ligne);
@@ -90,7 +90,7 @@ export const importerDonnees = async (req, res) => {
 
     console.log(`📊 ${lignes.length} lignes à traiter`);
 
-    // Caches améliorés
+    // Caches
     const caches = {
       regions: new Map(),
       departements: new Map(),
@@ -104,7 +104,7 @@ export const importerDonnees = async (req, res) => {
       utilisateurs: new Set()
     };
 
-    // Données à insérer en lot
+    // Données à insérer
     const donneesAInserer = {
       regions: [],
       departements: [],
@@ -117,6 +117,9 @@ export const importerDonnees = async (req, res) => {
       services: [],
       utilisateurs: []
     };
+
+    // Utilisateurs non traités
+    const utilisateursNonTraites = [];
 
     // Traitement des lignes
     for (let i = 0; i < lignes.length; i++) {
@@ -137,7 +140,16 @@ export const importerDonnees = async (req, res) => {
         let structureId = null;
         let serviceId = null;
 
-        // 1️⃣ Région - ✅ CORRIGÉ : colonnes uniques
+        const erreursLigne = [];
+        const avertissementsLigne = []; // ✅ NOUVEAU : Pour les erreurs non bloquantes
+        const donneesLigne = {
+          numeroLigne: i + 1,
+          matricule: ligne.MATRICULE ? nettoyerTexte(ligne.MATRICULE) : null,
+          nom: ligne.NOM ? nettoyerTexte(ligne.NOM).toUpperCase() : null,
+          email: ligne.EMAIL ? nettoyerTexte(ligne.EMAIL).toLowerCase() : null
+        };
+
+        // 1️⃣ Région
         if (ligne.REGION && nettoyerTexte(ligne.REGION)) {
           const regionNom = nettoyerTexte(ligne.REGION).toUpperCase();
           const regionKey = regionNom;
@@ -147,7 +159,7 @@ export const importerDonnees = async (req, res) => {
               _id: new mongoose.Types.ObjectId(),
               code: "REG-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9),
               nomFr: regionNom,
-              nomEn: regionNom, // ✅ Même valeur
+              nomEn: regionNom,
             };
             caches.regions.set(regionKey, regionData._id);
             donneesAInserer.regions.push(regionData);
@@ -157,7 +169,7 @@ export const importerDonnees = async (req, res) => {
           }
         }
 
-        // 2️⃣ Département - ✅ CORRIGÉ
+        // 2️⃣ Département
         if (regionId && ligne.DEPARTEMENT && nettoyerTexte(ligne.DEPARTEMENT)) {
           const departementNom = nettoyerTexte(ligne.DEPARTEMENT).toUpperCase();
           const departementKey = `${departementNom}|${regionId}`;
@@ -167,7 +179,7 @@ export const importerDonnees = async (req, res) => {
               _id: new mongoose.Types.ObjectId(),
               code: "DEP-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9),
               nomFr: departementNom,
-              nomEn: departementNom, // ✅ Même valeur
+              nomEn: departementNom,
               region: regionId,
             };
             caches.departements.set(departementKey, departementData._id);
@@ -178,7 +190,7 @@ export const importerDonnees = async (req, res) => {
           }
         }
 
-        // 3️⃣ Commune - ✅ CORRIGÉ
+        // 3️⃣ Commune - ✅ MODIFIÉ : Non bloquant
         if (departementId && ligne.COMMUNE && nettoyerTexte(ligne.COMMUNE)) {
           const communeNom = nettoyerTexte(ligne.COMMUNE).toUpperCase();
           const communeKey = `${communeNom}|${departementId}`;
@@ -188,7 +200,7 @@ export const importerDonnees = async (req, res) => {
               _id: new mongoose.Types.ObjectId(),
               code: "COM-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9),
               nomFr: communeNom,
-              nomEn: communeNom, // ✅ Même valeur
+              nomEn: communeNom,
               departement: departementId,
             };
             caches.communes.set(communeKey, communeData._id);
@@ -197,9 +209,12 @@ export const importerDonnees = async (req, res) => {
           } else {
             communeId = caches.communes.get(communeKey);
           }
+        } else if (ligne.COMMUNE) {
+          // ✅ Avertissement au lieu d'erreur bloquante
+          avertissementsLigne.push("Commune non enregistrée (département manquant ou invalide)");
         }
 
-        // 4️⃣ Grade - ✅ CORRIGÉ
+        // 4️⃣ Grade
         if (ligne.GRADE && nettoyerTexte(ligne.GRADE)) {
           const gradeNom = nettoyerTexte(ligne.GRADE).toUpperCase();
           const gradeKey = gradeNom;
@@ -208,7 +223,7 @@ export const importerDonnees = async (req, res) => {
             const gradeData = {
               _id: new mongoose.Types.ObjectId(),
               nomFr: gradeNom,
-              nomEn: gradeNom, // ✅ Même valeur
+              nomEn: gradeNom,
             };
             caches.grades.set(gradeKey, gradeData._id);
             donneesAInserer.grades.push(gradeData);
@@ -216,6 +231,8 @@ export const importerDonnees = async (req, res) => {
           } else {
             gradeId = caches.grades.get(gradeKey);
           }
+        } else if (ligne.GRADE) {
+          erreursLigne.push("Grade invalide ou vide");
         }
 
         // 5️⃣ Catégorie Professionnelle
@@ -245,7 +262,7 @@ export const importerDonnees = async (req, res) => {
               const categorieData = {
                 _id: new mongoose.Types.ObjectId(),
                 nomFr: categoriePro,
-                nomEn: categoriePro, // ✅ Même valeur
+                nomEn: categoriePro,
                 grades: [gradeId],
               };
               caches.categories.set(categorieKey, {
@@ -279,9 +296,13 @@ export const importerDonnees = async (req, res) => {
             
             categorieId = cachedCategorie.id;
           }
+        } else if (!gradeId && ligne.CATEGORIE_PROFESSIONNELLE) {
+          erreursLigne.push("Catégorie professionnelle sans grade valide");
+        } else if (ligne.CATEGORIE_PROFESSIONNELLE && !nettoyerTexte(ligne.CATEGORIE_PROFESSIONNELLE)) {
+          erreursLigne.push("Catégorie professionnelle invalide ou vide");
         }
 
-        // 6️⃣ Famille Métier - ✅ CORRIGÉ
+        // 6️⃣ Famille Métier
         if (ligne.FAMILLE_METIER && nettoyerTexte(ligne.FAMILLE_METIER)) {
           const familleMetierNom = nettoyerTexte(ligne.FAMILLE_METIER).toUpperCase();
           const familleMetierKey = familleMetierNom;
@@ -290,7 +311,7 @@ export const importerDonnees = async (req, res) => {
             const familleMetierData = {
               _id: new mongoose.Types.ObjectId(),
               nomFr: familleMetierNom,
-              nomEn: familleMetierNom, // ✅ Même valeur
+              nomEn: familleMetierNom,
             };
             caches.famillesMetier.set(familleMetierKey, familleMetierData._id);
             donneesAInserer.famillesMetier.push(familleMetierData);
@@ -298,72 +319,11 @@ export const importerDonnees = async (req, res) => {
           } else {
             familleMetierId = caches.famillesMetier.get(familleMetierKey);
           }
+        } else if (ligne.FAMILLE_METIER) {
+          erreursLigne.push("Famille métier invalide ou vide");
         }
 
-        // 7️⃣ Poste de Travail - ✅ CORRIGÉ
-        if (familleMetierId && ligne.POSTE_DE_TRAVAIL && nettoyerTexte(ligne.POSTE_DE_TRAVAIL)) {
-          const posteNom = nettoyerTexte(ligne.POSTE_DE_TRAVAIL).toUpperCase();
-          const posteKey = posteNom;
-
-          if (!caches.postes.has(posteKey)) {
-            let existingPoste = await PosteDeTravail.findOne({ 
-              nomFr: posteNom, 
-              nomEn: posteNom
-            });
-
-            if (existingPoste) {
-              if (!existingPoste.famillesMetier.some(id => id.equals(familleMetierId))) {
-                existingPoste.famillesMetier.push(familleMetierId);
-                await existingPoste.save();
-              }
-
-              caches.postes.set(posteKey, {
-                id: existingPoste._id,
-                famillesMetier: [...existingPoste.famillesMetier],
-                isInDB: true
-              });
-              posteId = existingPoste._id;
-            } else {
-              const posteData = {
-                _id: new mongoose.Types.ObjectId(),
-                nomFr: posteNom,
-                nomEn: posteNom, // ✅ Même valeur
-                famillesMetier: [familleMetierId],
-              };
-              caches.postes.set(posteKey, {
-                id: posteData._id,
-                famillesMetier: [familleMetierId],
-                isInDB: false,
-                data: posteData
-              });
-              donneesAInserer.postes.push(posteData);
-              posteId = posteData._id;
-            }
-          } else {
-            const cachedPoste = caches.postes.get(posteKey);
-            
-            const familleExists = cachedPoste.famillesMetier.some(id => 
-              id.equals ? id.equals(familleMetierId) : id.toString() === familleMetierId.toString()
-            );
-            
-            if (!familleExists) {
-              cachedPoste.famillesMetier.push(familleMetierId);
-              
-              if (cachedPoste.isInDB) {
-                await PosteDeTravail.findByIdAndUpdate(
-                  cachedPoste.id,
-                  { $addToSet: { famillesMetier: familleMetierId } }
-                );
-              } else {
-                cachedPoste.data.famillesMetier.push(familleMetierId);
-              }
-            }
-            
-            posteId = cachedPoste.id;
-          }
-        }
-
-        // 8️⃣ Structure - ✅ CORRIGÉ
+        // 8️⃣ Structure
         if (ligne.STRUCTURE && nettoyerTexte(ligne.STRUCTURE)) {
           const structureNom = nettoyerTexte(ligne.STRUCTURE).toUpperCase();
           const structureKey = structureNom;
@@ -372,7 +332,7 @@ export const importerDonnees = async (req, res) => {
             const structureData = {
               _id: new mongoose.Types.ObjectId(),
               nomFr: structureNom,
-              nomEn: structureNom, // ✅ Même valeur
+              nomEn: structureNom,
             };
             caches.structures.set(structureKey, structureData._id);
             donneesAInserer.structures.push(structureData);
@@ -380,9 +340,11 @@ export const importerDonnees = async (req, res) => {
           } else {
             structureId = caches.structures.get(structureKey);
           }
+        } else if (ligne.STRUCTURE) {
+          erreursLigne.push("Structure invalide ou vide");
         }
 
-        // 9️⃣ Service - ✅ CORRIGÉ
+        // 9️⃣ Service
         if (structureId && ligne.SERVICE && nettoyerTexte(ligne.SERVICE)) {
           const serviceNom = nettoyerTexte(ligne.SERVICE).toUpperCase();
           const serviceKey = `${serviceNom}|${structureId}`;
@@ -391,7 +353,7 @@ export const importerDonnees = async (req, res) => {
             const serviceData = {
               _id: new mongoose.Types.ObjectId(),
               nomFr: serviceNom,
-              nomEn: serviceNom, // ✅ Même valeur
+              nomEn: serviceNom,
               structure: structureId,
             };
             caches.services.set(serviceKey, serviceData._id);
@@ -400,44 +362,236 @@ export const importerDonnees = async (req, res) => {
           } else {
             serviceId = caches.services.get(serviceKey);
           }
+        } else if (!structureId && ligne.SERVICE) {
+          erreursLigne.push("Service sans structure valide");
+        } else if (ligne.SERVICE && !nettoyerTexte(ligne.SERVICE)) {
+          erreursLigne.push("Service invalide ou vide");
         }
 
-        // 🔟 Utilisateur - ✅ CORRIGÉ : nom complet + email généré
+        // 7️⃣ Poste de Travail
+        // 7️⃣ Poste de Travail - 🔑 MODIFIÉ
+        if (familleMetierId && ligne.POSTE_DE_TRAVAIL && nettoyerTexte(ligne.POSTE_DE_TRAVAIL)) {
+          const posteNom = nettoyerTexte(ligne.POSTE_DE_TRAVAIL).toUpperCase();
+          const posteKey = posteNom;
+
+          if (!caches.postes.has(posteKey)) {
+            // ... (Logique pour nouveau poste ou poste existant en BD - NON MODIFIÉE) ...
+            let existingPoste = await PosteDeTravail.findOne({ 
+              nomFr: posteNom, 
+              nomEn: posteNom
+            });
+
+            if (existingPoste) {
+              // Mise à jour atomique si le poste existe DÉJÀ en DB au début de l'import
+              const updateFields = {};
+              
+              if (!existingPoste.famillesMetier.some(id => id.equals(familleMetierId))) {
+                updateFields.famillesMetier = familleMetierId;
+              }
+              
+              if (serviceId && !existingPoste.services.some(id => id.equals(serviceId))) {
+                updateFields.services = serviceId;
+              }
+              
+              if (Object.keys(updateFields).length > 0) {
+                // Utiliser $addToSet pour ajouter des IDs uniques
+                await PosteDeTravail.findByIdAndUpdate(
+                  existingPoste._id,
+                  { 
+                    $addToSet: { 
+                      famillesMetier: updateFields.famillesMetier,
+                      services: updateFields.services
+                    }
+                  }
+              );
+              existingPoste.famillesMetier.push(familleMetierId); // Mettre à jour l'objet local
+              if (serviceId) existingPoste.services.push(serviceId); // Mettre à jour l'objet local
+            }
+
+            // Créer le cache avec les valeurs à jour
+            caches.postes.set(posteKey, {
+              id: existingPoste._id,
+              famillesMetier: [...existingPoste.famillesMetier],
+              services: [...existingPoste.services],
+              isInDB: true
+            });
+            posteId = existingPoste._id;
+          } else {
+            // ... (Logique pour créer un nouveau posteData - NON MODIFIÉE) ...
+            const posteData = {
+              _id: new mongoose.Types.ObjectId(),
+              nomFr: posteNom,
+              nomEn: posteNom,
+              famillesMetier: [familleMetierId],
+              services: serviceId ? [serviceId] : [],
+            };
+
+            caches.postes.set(posteKey, {
+              id: posteData._id,
+              famillesMetier: [familleMetierId],
+              services: serviceId ? [serviceId] : [],
+              isInDB: false,
+              data: posteData
+            });
+            donneesAInserer.postes.push(posteData);
+            posteId = posteData._id;
+          }
+          } else {
+            // Le poste est déjà dans le cache (qu'il soit nouveau ou existant en DB)
+            const cachedPoste = caches.postes.get(posteKey);
+            
+            let needsUpdate = false;
+            
+            const familleExists = cachedPoste.famillesMetier.some(id => 
+              id.equals ? id.equals(familleMetierId) : id.toString() === familleMetierId.toString()
+            );
+            
+            if (!familleExists) {
+              cachedPoste.famillesMetier.push(familleMetierId);
+              needsUpdate = true;
+            }
+            
+            let serviceNeedsUpdate = false;
+            if (serviceId) {
+              const serviceExists = cachedPoste.services.some(id => 
+                id.equals ? id.equals(serviceId) : id.toString() === serviceId.toString()
+              );
+              
+              if (!serviceExists) {
+                cachedPoste.services.push(serviceId);
+                needsUpdate = true;
+                serviceNeedsUpdate = true;
+              }
+            }
+            
+            if (needsUpdate) {
+              if (cachedPoste.isInDB) {
+                const updateQuery = { $addToSet: {} };
+                
+                if (!familleExists) {
+                  updateQuery.$addToSet.famillesMetier = familleMetierId;
+                }
+                
+                // 💡 CORRIGÉ : On vérifie si l'ajout de service est nécessaire
+                if (serviceNeedsUpdate) { 
+                  updateQuery.$addToSet.services = serviceId;
+                }
+                
+                // Exécuter la mise à jour seulement si $addToSet n'est pas vide
+                if (Object.keys(updateQuery.$addToSet).length > 0) {
+                  await PosteDeTravail.findByIdAndUpdate(cachedPoste.id, updateQuery);
+                }
+              } else {
+                // Mise à jour du nouveau poste en attente d'insertion
+                if (!familleExists) {
+                  cachedPoste.data.famillesMetier.push(familleMetierId);
+                }
+                if (serviceNeedsUpdate) { // Utiliser la variable de vérification
+                  cachedPoste.data.services.push(serviceId);
+                }
+              }
+            }
+            
+            posteId = cachedPoste.id;
+          }
+        } else if (!familleMetierId && ligne.POSTE_DE_TRAVAIL) {
+          erreursLigne.push("Poste de travail sans famille métier valide");
+        } else if (ligne.POSTE_DE_TRAVAIL && !nettoyerTexte(ligne.POSTE_DE_TRAVAIL)) {
+          erreursLigne.push("Poste de travail invalide ou vide");
+        }
+
+        // 🔟 Utilisateur - ✅ GESTION EMAIL AMÉLIORÉE
         const nomComplet = ligne.NOM ? nettoyerTexte(ligne.NOM).toUpperCase() : null;
         
-        // ✅ Générer email si absent
-        const email = ligne.EMAIL && nettoyerTexte(ligne.EMAIL)
-          ? nettoyerTexte(ligne.EMAIL).toLowerCase()
-          : genererEmail(nomComplet, ligne.MATRICULE);
+        if (!nomComplet) {
+          erreursLigne.push("Nom manquant ou invalide");
+        }
 
-        if (nomComplet && !caches.utilisateurs.has(email)) {
+        // ✅ NOUVELLE LOGIQUE EMAIL
+        let email = null;
+        let emailGenere = false;
+        
+        // Tentative 1 : Utiliser l'email du CSV s'il est valide
+        if (ligne.EMAIL && nettoyerTexte(ligne.EMAIL)) {
+          const emailCandidat = nettoyerTexte(ligne.EMAIL).toLowerCase();
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCandidat)) {
+            email = emailCandidat;
+          } else {
+            avertissementsLigne.push("Email invalide dans CSV, email généré automatiquement");
+          }
+        }
+        
+        // Tentative 2 : Générer l'email si nécessaire
+        if (!email && nomComplet) {
+          email = genererEmail(nomComplet, ligne.MATRICULE);
+          emailGenere = true;
+          
+          // Vérifier que l'email généré est valide
+          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            erreursLigne.push("Impossible de générer un email valide");
+            email = null;
+          }
+        }
+
+        // Vérifier les doublons d'email
+        if (email && caches.utilisateurs.has(email)) {
+          // Si l'email est en double, essayer de générer un nouveau avec un suffixe
+          const baseEmail = email.split('@')[0];
+          const domaine = email.split('@')[1];
+          let tentative = 1;
+          let emailUnique = email;
+          
+          while (caches.utilisateurs.has(emailUnique) && tentative <= 10) {
+            emailUnique = `${baseEmail}${tentative}@${domaine}`;
+            tentative++;
+          }
+          
+          if (caches.utilisateurs.has(emailUnique)) {
+            erreursLigne.push("Email en double, impossible de générer un email unique");
+            email = null;
+          } else {
+            email = emailUnique;
+            avertissementsLigne.push(`Email modifié pour éviter doublon: ${email}`);
+          }
+        }
+
+        // Si des erreurs BLOQUANTES, ajouter aux non traités
+        if (erreursLigne.length > 0) {
+          utilisateursNonTraites.push({
+            ...donneesLigne,
+            raisons: erreursLigne,
+            avertissements: avertissementsLigne.length > 0 ? avertissementsLigne : undefined
+          });
+        } else if (nomComplet && email) {
+          // ✅ Créer l'utilisateur même sans commune
           const hashedPassword = await bcrypt.hash(passwordParDefaut, 10);
           
           const utilisateurData = {
-            matricule: ligne.MATRICULE ? nettoyerTexte(ligne.MATRICULE) : `MAT-${Date.now()}`,
-            nom: nomComplet, // ✅ Nom complet
-            prenom: "", // ✅ Prénom vide
+            matricule: ligne.MATRICULE ? nettoyerTexte(ligne.MATRICULE) : `MAT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            nom: nomComplet,
+            prenom: "",
             email: email,
             motDePasse: hashedPassword,
             genre: ligne.SEXE ? nettoyerTexte(ligne.SEXE) : "AUTRE",
             dateNaissance: ligne.DATE_NAISSANCE ? convertirDateNaissance(ligne.DATE_NAISSANCE) : null,
             lieuNaissance: ligne.LIEU_NAISSANCE ? nettoyerTexte(ligne.LIEU_NAISSANCE).toUpperCase() : null,
-            telephone: ligne.TEL ? nettoyerTexte(ligne.TEL) : "",
+            telephone: ligne.TEL ? ligne.TEL.replace(" ","") : "",
             dateEntreeEnService: ligne.DATE_E_ADM ? convertirDateNaissance(ligne.DATE_E_ADM) : null,
             role: "UTILISATEUR",
-            roles:["UTILISATEUR"],
+            roles: ["UTILISATEUR"],
             actif: true,
+            // ✅ Ajouter les avertissements en commentaire interne si nécessaire
+            _avertissements: avertissementsLigne.length > 0 ? avertissementsLigne : undefined
           };
 
-          // Ajouter les références si elles existent
+          // Ajouter les références (commune devient optionnelle)
           if (structureId) utilisateurData.structure = structureId;
           if (serviceId) utilisateurData.service = serviceId;
           if (categorieId) utilisateurData.categorieProfessionnelle = categorieId;
           if (posteId) utilisateurData.posteDeTravail = posteId;
           if (gradeId) utilisateurData.grade = gradeId;
           if (familleMetierId) utilisateurData.familleMetier = familleMetierId;
-          if (communeId) utilisateurData.commune = communeId;
-
+          if (communeId) utilisateurData.commune = communeId; // ✅ Optionnel
 
           donneesAInserer.utilisateurs.push(utilisateurData);
           caches.utilisateurs.add(email);
@@ -445,10 +599,17 @@ export const importerDonnees = async (req, res) => {
 
       } catch (err) {
         console.error(`❌ Erreur ligne ${i + 1}:`, err.message);
+        utilisateursNonTraites.push({
+          numeroLigne: i + 1,
+          matricule: ligne.MATRICULE || null,
+          nom: ligne.NOM || null,
+          email: ligne.EMAIL || null,
+          raisons: [`Erreur technique: ${err.message}`]
+        });
       }
     }
 
-    // Insertion en lot pour optimiser les performances
+    // Insertion en lot
     console.log('📝 Insertion des données...');
     
     const insertions = [];
@@ -471,9 +632,6 @@ export const importerDonnees = async (req, res) => {
     if (donneesAInserer.famillesMetier.length > 0) {
       insertions.push(FamilleMetier.insertMany(donneesAInserer.famillesMetier, { ordered: false }));
     }
-    if (donneesAInserer.postes.length > 0) {
-      insertions.push(PosteDeTravail.insertMany(donneesAInserer.postes, { ordered: false }));
-    }
     if (donneesAInserer.structures.length > 0) {
       insertions.push(Structure.insertMany(donneesAInserer.structures, { ordered: false }));
     }
@@ -481,10 +639,14 @@ export const importerDonnees = async (req, res) => {
       insertions.push(Service.insertMany(donneesAInserer.services, { ordered: false }));
     }
 
-    // Attendre que toutes les entités de référence soient insérées
     await Promise.all(insertions);
 
-    // Insérer les utilisateurs en lots de 1000
+    // Insérer les postes
+    if (donneesAInserer.postes.length > 0) {
+      await PosteDeTravail.insertMany(donneesAInserer.postes, { ordered: false });
+    }
+
+    // Insérer les utilisateurs en lots
     if (donneesAInserer.utilisateurs.length > 0) {
       const batchSize = 1000;
       for (let i = 0; i < donneesAInserer.utilisateurs.length; i += batchSize) {
@@ -504,7 +666,8 @@ export const importerDonnees = async (req, res) => {
     - ${donneesAInserer.postes.length} postes
     - ${donneesAInserer.structures.length} structures
     - ${donneesAInserer.services.length} services
-    - ${donneesAInserer.utilisateurs.length} utilisateurs`);
+    - ${donneesAInserer.utilisateurs.length} utilisateurs traités
+    - ${utilisateursNonTraites.length} utilisateurs non traités`);
 
     return res.status(200).json({
       success: true,
@@ -519,8 +682,10 @@ export const importerDonnees = async (req, res) => {
         postes: donneesAInserer.postes.length,
         structures: donneesAInserer.structures.length,
         services: donneesAInserer.services.length,
-        utilisateurs: donneesAInserer.utilisateurs.length
-      }
+        utilisateursTraites: donneesAInserer.utilisateurs.length,
+        utilisateursNonTraites: utilisateursNonTraites.length
+      },
+      utilisateursNonTraites: utilisateursNonTraites
     });
   } catch (err) {
     console.error("❌ Erreur importation :", err.message);

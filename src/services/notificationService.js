@@ -277,8 +277,8 @@ const construireMessageStatut = (tache, ancienStatut, nouveauStatut, theme) => {
   return {
     titreFr: 'Changement de statut de tâche',
     titreEn: 'Task status change',
-    messageFr: `Le statut de la tâche "${tache.libelleFr || 'Sans titre'}" du thème "${theme.titreFr || 'Sans titre'}" est passé de "${ancienStatutTrad.fr}" à "${nouveauStatutTrad.fr}".`,
-    messageEn: `The status of the task "${tache.libelleEn || 'Untitled'}" for the theme "${theme.titreEn || 'Untitled'}" changed from "${ancienStatutTrad.en}" to "${nouveauStatutTrad.en}".`
+    messageFr: `Le statut de la tâche "${tache.nomFr || 'Sans titre'}" du thème "${theme.titreFr || 'Sans titre'}" est passé de "${ancienStatutTrad.fr}" à "${nouveauStatutTrad.fr}".`,
+    messageEn: `The status of the task "${tache.nomEn || 'Untitled'}" for the theme "${theme.titreEn || 'Untitled'}" changed from "${ancienStatutTrad.en}" to "${nouveauStatutTrad.en}".`
   };
 };
 

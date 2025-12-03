@@ -10,7 +10,7 @@ const BaseUtilisateurSchema = new mongoose.Schema({
     genre: { type: String, enum: ['M', 'F'], required:true },
     dateNaissance: {type:Date},
     lieuNaissance:{type:String},
-    telephone:{type:Number, required:true},
+    telephone:{type:String, required:true},
     photoProfil:{type:String},
     commune:{type: mongoose.Schema.Types.ObjectId, ref: 'Commune'},
 }, { timestamps: true, discriminatorKey: 'type' }); // DiscriminatorKey distingue les types d'utilisateur

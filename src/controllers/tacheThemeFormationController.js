@@ -117,7 +117,7 @@ export const executerTacheTheme = async (req, res) => {
         if (ancienStatut !== statut) {
           try {
             await notifierChangementStatutTache({
-              tache:existingLink,
+              tache:existingLink.tache,
               ancienStatut,
               nouveauStatut: statut,
               modifiePar: currentUser._id,
@@ -163,7 +163,7 @@ export const executerTacheTheme = async (req, res) => {
     ]);
     try {
       await notifierChangementStatutTache({
-        tache:tacheTheme,
+        tache:tache,
         ancienStatut:"A_FAIRE",
         nouveauStatut: statut,
         modifiePar: currentUser._id,

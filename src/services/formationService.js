@@ -77,3 +77,60 @@ export const enrichirFormations = async (formations) => {
         };
     });
 };
+
+// Fonction utilitaire pour vérifier si un utilisateur fait partie du public cible d'un thème
+export const isUserInPublicCible = async (theme, user) => {
+    if (!theme.publicCible || theme.publicCible.length === 0) {
+        return false;
+    }
+
+    // Récupérer les informations du poste de travail de l'utilisateur
+    const userPoste = user.posteDeTravail?._id || user.posteDeTravail;
+    const userFamilleMetier = user.posteDeTravail?.familleMetier || user.familleMetier;
+    const userStructure = user.structure;
+    const userService = user.service;
+
+    for (const familleCible of theme.publicCible) {
+        // Vérifier si l'utilisateur appartient à cette famille de métier
+        if (userFamilleMetier?.toString() !== familleCible.familleMetier.toString()) {
+            continue;
+        }
+
+        // Cas 1 : Toute la famille (pas de restrictions sur les postes)
+        if (!familleCible.postes || familleCible.postes.length === 0) {
+            return true;
+        }
+
+        // Cas 2 : Vérifier les restrictions par postes
+        for (const posteRestriction of familleCible.postes) {
+            if (userPoste?.toString() !== posteRestriction.poste.toString()) {
+                continue;
+            }
+
+            // Cas 2a : Toutes les structures du poste
+            if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                return true;
+            }
+
+            // Cas 2b : Vérifier les restrictions par structures
+            for (const structureRestriction of posteRestriction.structures) {
+                if (userStructure?.toString() !== structureRestriction.structure.toString()) {
+                    continue;
+                }
+
+                // Cas 2b-i : Tous les services de la structure
+                if (!structureRestriction.services || structureRestriction.services.length === 0) {
+                    return true;
+                }
+
+                // Cas 2b-ii : Vérifier les services spécifiques
+                const serviceIds = structureRestriction.services.map(s => s.service.toString());
+                if (userService && serviceIds.includes(userService.toString())) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+};

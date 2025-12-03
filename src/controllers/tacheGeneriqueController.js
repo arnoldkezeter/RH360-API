@@ -17,9 +17,11 @@ export const createTacheGenerique = async (req, res) => {
   }
 
   try {
-    let { code, nomFr, nomEn, descriptionFr, descriptionEn, type, obligatoire } = req.body;
+    let { ordre, code, niveau, nomFr, nomEn, descriptionFr, descriptionEn, type, obligatoire } = req.body;
 
     // Nettoyage et validation des champs requis
+    niveau = niveau?.trim();
+    ordre = ordre?.trim();
     code = code?.trim();
     nomFr = nomFr?.trim();
     nomEn = nomEn?.trim();
@@ -27,7 +29,7 @@ export const createTacheGenerique = async (req, res) => {
     descriptionEn = descriptionEn?.trim() || "";
 
     // Validation des champs requis
-    if (!code || !nomFr || !nomEn || !type) {
+    if (!ordre || !code || !nomFr || !nomEn || !type) {
       return res.status(400).json({
         success: false,
         message: t("champs_obligatoires", lang),
@@ -64,8 +66,20 @@ export const createTacheGenerique = async (req, res) => {
         typesValides,
       });
     }
+    if (niveau) {
+      const niveaux = ['pre-formation', 'pendant-formation', 'post-formation'];
+      if (!niveaux.includes(type)) {
+        return res.status(400).json({
+          success: false,
+          message: t("niveau_execution_invalide", lang),
+          niveaux,
+        });
+      }
+    }
 
     const tache = await TacheGenerique.create({
+      ordre,
+      niveau,
       code,
       nomFr,
       nomEn,
@@ -96,7 +110,7 @@ export const createTacheGenerique = async (req, res) => {
 export const updateTacheGenerique = async (req, res) => {
   const lang = req.headers["accept-language"] || "fr";
   const { id } = req.params;
-  const { nomFr, nomEn, descriptionFr, descriptionEn, type, obligatoire, actif } = req.body;
+  const { ordre, niveau, nomFr, nomEn, descriptionFr, descriptionEn, type, obligatoire, actif } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({
@@ -162,7 +176,22 @@ export const updateTacheGenerique = async (req, res) => {
       tache.type = type;
     }
 
+    if (niveau) {
+      
+      const niveaux = ['pre-formation', 'pendant-formation', 'post-formation'];
+      if (!niveaux.includes(niveau)) {
+        return res.status(400).json({
+          success: false,
+          message: t("niveau_execution_invalide", lang),
+          niveaux,
+        });
+      }
+      tache.niveau = niveau;
+    }
+
     // Mise à jour des champs modifiables
+    if (ordre !== undefined) tache.ordre = ordre;
+    if (niveau!==undefined) tache.niveau = niveau;
     if (nomFr !== undefined) tache.nomFr = nomFr.trim();
     if (nomEn !== undefined) tache.nomEn = nomEn.trim();
     if (descriptionFr !== undefined) tache.descriptionFr = descriptionFr?.trim() || "";
@@ -243,7 +272,7 @@ export const getTachesGeneriques = async (req, res) => {
   const { nom, type, actif } = req.query;
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
-  const sortField = lang === "en" ? "nomEn" : "nomFr";
+  const sortField = "ordre"
   const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
 
   try {

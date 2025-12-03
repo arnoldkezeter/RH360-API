@@ -1,11 +1,11 @@
-<!DOCTYPE Posted on 2025-01-01 at 00:00:00 UTC>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <title><%= documentTitle %></title>
     <style>
         @page {
-            margin: 2cm 2cm 2cm 2cm;
+            margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4;
         }
         
@@ -13,18 +13,17 @@
             font-family: 'Times New Roman', serif; 
             margin: 0; 
             padding: 0;
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 16px;
+            line-height: 1.4;
             color: #000;
         }
-        
+
+        /* HEADER */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 0;
             margin-bottom: 40px;
-            min-height: 120px;
         }
         
         .header-left, .header-right {
@@ -32,41 +31,35 @@
             font-size: 10px;
             font-weight: bold;
             text-align: center;
-            line-height: 1.2;
         }
         
         .header-center {
-            text-align: center;
             width: 20%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
         }
         
         .header-center img {
-            max-width: 100px;
-            height: auto;
+            max-width: 90px;
         }
-        
+
         .separator {
             margin: 3px 0;
-            color: #000;
         }
-        
+
         .header-section {
             margin-bottom: 2px;
         }
-        
+
+        /* TITRE */
         .note-title {
             text-align: center;
-            margin: 50px 0 20px 0;
+            margin-bottom: 20px;
         }
-        
+
         .document-title {
-            text-align: center;
-            font-size: 15px;
+            font-size: 17px;
             font-weight: bold;
-            color: #000;
+            margin-bottom: 20px;
             line-height: 1.4;
         }
 
@@ -76,111 +69,84 @@
 
         .description {
             text-align: justify;
-            margin: 20px 1cm;
-            line-height: 1.6;
-            font-size: 14px;
+            margin: 20px 0;
+            line-height: 1.5;
+            font-size: 16px;
         }
 
+        /* CONTENU */
         .body-content {
             text-align: justify;
-            line-height: 1.8;
-            margin: 0 1cm;
-            font-size: 14px;
+            line-height: 1.5;
+            font-size: 16px;
         }
         
         .body-content p {
-            margin-bottom: 15px;
-            text-indent: 1.5cm;
+            margin-bottom: 12px;
         }
 
         .formateurs-intro {
-            text-indent: 1.5cm;
+            text-indent: 1.2cm;
             margin-bottom: 10px;
         }
 
         .formateurs-list {
-            margin: 15px 0 15px 3cm;
-            line-height: 1.8;
-            font-size: 12px;
+            margin: 15px 0 15px 2cm;
+            line-height: 1.6;
+            font-size: 16px;
         }
 
         .formateur-item {
             margin-bottom: 8px;
         }
 
-        .first-page-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start; /* MODIFICATION ICI pour aligner par le haut */
-            margin-top: 60px;
-            page-break-inside: avoid;
-        }
-
-        .footer-left {
-            flex: 1;
-            margin-left: 1cm;
-        }
-
-        .footer-right {
-            flex: 0 0 200px;
-            margin-right: 1cm;
-        }
-
+        /* COPIE */
         .copie-section {
-            font-size: 12px;
+            margin-top: 40px;
+            page-break-inside: avoid;
+            font-size: 16px;
         }
-        
+
         .copie-title {
             font-weight: bold;
             text-decoration: underline;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
-        
+
         .copie-list {
             margin-left: 20px;
             line-height: 1.6;
         }
 
+        /* QR CODE sous la section copie */
         .verification-section {
-            text-align: center;
-            padding: 10px;
-            /* border: 2px solid #000; */
-            background-color: #fff;
-        }
-        
-        .qr-code-container {
-            margin-bottom: 8px;
-        }
-        
-        .qr-code-container img {
+            margin-top: 20px;
             width: 150px;
-            height: 150px;
-            display: block;
-            margin: 0 auto;
+            text-align: center;
+            page-break-inside: avoid;
         }
-        
+
+        .qr-code-container img {
+            width: 85px;
+            height: 85px;
+        }
+
         .reference-systeme {
             font-size: 10px;
             font-weight: bold;
-            margin-top: 8px;
-            text-align: center;
+            margin-top: 5px;
         }
-        
+
         .verification-text {
             font-size: 8px;
-            color: #666;
-            margin-top: 5px;
-            text-align: center;
+            color: #555;
+            margin-top: 3px;
         }
 
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-            }
-            
-            .first-page-footer {
-                page-break-inside: avoid;
             }
         }
 
@@ -190,120 +156,117 @@
     </style>
 </head>
 <body>
-    <div class="first-page-container">
-        <div class="header">
-            <div class="header-left">
-                <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-                <div class="header-section">Paix-Travail-Patrie</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTERE DES FINANCES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-                <div class="header-section">LA FORMATION CONTINUE</div>
-                <div class="separator">----------------------</div>
-            </div>
-            
-            <div class="header-center">
-                <% if (logoUrl) { %>
-                    <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
-                <% } %>
-            </div>
-            
-            <div class="header-right">
-                <div class="header-section">REPUBLIC OF CAMEROON</div>
-                <div class="header-section">Peace-Work-Fatherland</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">MINISTRY OF FINANCE</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
-                <div class="separator">----------------------</div>
-                <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
-                <div class="separator">----------------------</div>
-            </div>
-        </div>
-        
-        <div class="note-title">
-            <h3 class="document-title">
-                <p>Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________</p>
-                <p><%= noteTitle %></p>
-            </h3>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            REPUBLIQUE DU CAMEROUN<br>
+            Paix - Travail - Patrie<br>
+            ----------------------<br>
+            MINISTERE DES FINANCES<br>
+            ----------------------<br>
+            DIRECTION GENERALE DES IMPOTS<br>
+            ----------------------<br>
+            DIRECTION DES AFFAIRES GENERALES<br>
+            ----------------------<br>
+            CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+            ----------------------
         </div>
 
-        <% if (description) { %>
-        <div class="description">
-            <%= description %>
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries">
+            <% } %>
         </div>
-        <% } %>
 
-        <div class="body-content">
-            <p class="formateurs-intro">
-                Il s'agit de Mesdames et Messieurs :
-            </p>
+        <div class="header-right">
+            REPUBLIC OF CAMEROON<br>
+            Peace - Work - Fatherland<br>
+            ----------------------<br>
+            MINISTRY OF FINANCE<br>
+            ----------------------<br>
+            DIRECTORATE GENERAL OF TAXATION<br>
+            ----------------------<br>
+            DEPARTMENT OF GENERAL AFFAIRS<br>
+            ----------------------<br>
+            TRAINING AND SKILLS PERFECTION UNIT<br>
+            ----------------------
+        </div>
+    </div>
 
-            <div class="formateurs-list">
-                <% formateurs.forEach(function(formateur) { %>
-                    <div class="formateur-item">
-                        <%= formateur.numero %>. <span class="highlight"><%= formateur.nomComplet %></span>
-                    </div>
+    <!-- TITRE -->
+    <div class="note-title">
+        <h3 class="document-title">
+            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+            <%= noteTitle %>
+        </h3>
+    </div>
+
+    <% if (description) { %>
+    <div class="description">
+        <%= description %>
+    </div>
+    <% } %>
+
+    <div class="body-content">
+        <p class="formateurs-intro">
+            Il s'agit de Mesdames et Messieurs :
+        </p>
+
+        <div class="formateurs-list">
+            <% formateurs.forEach(function(formateur) { %>
+                <div class="formateur-item">
+                    <%= formateur.numero %>. <span class="highlight"><%= formateur.nomComplet %></span>
+                </div>
+            <% }); %>
+        </div>
+
+        <p style="text-indent: 1.2cm;">
+            La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
+            dûment justifiée.
+        </p>
+
+        <p style="text-indent: 1.2cm;">
+            Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
+            disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
+            et concernés par cette formation.
+        </p>
+
+        <p style="text-indent: 1.2cm;">
+            Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
+            présente note de service.
+        </p>
+    </div>
+
+    <!-- SECTION COPIE -->
+    <div class="copie-section">
+        <div class="copie-title">Copie :</div>
+        <div class="copie-list">
+            <% if (copies && copies.length > 0) { %>
+                <% copies.forEach(function(copie) { %>
+                    <% if (copie.trim()) { %>
+                        - <%= copie.trim() %><br>
+                    <% } %>
                 <% }); %>
-            </div>
+            <% } else { %>
+                - Intéressé(e)s<br>
+                - Chefs de Service concernés<br>
+                - Archives/Chrono.
+            <% } %>
+        </div>
+    </div>
 
-            <p>
-                La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
-                dûment justifiée.
-            </p>
-
-            <p>
-                Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
-                disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
-                et concernés par cette formation.
-            </p>
-
-            <p>
-                Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
-                présente note de service.
-            </p>
+    <!-- QR CODE sous la copie -->
+    <div class="verification-section">
+        <div class="qr-code-container">
+            <img src="<%= qrCodeUrl %>" alt="QR Code">
         </div>
 
-        <div class="first-page-footer">
-            <div class="footer-left">
-                <div class="copie-section">
-                    <div class="copie-title">Copie :</div>
-                    <div class="copie-list">
-                        <% if (copies && copies.length > 0) { %>
-                            <% copies.forEach(function(copie) { %>
-                                <% if (copie.trim()) { %>
-                                    - <%= copie.trim() %><br>
-                                <% } %>
-                            <% }); %>
-                        <% } else { %>
-                            - Intéressé(e)s<br>
-                            - Chefs de Service concernés<br>
-                            - Archives/Chrono.
-                        <% } %>
-                    </div>
-                </div>
-            </div>
+        <div class="reference-systeme">
+            Réf. Système : <%= referenceSysteme %>
+        </div>
 
-            <div class="footer-right">
-                <div class="verification-section">
-                    <div class="qr-code-container">
-                        <img src="<%= qrCodeUrl %>" alt="QR Code de vérification">
-                    </div>
-                    <div class="reference-systeme">
-                        Réf. Système: <%= referenceSysteme %>
-                    </div>
-                    <div class="verification-text">
-                        Scanner pour vérifier l'authenticité
-                    </div>
-                </div>
-            </div>
+        <div class="verification-text">
+            Scanner pour vérifier l'authenticité
         </div>
     </div>
 </body>

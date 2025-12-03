@@ -6,7 +6,7 @@ const rotationSchema = new mongoose.Schema({
   service: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', required: true },
   stagiaire: { type: mongoose.Schema.Types.ObjectId, ref: "Stagiaire" }, // si stage individuel
   groupe: { type: mongoose.Schema.Types.ObjectId, ref: 'Groupe' },       // si stage groupe
-  superviseur: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur', required: true },
+  superviseur: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' },
   dateDebut: { type: Date, required: true },
   dateFin: { type: Date, required: true }
 }, { timestamps: true });

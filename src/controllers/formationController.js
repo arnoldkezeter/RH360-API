@@ -6,7 +6,7 @@ import { calculerAge } from '../utils/calculerAge.js';
 import Formation from '../models/Formation.js';
 import BudgetFormation from '../models/BudgetFormation.js';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
-import { enrichirFormations } from '../services/formationService.js';
+import { enrichirFormations, isUserInPublicCible } from '../services/formationService.js';
 import ProgrammeFormation from '../models/ProgrammeFormation.js';
 import Depense from '../models/Depense.js';
 import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
@@ -538,6 +538,118 @@ export const getFormationsForDropdown = async (req, res) => {
     }
 };
 
+// Pour les menus déroulants - Formations (Public Cible)
+export const getFormationsForDropdownByPublicCible = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const sortField = lang === 'en' ? 'titreEn' : 'titreFr';
+    const { programmeId } = req.params; 
+    const { userId } = req.query;
+    
+    // Validation de programmeId
+    if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        let query = { programmeFormation: programmeId };
+        let formations = [];
+
+        if (userId) {
+            // Validation de l'ID utilisateur
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            // Charger l'utilisateur complet
+            const user = await Utilisateur.findById(userId)
+                .select('roles role posteDeTravail structure service familleMetier')
+                .populate('posteDeTravail')
+                .lean();
+                
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            // Vérifier si l'utilisateur est admin
+            const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
+            const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
+
+            // Si l'utilisateur n'est pas admin, filtrer par public cible
+            if (!isAdministrator) {
+                // 1. Récupérer tous les thèmes du programme
+                const allThemes = await ThemeFormation.find({})
+                    .populate('formation')
+                    .lean();
+
+                // 2. Filtrer les thèmes où l'utilisateur fait partie du public cible
+                const targetedThemeIds = [];
+                
+                for (const theme of allThemes) {
+                    const isTargeted = await isUserInPublicCible(theme, user);
+                    if (isTargeted) {
+                        targetedThemeIds.push(theme._id);
+                    }
+                }
+
+                if (targetedThemeIds.length === 0) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            formations: [],
+                            totalItems: 0,
+                            currentPage: 1,
+                            totalPages: 0,
+                            pageSize: 0,
+                        },
+                    });
+                }
+
+                // 3. Récupérer les formations correspondantes
+                const themesWithFormations = await ThemeFormation.find({
+                    _id: { $in: targetedThemeIds }
+                }).select('formation').lean();
+
+                const formationIds = [...new Set(
+                    themesWithFormations.map(t => t.formation.toString())
+                )];
+
+                query._id = { $in: formationIds };
+            }
+        }
+
+        // Exécuter la requête
+        formations = await Formation.find(query, '_id titreFr titreEn')
+            .sort({ [sortField]: 1 })
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                formations,
+                totalItems: formations.length,
+                currentPage: 1,
+                totalPages: 1,
+                pageSize: formations.length,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
 // Liste avec pagination
 export const getFormations = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
@@ -584,6 +696,8 @@ export const getFilteredFormations = async (req, res) => {
         titre,
         debut,
         fin,
+        userId,
+        filterType = 'all', // 'all', 'responsable', 'publicCible'
         page = 1,
         limit = 10,
     } = req.query;
@@ -657,6 +771,97 @@ export const getFilteredFormations = async (req, res) => {
     }
 
     try {
+        // Gestion du filtrage par utilisateur
+        if (userId) {
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            const user = await Utilisateur.findById(userId)
+                .select('roles role posteDeTravail structure service familleMetier')
+                .populate('posteDeTravail')
+                .lean();
+
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            // Vérifier si l'utilisateur est admin
+            const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
+            const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
+
+            // Si l'utilisateur n'est pas admin, appliquer les filtres
+            if (!isAdministrator) {
+                let formationIdsToFilter = [];
+
+                if (filterType === 'responsable') {
+                    // Filtrer par responsabilité
+                    const responsibleThemes = await ThemeFormation.find(
+                        { responsable: userId },
+                        'formation'
+                    ).lean();
+
+                    formationIdsToFilter = [...new Set(
+                        responsibleThemes.map(theme => theme.formation.toString())
+                    )];
+
+                } else if (filterType === 'publicCible') {
+                    // Filtrer par public cible
+                    const allThemes = await ThemeFormation.find({}).lean();
+                    const targetedThemeIds = [];
+
+                    for (const theme of allThemes) {
+                        const isTargeted = await isUserInPublicCible(theme, user);
+                        if (isTargeted) {
+                            targetedThemeIds.push(theme._id);
+                        }
+                    }
+
+                    if (targetedThemeIds.length > 0) {
+                        const themesWithFormations = await ThemeFormation.find({
+                            _id: { $in: targetedThemeIds }
+                        }).select('formation').lean();
+
+                        formationIdsToFilter = [...new Set(
+                            themesWithFormations.map(t => t.formation.toString())
+                        )];
+                    }
+                }
+
+                if (formationIdsToFilter.length === 0) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            formations: [],
+                            totalItems: 0,
+                            currentPage: parseInt(page),
+                            totalPages: 0,
+                            pageSize: parseInt(limit),
+                        },
+                    });
+                }
+
+                // Combiner avec les filtres existants
+                if (filters._id) {
+                    // Si _id existe déjà dans filters (du filtrage par période), faire l'intersection
+                    const existingIds = filters._id.$in || [filters._id];
+                    filters._id = {
+                        $in: existingIds.filter(id =>
+                            formationIdsToFilter.includes(id.toString())
+                        )
+                    };
+                } else {
+                    filters._id = { $in: formationIdsToFilter };
+                }
+            }
+        }
+
         const [total, formations] = await Promise.all([
             Formation.countDocuments(filters),
             Formation.find(filters)
@@ -788,7 +993,6 @@ export const getFilteredFormations = async (req, res) => {
 };
 
 
-
 //Liste des formations pour le diagramme de Gantt
 export const getFormationsForGantt = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -797,6 +1001,8 @@ export const getFormationsForGantt = async (req, res) => {
         familleMetier,
         titre,
         programmeAnnee,
+        userId,
+        filterType = 'all', // 'all', 'responsable', 'publicCible'
         page = 1,
         limit = 10,
     } = req.query;
@@ -849,6 +1055,86 @@ export const getFormationsForGantt = async (req, res) => {
                 });
             }
             filters.programmeFormation = { $in: programmeIdList };
+        }
+
+        // Gestion du filtrage par utilisateur
+        if (userId) {
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('identifiant_invalide', lang),
+                });
+            }
+
+            const user = await Utilisateur.findById(userId)
+                .select('roles role posteDeTravail structure service familleMetier')
+                .populate('posteDeTravail')
+                .lean();
+
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: t('utilisateur_non_trouve', lang),
+                });
+            }
+
+            // Vérifier si l'utilisateur est admin
+            const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
+            const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
+
+            // Si l'utilisateur n'est pas admin, appliquer les filtres
+            if (!isAdministrator) {
+                let formationIdsToFilter = [];
+
+                if (filterType === 'responsable') {
+                    // Filtrer par responsabilité
+                    const responsibleThemes = await ThemeFormation.find(
+                        { responsable: userId },
+                        'formation'
+                    ).lean();
+
+                    formationIdsToFilter = [...new Set(
+                        responsibleThemes.map(theme => theme.formation.toString())
+                    )];
+
+                } else if (filterType === 'publicCible') {
+                    // Filtrer par public cible
+                    const allThemes = await ThemeFormation.find({}).lean();
+                    const targetedThemeIds = [];
+
+                    for (const theme of allThemes) {
+                        const isTargeted = await isUserInPublicCible(theme, user);
+                        if (isTargeted) {
+                            targetedThemeIds.push(theme._id);
+                        }
+                    }
+
+                    if (targetedThemeIds.length > 0) {
+                        const themesWithFormations = await ThemeFormation.find({
+                            _id: { $in: targetedThemeIds }
+                        }).select('formation').lean();
+
+                        formationIdsToFilter = [...new Set(
+                            themesWithFormations.map(t => t.formation.toString())
+                        )];
+                    }
+                }
+
+                if (formationIdsToFilter.length === 0) {
+                    return res.status(200).json({
+                        success: true,
+                        data: {
+                            formations: [],
+                            totalItems: 0,
+                            currentPage: parseInt(page),
+                            totalPages: 0,
+                            pageSize: parseInt(limit),
+                        },
+                    });
+                }
+
+                filters._id = { $in: formationIdsToFilter };
+            }
         }
 
         // Récupérer les formations filtrées avec pagination
@@ -943,7 +1229,7 @@ export const getFormationsForGantt = async (req, res) => {
             },
         });
     } catch (err) {
-        console.error("Erreur dans getFilteredFormations:", err);
+        console.error("Erreur dans getFormationsForGantt:", err);
         return res.status(500).json({
             success: false,
             message: t("erreur_serveur", lang),

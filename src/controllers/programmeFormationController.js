@@ -6,6 +6,9 @@ import Formation from '../models/Formation.js';
 import mongoose from 'mongoose';
 import { calculerCoutsBudget } from '../services/budgetFormationService.js';
 import Depense from '../models/Depense.js';
+import TacheGenerique from '../models/TacheGenerique.js';
+import TacheThemeFormation from '../models/TacheThemeFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 
 // Ajouter un programme de formation
 export const createProgrammeFormation = async (req, res) => {
@@ -336,6 +339,7 @@ export const getProgrammesForDropdown = async (req, res) => {
 
 
 //Liste des programmes de formation avec stats
+//Liste des programmes de formation avec stats
 export const getStatistiquesProgrammesFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
 
@@ -369,48 +373,144 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
         }
 
         const programmeIds = programmes.map((p) => p._id);
-        // Rechercher toutes les formations associées aux programmes retournés
-        const formations = await Formation.find({ programmeFormation: { $in: programmeIds } })
-            .select('programmeFormation nbTachesTotal nbTachesExecutees')
-            .lean();
-        // Organiser les formations par programmeId
+
+        // Récupérer toutes les formations des programmes
+        const formations = await Formation.find({ 
+            programmeFormation: { $in: programmeIds } 
+        })
+        .select('_id programmeFormation')
+        .lean();
+
+        // Organiser les formations par programme
         const formationsParProgramme = {};
+        const formationIds = [];
+        
         for (const formation of formations) {
             const pid = formation.programmeFormation.toString();
             if (!formationsParProgramme[pid]) {
                 formationsParProgramme[pid] = [];
             }
-            formationsParProgramme[pid].push(formation);
+            formationsParProgramme[pid].push(formation._id);
+            formationIds.push(formation._id);
+        }
+
+        // Récupérer tous les thèmes des formations
+        const themes = await ThemeFormation.find({ 
+            formation: { $in: formationIds } 
+        })
+        .select('_id formation')
+        .lean();
+
+        // Organiser les thèmes par formation
+        const themesParFormation = {};
+        const themeIds = [];
+        
+        for (const theme of themes) {
+            const fid = theme.formation.toString();
+            if (!themesParFormation[fid]) {
+                themesParFormation[fid] = [];
+            }
+            themesParFormation[fid].push(theme._id);
+            themeIds.push(theme._id);
+        }
+
+        // Récupérer le nombre total de tâches génériques actives
+        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+        // Récupérer toutes les tâches exécutées pour tous les thèmes
+        const tachesExecutees = await TacheThemeFormation.aggregate([
+            {
+                $match: {
+                    theme: { $in: themeIds },
+                    estExecutee: true
+                }
+            },
+            {
+                $group: {
+                    _id: '$theme',
+                    nombreTachesExecutees: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Créer un map pour accès rapide
+        const tachesExecuteesParTheme = {};
+        for (const item of tachesExecutees) {
+            tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
         }
 
         // Construire les résultats
         const results = programmes.map((programme) => {
             const pid = programme._id.toString();
-            const formations = formationsParProgramme[pid] || [];
-
-            const nombreFormationPrevue = formations.length;
+            const formationIdsDuProgramme = formationsParProgramme[pid] || [];
+            
+            const nombreFormationPrevue = formationIdsDuProgramme.length;
             let nombreFormationExecutee = 0;
 
-            for (const f of formations) {
-                const total = f.nbTachesTotal || 0;
-                const done = f.nbTachesExecutees || 0;
-                if (total > 0 && total === done) {
-                    nombreFormationExecutee += 1;
+            // Pour chaque formation du programme
+            for (const formationId of formationIdsDuProgramme) {
+                const fid = formationId.toString();
+                const themeIdsDeLaFormation = themesParFormation[fid] || [];
+                
+                const nombreThemes = themeIdsDeLaFormation.length;
+                
+                // Si pas de thèmes, la formation ne peut pas être considérée comme exécutée
+                if (nombreThemes === 0) {
+                    continue;
+                }
+
+                // Nombre total de tâches attendues pour cette formation
+                const totalTachesAttendusPourFormation = totalTachesGeneriques * nombreThemes;
+                
+                // Compter les tâches exécutées pour tous les thèmes de cette formation
+                let totalTachesExecuteesPourFormation = 0;
+                for (const themeId of themeIdsDeLaFormation) {
+                    const tid = themeId.toString();
+                    totalTachesExecuteesPourFormation += (tachesExecuteesParTheme[tid] || 0);
+                }
+
+                // Si toutes les tâches de tous les thèmes sont exécutées
+                if (totalTachesAttendusPourFormation > 0 && 
+                    totalTachesExecuteesPourFormation >= totalTachesAttendusPourFormation) {
+                    nombreFormationExecutee++;
                 }
             }
 
+            // Déterminer l'état du programme
             let etat = t('etat_non_entame', lang);
-            if (nombreFormationPrevue > 0 && nombreFormationExecutee === nombreFormationPrevue) {
-                etat = t('etat_termine', lang);
-            } else if (nombreFormationExecutee > 0) {
-                etat = t('etat_en_cours', lang);
+            if (nombreFormationPrevue > 0) {
+                if (nombreFormationExecutee === nombreFormationPrevue) {
+                    etat = t('etat_termine', lang);
+                } else if (nombreFormationExecutee > 0) {
+                    etat = t('etat_en_cours', lang);
+                } else {
+                    // Vérifier s'il y a au moins une tâche exécutée dans le programme
+                    let auMoinsUneTacheExecutee = false;
+                    for (const formationId of formationIdsDuProgramme) {
+                        const fid = formationId.toString();
+                        const themeIdsDeLaFormation = themesParFormation[fid] || [];
+                        
+                        for (const themeId of themeIdsDeLaFormation) {
+                            const tid = themeId.toString();
+                            if (tachesExecuteesParTheme[tid] && tachesExecuteesParTheme[tid] > 0) {
+                                auMoinsUneTacheExecutee = true;
+                                break;
+                            }
+                        }
+                        if (auMoinsUneTacheExecutee) break;
+                    }
+                    
+                    if (auMoinsUneTacheExecutee) {
+                        etat = t('etat_en_cours', lang);
+                    }
+                }
             }
 
             return {
                 _id: programme._id,
                 annee: programme.annee,
-                titreFr:programme.titreFr,
-                titreEn:programme.titreEn,
+                titreFr: programme.titreFr,
+                titreEn: programme.titreEn,
                 nombreFormationPrevue,
                 nombreFormationExecutee,
                 etat
@@ -432,7 +532,7 @@ export const getStatistiquesProgrammesFormation = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
-            error: err.message
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 };

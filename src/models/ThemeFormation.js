@@ -58,9 +58,9 @@ themeFormationSchema.pre('save', function(next) {
 });
 
 // Validation : au moins une famille de métier dans publicCible
-themeFormationSchema.path('publicCible').validate(function(value) {
-    return value && value.length > 0;
-}, 'Le public cible doit contenir au moins une famille de métier');
+// themeFormationSchema.path('publicCible').validate(function(value) {
+//     return value && value.length > 0;
+// }, 'Le public cible doit contenir au moins une famille de métier');
 
 
 themeFormationSchema.methods.resolveTargetedUsers = async function() {

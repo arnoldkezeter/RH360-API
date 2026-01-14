@@ -3,6 +3,7 @@ import express from 'express';
 import { 
     afficherVerificationNote,
     creerNoteService, 
+    creerNoteServiceBudget, 
     creerNoteServiceConvocationFormateurs, 
     creerNoteServiceConvocationParticipants, 
     creerNoteServiceStage, 
@@ -47,6 +48,8 @@ router.post('/note-service/stage', authentificate, creerNoteServiceStage);
 router.post('/note-service/stage/groupe', authentificate, creerNoteServiceStageGroupe);
 router.post('/convocation/formateurs', authentificate, creerNoteServiceConvocationFormateurs);
 router.post('/note-service/convocation/participants', authentificate, creerNoteServiceConvocationParticipants);
+
+router.post('/budget', authentificate, creerNoteServiceBudget);
 router.post('/formations/fiches-presence/participants/:lieuId', authentificate, genererFichesPresenceParticipants);
 router.post('/formations/fiches-presence/formateurs', authentificate, genererFichesPresenceFormateurs);
 

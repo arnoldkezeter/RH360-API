@@ -14,7 +14,7 @@ const utilisateurSchema = new mongoose.Schema({
     telephone:{type:String},
     role: {
       type: String,
-      enum: ['SUPER-ADMIN', 'ADMIN', 'RESPONSABLE-FORMATION', 'UTILISATEUR', 'FORMATEUR'],
+      enum: ['SUPER-ADMIN', 'ADMIN', 'GESTIONNAIRE', 'RESPONSABLE-FORMATION', 'UTILISATEUR', 'FORMATEUR'],
       default: 'UTILISATEUR',
       required:true
     },

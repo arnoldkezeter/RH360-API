@@ -113,7 +113,7 @@ export const updateUtilisateur = async (req, res) => {
 
         const {
             matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, grade, familleMetier,
-            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
+            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
         } = req.body;
 
 
@@ -147,7 +147,12 @@ export const updateUtilisateur = async (req, res) => {
                 newRoles.push(role);
             }
             utilisateur.role = role; // Mise à jour de l'ancien champ 'role' pour rétrocompatibilité
-            utilisateur.roles = newRoles; // Mise à jour du nouveau champ 'roles'
+            utilisateur.roles = newRoles // Mise à jour du nouveau champ 'roles'
+        }
+
+        
+        if(roles !== undefined){
+            utilisateur.roles = roles
         }
 
         utilisateur.nom = nom ?? utilisateur.nom;

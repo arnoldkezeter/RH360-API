@@ -105,7 +105,7 @@ app.use('/api/v1/regions', regionRoutes);
 app.use('/api/v1/departements', departementRoutes);
 app.use('/api/v1/communes', communeRoutes);
 app.use('/api/v1/theme-formation/budgets-formations', budgetFormationRoutes);
-app.use('/api/v1/theme-formation/budget-formation/depenses', depenseRoutes);
+app.use('/api/v1/theme-formation/depenses', depenseRoutes);
 app.use('/api/v1/utilisateurs', utilisateurRoutes);
 app.use('/api/v1/theme-formation/supports-formation', supportFormationRoutes);
 app.use('/api/v1/themes-formations', themeFormationRoutes);

@@ -1467,358 +1467,6 @@ export const getNbFormateursParType = async (req, res) => {
 };
 
 
-//Coûts par thème pour une formation
-export const getCoutsParFormation = async (req, res) => {
-    const { id } = req.params;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
-    }
-
-    try {
-        // Récupérer la formation
-        const formation = await Formation.findById(id).select('_id titreFr titreEn').lean();
-        if (!formation) {
-            return res.status(404).json({
-                success: false,
-                message: t('formation_introuvable', lang),
-            });
-        }
-
-        // Récupérer le budget lié à cette formation
-        const budget = await BudgetFormation.findOne({ formation: id }).lean();
-        if (!budget) {
-            return res.status(404).json({
-                success: false,
-                message: t('aucun_budget_trouve', lang),
-            });
-        }
-
-        // Récupérer toutes les dépenses liées au budget
-        const depenses = await Depense.find({ budget: budget._id })
-            .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
-            .lean();
-
-        let coutPrevu = 0;
-        let coutReel = 0;
-
-        for (const dep of depenses) {
-            const qte = dep.quantite || 1;
-            const tauxTaxes = (dep.taxes || []).reduce((sum, tax) => sum + (tax.taux || 0), 0);
-            const coeffTaxes = 1 + tauxTaxes / 100;
-
-            const prevuHT = dep.montantUnitairePrevu || 0;
-            const reelHT = dep.montantUnitaireReel ?? prevuHT;
-
-            coutPrevu += prevuHT * qte * coeffTaxes;
-            coutReel += reelHT * qte * coeffTaxes;
-        }
-
-        const result = {
-            formationId: formation._id,
-            titreFr: formation.titreFr,
-            titreEn: formation.titreEn,
-            coutPrevu: Math.round(coutPrevu * 100) / 100,
-            coutReel: Math.round(coutReel * 100) / 100
-        };
-
-        return res.status(200).json({ success: true, data: result });
-
-    } catch (err) {
-        console.error('Erreur dans getCoutsParFormation:', err);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: err.message,
-        });
-    }
-};
-
-export const getCoutReelTTCParFormation = async (req, res) => {
-    const { programmeId, formationId } = req.query;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        // Filtrage formations
-        let formationFilter = {};
-        if (formationId) {
-            if (!mongoose.Types.ObjectId.isValid(formationId)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-            }
-            formationFilter._id = formationId;
-        } else if (programmeId) {
-            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-            }
-            formationFilter.programmeFormation = programmeId;
-        }
-
-        // Trouver formations
-        const formations = await Formation.find(formationFilter).select('_id titreFr titreEn').lean();
-        if (formations.length === 0) {
-            return res.status(404).json({ success: false, message: t('formation_introuvable', lang) });
-        }
-
-        const formationIds = formations.map(f => f._id);
-
-        // Trouver budgets liés aux formations
-        const budgets = await BudgetFormation.find({ formation: { $in: formationIds } })
-            .select('_id formation')
-            .lean();
-
-        if (budgets.length === 0) {
-            return res.status(404).json({ success: false, message: t('aucun_budget_trouve', lang) });
-        }
-
-        // Trouver dépenses avec taxes peuplées
-        const depenses = await Depense.find({
-            budget: { $in: budgets.map(b => b._id) },
-            montantUnitaireReel: { $ne: null }
-        })
-        .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
-        .lean();
-
-        const coutParFormation = new Map();
-
-        for (const depense of depenses) {
-            const montantHT = depense.montantUnitaireReel * (depense.quantite ?? 1);
-            const tauxTotalTaxes = depense.taxes?.reduce((sum, taxe) => sum + (taxe.taux || 0), 0) || 0;
-            const montantTTC = montantHT * (1 + tauxTotalTaxes / 100);
-
-            const formationId = budgets.find(b => b._id.toString() === depense.budget.toString())?.formation.toString();
-
-            if (formationId) {
-                coutParFormation.set(
-                    formationId,
-                    (coutParFormation.get(formationId) || 0) + montantTTC
-                );
-            }
-        }
-
-        const result = formations.map(f => ({
-            formationId: f._id,
-            titreFr: f.titreFr,
-            titreEn: f.titreEn,
-            coutReelTTC: Math.round((coutParFormation.get(f._id.toString()) || 0) * 100) / 100
-        }));
-
-        return res.status(200).json({ success: true, data: result });
-
-    } catch (err) {
-        console.error('Erreur dans getCoutReelTTCParFormation:', err);
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-export const getCoutReelEtPrevuTTCParFormation = async (req, res) => {
-    const { programmeId, formationId } = req.query;
-    const lang = req.headers['accept-language'] || 'fr';
-
-    try {
-        let formationFilter = {};
-        if (formationId) {
-            if (!mongoose.Types.ObjectId.isValid(formationId)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-            }
-            formationFilter._id = formationId;
-        } else if (programmeId) {
-            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
-                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-            }
-            formationFilter.programmeFormation = programmeId;
-        }
-
-        const formations = await Formation.find(formationFilter).select('_id titreFr titreEn').lean();
-        if (formations.length === 0) {
-            return res.status(404).json({ success: false, message: t('formation_non_trouvee', lang) });
-        }
-
-        const formationIds = formations.map(f => f._id);
-
-        const budgets = await BudgetFormation.find({ formation: { $in: formationIds } })
-            .select('_id formation')
-            .lean();
-
-        if (budgets.length === 0) {
-            return res.status(404).json({ success: false, message: t('aucun_budget_trouve', lang) });
-        }
-
-        const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-            .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
-            .lean();
-
-        const coutParFormation = new Map();
-
-        for (const depense of depenses) {
-            const qte = depense.quantite ?? 1;
-            const tauxTaxes = (depense.taxes || []).reduce((sum, tax) => sum + (tax.taux || 0), 0);
-            const coeff = 1 + tauxTaxes / 100;
-
-            const montantPrevuTTC = depense.montantUnitairePrevu * qte * coeff;
-            const montantReelTTC = (depense.montantUnitaireReel ?? 0) * qte * coeff;
-
-            const formationId = budgets.find(b => b._id.toString() === depense.budget.toString())?.formation.toString();
-
-            if (formationId) {
-                const current = coutParFormation.get(formationId) || { prevu: 0, reel: 0 };
-                current.prevu += montantPrevuTTC;
-                current.reel += montantReelTTC;
-                coutParFormation.set(formationId, current);
-            }
-        }
-
-        const result = formations.map(f => {
-            const couts = coutParFormation.get(f._id.toString()) || { prevu: 0, reel: 0 };
-            return {
-                formationId: f._id,
-                titreFr: f.titreFr,
-                titreEn: f.titreEn,
-                coutPrevuTTC: Math.round(couts.prevu * 100) / 100,
-                coutReelTTC: Math.round(couts.reel * 100) / 100
-            };
-        });
-
-        return res.status(200).json({ success: true, data: result });
-
-    } catch (err) {
-        console.error('Erreur dans getCoutReelEtPrevuTTCParFormation:', err);
-        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-    }
-};
-
-
-export const getCoutsFormations = async (req, res) => {
-  const { programmeId, formationId } = req.query;
-  const lang = req.headers['accept-language'] || 'fr';
-
-  if (!programmeId && !formationId) {
-    return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
-  }
-
-  try {
-    let formations = [];
-
-    if (formationId) {
-      if (!mongoose.Types.ObjectId.isValid(formationId)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-      }
-
-      formations = await Formation.find({ _id: formationId }).select('_id titreFr titreEn').lean();
-    } else if (programmeId) {
-      if (!mongoose.Types.ObjectId.isValid(programmeId)) {
-        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-      }
-
-      formations = await Formation.find({ programmeFormation: programmeId }).select('_id titreFr titreEn').lean();
-    }
-
-    const formationIds = formations.map(f => f._id);
-
-    const themes = await ThemeFormation.find({
-      formation: { $in: formationIds }
-    }).select('_id titreFr titreEn formation').lean();
-
-    // Budgets liés directement à la formation
-    const budgets = await BudgetFormation.find({
-      formation: { $in: formationIds }
-    }).select('_id formation').lean();
-
-    const depenses = await Depense.find({
-      budget: { $in: budgets.map(b => b._id) }
-    }).populate({ path: 'taxes', options: { strictPopulate: false } }).lean();
-
-    const budgetsByFormation = budgets.reduce((acc, budget) => {
-      const formationId = budget.formation.toString();
-      if (!acc[formationId]) acc[formationId] = [];
-      acc[formationId].push(budget._id.toString());
-      return acc;
-    }, {});
-
-    const depensesByBudget = depenses.reduce((acc, dep) => {
-      const budgetId = dep.budget.toString();
-      if (!acc[budgetId]) acc[budgetId] = [];
-      acc[budgetId].push(dep);
-      return acc;
-    }, {});
-
-    const calculateBudgetTotals = (budgetIds) => {
-      let totalPrevu = 0;
-      let totalReel = 0;
-
-      budgetIds.forEach(budgetId => {
-        const depensesDuBudget = depensesByBudget[budgetId] || [];
-
-        depensesDuBudget.forEach(dep => {
-          const qte = dep.quantite ?? 1;
-          const tauxTaxes = (dep.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
-          const coeff = 1 + tauxTaxes / 100;
-
-          const prevu = (dep.montantUnitairePrevu || 0) * qte * coeff;
-          const reel = dep.montantUnitaireReel != null
-            ? dep.montantUnitaireReel * qte * coeff
-            : 0;
-
-          totalPrevu += prevu;
-          totalReel += reel;
-        });
-      });
-
-      return { totalPrevu, totalReel };
-    };
-
-    const dataMap = new Map();
-
-    if (formationId) {
-      // Résultat par thème
-      themes.forEach(theme => {
-        const formationBudgets = budgetsByFormation[theme.formation.toString()] || [];
-        const { totalPrevu, totalReel } = calculateBudgetTotals(formationBudgets);
-
-        dataMap.set(theme._id.toString(), {
-          themeId: theme._id,
-          titreFr: theme.titreFr,
-          titreEn: theme.titreEn,
-          montantPrevuTTC: Math.round(totalPrevu),
-          montantReelTTC: Math.round(totalReel)
-        });
-      });
-    } else {
-      // Résultat par formation
-      formations.forEach(formation => {
-        const formationBudgets = budgetsByFormation[formation._id.toString()] || [];
-        const { totalPrevu, totalReel } = calculateBudgetTotals(formationBudgets);
-
-        dataMap.set(formation._id.toString(), {
-          formationId: formation._id,
-          titreFr: formation.titreFr,
-          titreEn: formation.titreEn,
-          montantPrevuTTC: Math.round(totalPrevu),
-          montantReelTTC: Math.round(totalReel)
-        });
-      });
-    }
-
-    const data = Array.from(dataMap.values());
-
-    return res.status(200).json({ success: true, data });
-  } catch (err) {
-    console.error('Erreur getCoutsThemesOuFormations:', err);
-    return res.status(500).json({
-      success: false,
-      message: t('erreur_serveur', lang),
-      error: err.message
-    });
-  }
-};
-
-
-
-
 // Retourne le taux d'exécution des tâches pour chaque thème d'une formation.
 export const getTauxExecutionParTheme = async (req, res) => {
     const { programmeId, formationId } = req.query;
@@ -2382,6 +2030,425 @@ export const getTauxExecutionParMois = async (req, res) => {
       error: err.message
     });
   }
+};
+
+
+
+// Obtenir les coûts par formation (agrégation des thèmes)
+export const getCoutsParFormation = async (req, res) => {
+    const { id } = req.params;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        // Récupérer la formation
+        const formation = await Formation.findById(id).select('_id titreFr titreEn').lean();
+        if (!formation) {
+            return res.status(404).json({
+                success: false,
+                message: t('formation_introuvable', lang),
+            });
+        }
+
+        // Récupérer tous les thèmes liés à cette formation
+        const themes = await ThemeFormation.find({ formation: id }).select('_id').lean();
+        
+        if (themes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    formationId: formation._id,
+                    titreFr: formation.titreFr,
+                    titreEn: formation.titreEn,
+                    coutPrevu: 0,
+                    coutReel: 0
+                }
+            });
+        }
+
+        const themeIds = themes.map(t => t._id);
+
+        // Récupérer toutes les dépenses liées aux thèmes
+        const depenses = await Depense.find({ themeFormation: { $in: themeIds } })
+            .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
+            .lean();
+
+        let coutPrevu = 0;
+        let coutReel = 0;
+
+        for (const dep of depenses) {
+            const qte = dep.quantite || 1;
+            const tauxTaxes = (dep.taxes || []).reduce((sum, tax) => sum + (tax.taux || 0), 0);
+            const coeffTaxes = 1 + tauxTaxes / 100;
+
+            const prevuHT = dep.montantUnitairePrevu || 0;
+            const reelHT = dep.montantUnitaireReel ?? prevuHT;
+
+            coutPrevu += prevuHT * qte * coeffTaxes;
+            coutReel += reelHT * qte * coeffTaxes;
+        }
+
+        const result = {
+            formationId: formation._id,
+            titreFr: formation.titreFr,
+            titreEn: formation.titreEn,
+            coutPrevu: Math.round(coutPrevu * 100) / 100,
+            coutReel: Math.round(coutReel * 100) / 100
+        };
+
+        return res.status(200).json({ success: true, data: result });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutsParFormation:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};
+
+// Obtenir le coût réel TTC par formation
+export const getCoutReelTTCParFormation = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    try {
+        // Filtrage formations
+        let formationFilter = {};
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter._id = formationId;
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter.programmeFormation = programmeId;
+        }
+
+        // Trouver formations
+        const formations = await Formation.find(formationFilter).select('_id titreFr titreEn').lean();
+        if (formations.length === 0) {
+            return res.status(404).json({ success: false, message: t('formation_introuvable', lang) });
+        }
+
+        const formationIds = formations.map(f => f._id);
+
+        // Trouver les thèmes liés aux formations
+        const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+            .select('_id formation')
+            .lean();
+
+        if (themes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: formations.map(f => ({
+                    formationId: f._id,
+                    titreFr: f.titreFr,
+                    titreEn: f.titreEn,
+                    coutReelTTC: 0
+                }))
+            });
+        }
+
+        // Trouver dépenses avec montant réel et taxes peuplées
+        const depenses = await Depense.find({
+            themeFormation: { $in: themes.map(t => t._id) },
+            montantUnitaireReel: { $ne: null }
+        })
+        .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
+        .lean();
+
+        const coutParFormation = new Map();
+
+        for (const depense of depenses) {
+            const montantHT = depense.montantUnitaireReel * (depense.quantite ?? 1);
+            const tauxTotalTaxes = depense.taxes?.reduce((sum, taxe) => sum + (taxe.taux || 0), 0) || 0;
+            const montantTTC = montantHT * (1 + tauxTotalTaxes / 100);
+
+            // Trouver la formation liée au thème de cette dépense
+            const theme = themes.find(t => t._id.toString() === depense.themeFormation.toString());
+            const formationId = theme?.formation.toString();
+
+            if (formationId) {
+                coutParFormation.set(
+                    formationId,
+                    (coutParFormation.get(formationId) || 0) + montantTTC
+                );
+            }
+        }
+
+        const result = formations.map(f => ({
+            formationId: f._id,
+            titreFr: f.titreFr,
+            titreEn: f.titreEn,
+            coutReelTTC: Math.round((coutParFormation.get(f._id.toString()) || 0) * 100) / 100
+        }));
+
+        return res.status(200).json({ success: true, data: result });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutReelTTCParFormation:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+// Obtenir les coûts réel et prévu TTC par formation
+export const getCoutReelEtPrevuTTCParFormation = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    try {
+        let formationFilter = {};
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter._id = formationId;
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+            formationFilter.programmeFormation = programmeId;
+        }
+
+        const formations = await Formation.find(formationFilter).select('_id titreFr titreEn').lean();
+        if (formations.length === 0) {
+            return res.status(404).json({ success: false, message: t('formation_non_trouvee', lang) });
+        }
+
+        const formationIds = formations.map(f => f._id);
+
+        const themes = await ThemeFormation.find({ formation: { $in: formationIds } })
+            .select('_id formation')
+            .lean();
+
+        if (themes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: formations.map(f => ({
+                    formationId: f._id,
+                    titreFr: f.titreFr,
+                    titreEn: f.titreEn,
+                    coutPrevuTTC: 0,
+                    coutReelTTC: 0
+                }))
+            });
+        }
+
+        const depenses = await Depense.find({ themeFormation: { $in: themes.map(t => t._id) } })
+            .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
+            .lean();
+
+        const coutParFormation = new Map();
+
+        for (const depense of depenses) {
+            const qte = depense.quantite ?? 1;
+            const tauxTaxes = (depense.taxes || []).reduce((sum, tax) => sum + (tax.taux || 0), 0);
+            const coeff = 1 + tauxTaxes / 100;
+
+            const montantPrevuTTC = depense.montantUnitairePrevu * qte * coeff;
+            const montantReelTTC = (depense.montantUnitaireReel ?? 0) * qte * coeff;
+
+            // Trouver la formation liée au thème
+            const theme = themes.find(t => t._id.toString() === depense.themeFormation.toString());
+            const formationId = theme?.formation.toString();
+
+            if (formationId) {
+                const current = coutParFormation.get(formationId) || { prevu: 0, reel: 0 };
+                current.prevu += montantPrevuTTC;
+                current.reel += montantReelTTC;
+                coutParFormation.set(formationId, current);
+            }
+        }
+
+        const result = formations.map(f => {
+            const couts = coutParFormation.get(f._id.toString()) || { prevu: 0, reel: 0 };
+            return {
+                formationId: f._id,
+                titreFr: f.titreFr,
+                titreEn: f.titreEn,
+                coutPrevuTTC: Math.round(couts.prevu * 100) / 100,
+                coutReelTTC: Math.round(couts.reel * 100) / 100
+            };
+        });
+
+        return res.status(200).json({ success: true, data: result });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutReelEtPrevuTTCParFormation:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+//  Obtenir les coûts des formations ou thèmes
+export const getCoutsFormations = async (req, res) => {
+    const { programmeId, formationId } = req.query;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    if (!programmeId && !formationId) {
+        return res.status(400).json({ success: false, message: t('parametre_requis', lang) });
+    }
+
+    try {
+        let formations = [];
+
+        if (formationId) {
+            if (!mongoose.Types.ObjectId.isValid(formationId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+
+            formations = await Formation.find({ _id: formationId }).select('_id titreFr titreEn').lean();
+        } else if (programmeId) {
+            if (!mongoose.Types.ObjectId.isValid(programmeId)) {
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+            }
+
+            formations = await Formation.find({ programmeFormation: programmeId }).select('_id titreFr titreEn').lean();
+        }
+
+        if (formations.length === 0) {
+            return res.status(404).json({ success: false, message: t('formation_non_trouvee', lang) });
+        }
+
+        const formationIds = formations.map(f => f._id);
+
+        // Récupérer tous les thèmes des formations
+        const themes = await ThemeFormation.find({
+            formation: { $in: formationIds }
+        }).select('_id titreFr titreEn formation').lean();
+
+        if (themes.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: formationId 
+                    ? []
+                    : formations.map(f => ({
+                        formationId: f._id,
+                        titreFr: f.titreFr,
+                        titreEn: f.titreEn,
+                        montantPrevuTTC: 0,
+                        montantReelTTC: 0
+                    }))
+            });
+        }
+
+        const themeIds = themes.map(t => t._id);
+
+        // Récupérer toutes les dépenses des thèmes
+        const depenses = await Depense.find({
+            themeFormation: { $in: themeIds }
+        }).populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } }).lean();
+
+        // Grouper les thèmes par formation
+        const themesByFormation = themes.reduce((acc, theme) => {
+            const formationId = theme.formation.toString();
+            if (!acc[formationId]) acc[formationId] = [];
+            acc[formationId].push(theme._id.toString());
+            return acc;
+        }, {});
+
+        // Grouper les dépenses par thème
+        const depensesByTheme = depenses.reduce((acc, dep) => {
+            const themeId = dep.themeFormation.toString();
+            if (!acc[themeId]) acc[themeId] = [];
+            acc[themeId].push(dep);
+            return acc;
+        }, {});
+
+        // Fonction pour calculer les totaux d'un ensemble de thèmes
+        const calculateThemesTotals = (themeIds) => {
+            let totalPrevu = 0;
+            let totalReel = 0;
+
+            themeIds.forEach(themeId => {
+                const depensesDuTheme = depensesByTheme[themeId] || [];
+
+                depensesDuTheme.forEach(dep => {
+                    const qte = dep.quantite ?? 1;
+                    const tauxTaxes = (dep.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+                    const coeff = 1 + tauxTaxes / 100;
+
+                    const prevu = (dep.montantUnitairePrevu || 0) * qte * coeff;
+                    const reel = dep.montantUnitaireReel != null
+                        ? dep.montantUnitaireReel * qte * coeff
+                        : 0;
+
+                    totalPrevu += prevu;
+                    totalReel += reel;
+                });
+            });
+
+            return { totalPrevu, totalReel };
+        };
+
+        const dataMap = new Map();
+
+        if (formationId) {
+            // Résultat par thème
+            themes.forEach(theme => {
+                const depensesDuTheme = depensesByTheme[theme._id.toString()] || [];
+                
+                let totalPrevu = 0;
+                let totalReel = 0;
+
+                depensesDuTheme.forEach(dep => {
+                    const qte = dep.quantite ?? 1;
+                    const tauxTaxes = (dep.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+                    const coeff = 1 + tauxTaxes / 100;
+
+                    const prevu = (dep.montantUnitairePrevu || 0) * qte * coeff;
+                    const reel = dep.montantUnitaireReel != null
+                        ? dep.montantUnitaireReel * qte * coeff
+                        : 0;
+
+                    totalPrevu += prevu;
+                    totalReel += reel;
+                });
+
+                dataMap.set(theme._id.toString(), {
+                    themeId: theme._id,
+                    titreFr: theme.titreFr,
+                    titreEn: theme.titreEn,
+                    montantPrevuTTC: Math.round(totalPrevu),
+                    montantReelTTC: Math.round(totalReel)
+                });
+            });
+        } else {
+            // Résultat par formation
+            formations.forEach(formation => {
+                const formationThemes = themesByFormation[formation._id.toString()] || [];
+                const { totalPrevu, totalReel } = calculateThemesTotals(formationThemes);
+
+                dataMap.set(formation._id.toString(), {
+                    formationId: formation._id,
+                    titreFr: formation.titreFr,
+                    titreEn: formation.titreEn,
+                    montantPrevuTTC: Math.round(totalPrevu),
+                    montantReelTTC: Math.round(totalReel)
+                });
+            });
+        }
+
+        const data = Array.from(dataMap.values());
+
+        return res.status(200).json({ success: true, data });
+    } catch (err) {
+        console.error('Erreur getCoutsFormations:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
 };
 
 

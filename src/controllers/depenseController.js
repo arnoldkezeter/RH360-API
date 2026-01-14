@@ -7,16 +7,14 @@ import ejs from 'ejs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import BudgetFormation from '../models/BudgetFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 import { getLogoBase64 } from '../utils/logoBase64.js';
 import Utilisateur from '../models/Utilisateur.js';
-
-
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ajouter une dépense
+// Ajouter une dépense (lié au thème)
 export const createDepense = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const errors = validationResult(req);
@@ -30,11 +28,17 @@ export const createDepense = async (req, res) => {
     }
 
     try {
-        const { budgetId } = req.params;
+        const { themeFormationId } = req.params;
         const { nomFr, nomEn, type, quantite, montantUnitairePrevu, montantUnitaireReel, taxes } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(budgetId)) {
+        if (!mongoose.Types.ObjectId.isValid(themeFormationId)) {
             return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+        }
+
+        // Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeFormationId);
+        if (!theme) {
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
         }
 
         if (!Array.isArray(taxes) || taxes.some(t => !mongoose.Types.ObjectId.isValid(t))) {
@@ -57,18 +61,19 @@ export const createDepense = async (req, res) => {
             nomFr,
             nomEn,
             type,
-            budget: budgetId,
+            themeFormation: themeFormationId,
             quantite: quantite ?? 1,
             montantUnitairePrevu,
-            montantUnitaireReel: montantUnitaireReel ?? 0,
+            montantUnitaireReel: montantUnitaireReel ?? null,
             taxes
         });
 
         const saved = await depense.save();
+        
         // Population conditionnelle
-        const populateOptions = ['budget']; // budget toujours présent
+        const populateOptions = ['themeFormation'];
         if (saved.taxes && saved.taxes.length > 0) {
-        populateOptions.push('taxes');
+            populateOptions.push('taxes');
         }
         await saved.populate(populateOptions);
 
@@ -78,7 +83,7 @@ export const createDepense = async (req, res) => {
             data: saved,
         });
     } catch (err) {
-        console.log(err)
+        console.log(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -87,19 +92,18 @@ export const createDepense = async (req, res) => {
     }
 };
 
-
 // Modifier une dépense
 export const updateDepense = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
-    const { nomFr, nomEn, type, budgetId, quantite, montantUnitairePrevu, montantUnitaireReel, taxes } = req.body;
+    const { nomFr, nomEn, type, themeFormationId, quantite, montantUnitairePrevu, montantUnitaireReel, taxes } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
-    if (budgetId && !mongoose.Types.ObjectId.isValid(budgetId)) {
-        return res.status(400).json({ success: false, message: t('budget_invalide', lang) });
+    if (themeFormationId && !mongoose.Types.ObjectId.isValid(themeFormationId)) {
+        return res.status(400).json({ success: false, message: t('theme_invalide', lang) });
     }
 
     if (taxes && (!Array.isArray(taxes) || taxes.some(t => !mongoose.Types.ObjectId.isValid(t)))) {
@@ -114,7 +118,7 @@ export const updateDepense = async (req, res) => {
         return res.status(400).json({ success: false, message: t('quantite_nombre_requis', lang) });
     }
 
-    if (montantUnitaireReel !== undefined && (isNaN(montantUnitaireReel) || montantUnitaireReel < 0)) {
+    if (montantUnitaireReel !== undefined && montantUnitaireReel !== null && (isNaN(montantUnitaireReel) || montantUnitaireReel < 0)) {
         return res.status(400).json({ success: false, message: t('montant_ht_nombre_requis', lang) });
     }
 
@@ -130,15 +134,16 @@ export const updateDepense = async (req, res) => {
         depense.nomFr = nomFr ?? depense.nomFr;
         depense.nomEn = nomEn ?? depense.nomEn;
         depense.type = type ?? depense.type;
-        depense.budget = budgetId ?? depense.budget;
+        depense.themeFormation = themeFormationId ?? depense.themeFormation;
         depense.quantite = quantite ?? depense.quantite ?? 1;
         depense.montantUnitairePrevu = montantUnitairePrevu ?? depense.montantUnitairePrevu;
-        depense.montantUnitaireReel = montantUnitaireReel ?? depense.montantUnitaireReel ?? 0;
+        depense.montantUnitaireReel = montantUnitaireReel !== undefined ? montantUnitaireReel : depense.montantUnitaireReel;
         depense.taxes = taxes ?? depense.taxes;
 
         await depense.save();
+        
         // Population conditionnelle
-        const populateOptions = ['budget']; // budget toujours présent
+        const populateOptions = ['themeFormation'];
         if (depense.taxes && depense.taxes.length > 0) {
             populateOptions.push('taxes');
         }
@@ -150,7 +155,7 @@ export const updateDepense = async (req, res) => {
             data: depense,
         });
     } catch (err) {
-        console.log(err)
+        console.log(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -159,8 +164,7 @@ export const updateDepense = async (req, res) => {
     }
 };
 
-
-// Supprimer une dépense
+//  Supprimer une dépense
 export const deleteDepense = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
@@ -189,10 +193,10 @@ export const deleteDepense = async (req, res) => {
     }
 };
 
-// Lister les dépenses (pagination + filtres)
+//  Lister les dépenses (pagination + filtres)
 export const getFilteredDepenses = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-    const { budgetId } = req.params;
+    const { themeFormationId } = req.params;
     const {
         type,
         search,
@@ -202,8 +206,8 @@ export const getFilteredDepenses = async (req, res) => {
 
     const filters = {};
 
-    if (budgetId && mongoose.Types.ObjectId.isValid(budgetId)) {
-        filters.budget = budgetId;
+    if (themeFormationId && mongoose.Types.ObjectId.isValid(themeFormationId)) {
+        filters.themeFormation = themeFormationId;
     }
 
     if (type) {
@@ -224,11 +228,11 @@ export const getFilteredDepenses = async (req, res) => {
                 .populate({
                     path: 'taxes',
                     select: 'natureFr natureEn taux',
-                    options:{strictPopulate:false}
+                    options: { strictPopulate: false }
                 })
                 .populate({
-                    path: 'budget',
-                    select: 'nomFr nomEn'
+                    path: 'themeFormation',
+                    select: 'titreFr titreEn'
                 })
                 .skip((page - 1) * parseInt(limit))
                 .limit(parseInt(limit))
@@ -236,7 +240,6 @@ export const getFilteredDepenses = async (req, res) => {
                 .lean()
         ]);
 
-       
         return res.status(200).json({
             success: true,
             data: {
@@ -248,7 +251,7 @@ export const getFilteredDepenses = async (req, res) => {
             }
         });
     } catch (err) {
-        console.log(err)
+        console.log(err);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -257,14 +260,15 @@ export const getFilteredDepenses = async (req, res) => {
     }
 };
 
-
+//  Générer le PDF du budget d'un thème
 export const generateBudgetPDF = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
-    const { budgetId, userId } = req.params;
+    const { themeFormationId, userId } = req.params;
+    const { budgetNomFr, budgetNomEn } = req.query;
 
     try {
-        // 1. Vérifier que le budgetId est valide
-        if (!mongoose.Types.ObjectId.isValid(budgetId)) {
+        // 1. Vérifier que le themeFormationId est valide
+        if (!mongoose.Types.ObjectId.isValid(themeFormationId)) {
             return res.status(400).json({
                 success: false,
                 message: t('identifiant_invalide', lang)
@@ -278,13 +282,13 @@ export const generateBudgetPDF = async (req, res) => {
             });
         }
 
-        // 2. Vérifier que le budget existe
-        const budget = await BudgetFormation.findById(budgetId).lean();
+        // 2. Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeFormationId).lean();
         
-        if (!budget) {
+        if (!theme) {
             return res.status(404).json({
                 success: false,
-                message: t('budget_non_trouve', lang)
+                message: t('theme_non_trouve', lang)
             });
         }
 
@@ -297,8 +301,8 @@ export const generateBudgetPDF = async (req, res) => {
             });
         }
 
-        // 3. Récupérer toutes les dépenses du budget avec les taxes
-        const depenses = await Depense.find({ budget: budgetId })
+        // 3. Récupérer toutes les dépenses du thème avec les taxes
+        const depenses = await Depense.find({ themeFormation: themeFormationId })
             .populate({
                 path: 'taxes',
                 select: 'natureFr natureEn taux',
@@ -315,25 +319,26 @@ export const generateBudgetPDF = async (req, res) => {
         }
 
         // 4. Préparer les données pour le template
+        // Utiliser les paramètres budgetNomFr et budgetNomEn si fournis, sinon le titre du thème
+        const nomBudget = lang === 'fr'? budgetNomFr : budgetNomEn;
+
         const templateData = {
-            documentTitle: lang === 'fr' ? (budget.nomFr || budget.nomEn) : (budget.nomEn || budget.nomFr),
-            budgetDescription: lang === 'fr' ? budget.descriptionFr : budget.descriptionEn,
+            documentTitle: nomBudget,
+            budgetDescription: lang === 'fr' 
+                ? `Budget du thème: ${theme.titreFr || theme.titreEn}`
+                : `Budget for theme: ${theme.titreEn || theme.titreFr}`,
             depenses: depenses,
             logoUrl: getLogoBase64(__dirname) || null,
             dateDocument: new Date().toLocaleDateString('fr-FR', {
                 day: '2-digit',
                 month: 'long',
                 year: 'numeric'
-            }),
-            // documentTitle: 'BUDGET DÉTAILLÉ'
+            })
         };
 
         // 5. Charger et compiler le template EJS
         const templatePath = path.join(__dirname, '../views/budget_template.ejs');
-        
-        
         const html = await ejs.renderFile(templatePath, templateData);
-        
 
         // 6. Générer le PDF avec Puppeteer
         const browser = await puppeteer.launch({
@@ -368,17 +373,13 @@ export const generateBudgetPDF = async (req, res) => {
                 bottom: '2cm',
                 left: '2cm'
             },
-            // preferCSSPageSize: true
             displayHeaderFooter: true,
-            headerTemplate: '<div></div>', // Header vide - utilise celui du template
+            headerTemplate: '<div></div>',
             footerTemplate: `
                 <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
-                    <!-- Partie gauche du footer -->
                     <div style="text-align: left; flex: 1;">
-                        Généré par ${(creePar.nom+" "+creePar?.prenom ||"") || 'Système'}
+                        Généré par ${(creePar.nom + " " + (creePar?.prenom || "")) || 'Système'}
                     </div>
-                    
-                    <!-- Partie droite du footer -->
                     <div style="text-align: right; flex: 1;">
                         Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
                     </div>
@@ -389,10 +390,10 @@ export const generateBudgetPDF = async (req, res) => {
         await browser.close();
 
         // 8. Définir les en-têtes de réponse
-        const sanitizedBudgetName = (budget.nomFr || budget.nomEn || 'Budget')
+        const sanitizedThemeName = (theme.titreFr || theme.titreEn || 'Theme')
             .replace(/[^a-z0-9]/gi, '_')
             .substring(0, 50);
-        const fileName = `Budget_${sanitizedBudgetName}_${Date.now()}.pdf`;
+        const fileName = `Budget_${sanitizedThemeName}_${Date.now()}.pdf`;
         
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -411,3 +412,73 @@ export const generateBudgetPDF = async (req, res) => {
     }
 };
 
+// ✅ NOUVEAU: Obtenir le résumé budgétaire d'un thème
+export const getThemeBudgetSummary = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeFormationId } = req.params;
+
+    try {
+        if (!mongoose.Types.ObjectId.isValid(themeFormationId)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        const theme = await ThemeFormation.findById(themeFormationId);
+        
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Obtenir les totaux
+        const budgetPrevu = await theme.getBudgetTotalPrevu();
+        const budgetReel = await theme.getBudgetTotalReel();
+        const tauxExecution = await theme.getTauxExecutionBudgetaire();
+
+        // Obtenir les dépenses par type
+        const depensesAcquisition = await theme.getDepensesParType('ACQUISITION_BIENS_SERVICES');
+        const depensesAdministratif = await theme.getDepensesParType('FRAIS_ADMINISTRATIF');
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                budgetPrevu,
+                budgetReel,
+                tauxExecution,
+                depensesParType: {
+                    acquisitionBiensServices: {
+                        count: depensesAcquisition.length,
+                        total: depensesAcquisition.reduce((sum, d) => {
+                            let montant = d.montantUnitairePrevu * d.quantite;
+                            if (d.taxes) {
+                                d.taxes.forEach(t => montant += montant * (t.taux / 100));
+                            }
+                            return sum + montant;
+                        }, 0)
+                    },
+                    fraisAdministratif: {
+                        count: depensesAdministratif.length,
+                        total: depensesAdministratif.reduce((sum, d) => {
+                            let montant = d.montantUnitairePrevu * d.quantite;
+                            if (d.taxes) {
+                                d.taxes.forEach(t => montant += montant * (t.taux / 100));
+                            }
+                            return sum + montant;
+                        }, 0)
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message
+        });
+    }
+};

@@ -4,6 +4,7 @@ import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
 import Formation from '../models/Formation.js'
 import Depense from '../models/Depense.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 
 // Créer un budget
 export const createBudget = async (req, res) => {
@@ -347,198 +348,432 @@ export const getBudgetsFormationsByFormationPaginated = async (req, res) => {
   }
 };
 
-// 2. Histogramme budget prévu / réel
+// Histogramme budget prévu / réel par thème
 export const getBudgetEcartParTheme = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { formationId} = req.params;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
 
-  if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
-
-
-  try {
-    let budgets;
-
-    if (formationId) {
-        budgets = await BudgetFormation.find({ formation: formationId })
-        .populate('formation', 'titreFr titreEn')
-        .lean();
-    } 
-
-    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-      .populate({
-          path: 'taxes',
-          select: 'natureFr natureEn taux',
-          options:{strictPopulate:false}
-      })
-      .lean();
-
-    const map = new Map();
-
-    depenses.forEach(d => {
-      const budget = budgets.find(b => b._id.toString() === d.budget.toString());
-      if (!budget || !budget.formation) return;
-
-      const tid = budget.formation._id.toString();
-      if (!map.has(tid)) {
-        map.set(tid, {
-          formation: budget.formation,
-          budgetPrevu: 0,
-          budgetReel: 0,
-        });
-      }
-
-      const quant = d.quantite ?? 1;
-      const tauxTotal = (d.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
-
-      const prevu = d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
-      const reel = (d.montantUnitaireReel ?? d.montantUnitairePrevu) * quant * (1 + tauxTotal / 100);
-
-      const entry = map.get(tid);
-      entry.budgetPrevu += prevu;
-      entry.budgetReel += reel;
-    });
-
-    const resArr = Array.from(map.values()).map(e => ({
-      formationId: e.formation._id,
-      titreFr: e.formation.titreFr,
-      titreEn: e.formation.titreEn,
-      budgetPrevu: +e.budgetPrevu.toFixed(2),
-      budgetReel: +e.budgetReel.toFixed(2),
-      ecart: +Math.abs(e.budgetReel - e.budgetPrevu).toFixed(2),
-    }));
-
-    return res.json({ success: true, data: resArr });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-  }
-};
-
-// 3. Totaux budget
-export const getTotauxBudgetParFormation = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { formationId} = req.params;
-
-  if (formationId && !mongoose.Types.ObjectId.isValid(formationId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
-
-  
-
-  try {
-    let budgets;
-
-    if (formationId) {
-      budgets = await BudgetFormation.find({ formation: formationId }).lean();
+    if (themeId && !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
-    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-      .populate({
-          path: 'taxes',
-          select: 'natureFr natureEn taux',
-          options:{strictPopulate:false}
-      })
-      .lean();
+    try {
+        let themes;
 
-    let totalPrevu = 0, totalReel = 0;
+        if (themeId) {
+            // Récupérer un seul thème
+            const theme = await ThemeFormation.findById(themeId)
+                .select('_id titreFr titreEn')
+                .lean();
+            
+            if (!theme) {
+                return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+            }
+            
+            themes = [theme];
+        } else {
+            // Si pas de themeId, récupérer tous les thèmes (optionnel)
+            themes = await ThemeFormation.find()
+                .select('_id titreFr titreEn')
+                .lean();
+        }
 
-    depenses.forEach(d => {
-      const quant = d.quantite ?? 1;
-      const tauxTotal = (d.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+        // Récupérer toutes les dépenses des thèmes
+        const depenses = await Depense.find({ themeFormation: { $in: themes.map(t => t._id) } })
+            .populate({
+                path: 'taxes',
+                select: 'natureFr natureEn taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
 
-      const prevu = d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
-      const reel = (d.montantUnitaireReel ?? d.montantUnitairePrevu) * quant * (1 + tauxTotal / 100);
+        const map = new Map();
 
-      totalPrevu += prevu;
-      totalReel += reel;
-    });
-    
-    return res.json({
-      success: true,
-      data: {
-        totalBudgetPrevu: +totalPrevu.toFixed(2),
-        totalBudgetReel: +totalReel.toFixed(2),
-        totalEcart: +Math.abs(totalReel - totalPrevu).toFixed(2),
-      }
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-  }
+        depenses.forEach(d => {
+            const theme = themes.find(t => t._id.toString() === d.themeFormation.toString());
+            if (!theme) return;
+
+            const tid = theme._id.toString();
+            if (!map.has(tid)) {
+                map.set(tid, {
+                    theme: theme,
+                    budgetPrevu: 0,
+                    budgetReel: 0,
+                });
+            }
+
+            const quant = d.quantite ?? 1;
+            const tauxTotal = (d.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+
+            const prevu = d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
+            const reel = (d.montantUnitaireReel ?? 0) * quant * (1 + tauxTotal / 100);
+
+            const entry = map.get(tid);
+            entry.budgetPrevu += prevu;
+            entry.budgetReel += reel;
+        });
+
+        const resArr = Array.from(map.values()).map(e => ({
+            themeId: e.theme._id,
+            titreFr: e.theme.titreFr,
+            titreEn: e.theme.titreEn,
+            budgetPrevu: +e.budgetPrevu.toFixed(2),
+            budgetReel: +e.budgetReel.toFixed(2),
+            ecart: +Math.abs(e.budgetReel - e.budgetPrevu).toFixed(2),
+        }));
+
+        return res.json({ success: true, data: resArr });
+    } catch (err) {
+        console.error('Erreur dans getBudgetEcartParTheme:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
 };
 
-// 4a. Coût total prévu par thème
+// Totaux budget par thème
+export const getTotauxBudgetParTheme = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
+
+    if (themeId && !mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    try {
+        let themes;
+
+        if (themeId) {
+            // Vérifier que le thème existe
+            const theme = await ThemeFormation.findById(themeId).lean();
+            if (!theme) {
+                return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+            }
+            themes = [theme];
+        } else {
+            // Tous les thèmes (optionnel)
+            themes = await ThemeFormation.find().lean();
+        }
+
+        // Récupérer toutes les dépenses des thèmes
+        const depenses = await Depense.find({ themeFormation: { $in: themes.map(t => t._id) } })
+            .populate({
+                path: 'taxes',
+                select: 'natureFr natureEn taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
+
+        let totalPrevu = 0, totalReel = 0;
+
+        depenses.forEach(d => {
+            const quant = d.quantite ?? 1;
+            const tauxTotal = (d.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+
+            const prevu = d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
+            const reel = (d.montantUnitaireReel ?? 0) * quant * (1 + tauxTotal / 100);
+
+            totalPrevu += prevu;
+            totalReel += reel;
+        });
+
+        return res.json({
+            success: true,
+            data: {
+                totalBudgetPrevu: +totalPrevu.toFixed(2),
+                totalBudgetReel: +totalReel.toFixed(2),
+                totalEcart: (totalReel - totalPrevu).toFixed(2),
+                tauxExecution: totalPrevu > 0 ? +((totalReel / totalPrevu) * 100).toFixed(2) : 0
+            }
+        });
+    } catch (err) {
+        console.error('Erreur dans getTotauxBudgetParTheme:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+// Coût total prévu par thème
 export const getCoutTotalPrevuParTheme = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { formationId } = req.params;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(formationId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
+    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
 
-  try {
-    const budgets = await BudgetFormation.find({ formation: formationId }).lean();
-    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-       .populate({
-          path: 'taxes',
-          options:{strictPopulate:false}
-      })
-      .lean();
+    try {
+        // Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeId).select('_id titreFr titreEn').lean();
+        if (!theme) {
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+        }
 
-    const totalPrevu = depenses.reduce((acc, d) => {
-      const quant = d.quantite ?? 1;
-      const tauxTotal = (d.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
-      return acc + d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
-    }, 0);
+        // Récupérer toutes les dépenses du thème
+        const depenses = await Depense.find({ themeFormation: themeId })
+            .populate({
+                path: 'taxes',
+                select: 'taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
 
-    return res.json({
-      success: true,
-      message: t('calcul_succes', lang),
-      data: { formationId, totalPrevu: +totalPrevu.toFixed(2) }
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-  }
+        const totalPrevu = depenses.reduce((acc, d) => {
+            const quant = d.quantite ?? 1;
+            const tauxTotal = (d.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+            return acc + d.montantUnitairePrevu * quant * (1 + tauxTotal / 100);
+        }, 0);
+
+        return res.json({
+            success: true,
+            message: t('calcul_succes', lang),
+            data: { 
+                themeId: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                totalPrevu: +totalPrevu.toFixed(2) 
+            }
+        });
+    } catch (err) {
+        console.error('Erreur dans getCoutTotalPrevuParTheme:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
 };
 
-// 4b. Coût total réel par thème
+// Coût total réel par thème
 export const getCoutTotalReelParTheme = async (req, res) => {
-  const lang = req.headers['accept-language'] || 'fr';
-  const { formationId } = req.params;
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(formationId)) {
-    return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
-  }
+    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
 
-  try {
-    const budgets = await BudgetFormation.find({
-      formation: formationId,
-      statut: { $in: ['EXECUTE', 'CLOTURE'] }
-    }).lean();
+    try {
+        // Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeId).select('_id titreFr titreEn').lean();
+        if (!theme) {
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+        }
 
-    const depenses = await Depense.find({ budget: { $in: budgets.map(b => b._id) } })
-       .populate({
-          path: 'taxes',
-          select: 'taux',
-          options:{strictPopulate:false}
-      })
-      .lean();
+        // Récupérer toutes les dépenses du thème avec montant réel
+        const depenses = await Depense.find({ 
+            themeFormation: themeId,
+            montantUnitaireReel: { $ne: null } // Seulement les dépenses avec montant réel
+        })
+            .populate({
+                path: 'taxes',
+                select: 'taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
 
-    const totalReel = depenses.reduce((acc, d) => {
-      const quant = d.quantite ?? 1;
-      const montantHT = (d.montantUnitaireReel ?? d.montantUnitairePrevu) * quant;
-      const tauxTotal = (d.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
-      return acc + montantHT * (1 + tauxTotal / 100);
-    }, 0);
+        const totalReel = depenses.reduce((acc, d) => {
+            const quant = d.quantite ?? 1;
+            const montantHT = d.montantUnitaireReel * quant;
+            const tauxTotal = (d.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+            return acc + montantHT * (1 + tauxTotal / 100);
+        }, 0);
 
-    return res.json({
-      success: true,
-      message: t('calcul_succes', lang),
-      data: { formationId, totalReel: +totalReel.toFixed(2) }
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
-  }
+        return res.json({
+            success: true,
+            message: t('calcul_succes', lang),
+            data: { 
+                themeId: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                totalReel: +totalReel.toFixed(2),
+                nbDepensesReelles: depenses.length
+            }
+        });
+    } catch (err) {
+        console.error('Erreur dans getCoutTotalReelParTheme:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+// Analyse budgétaire complète d'un thème
+export const getAnalyseBudgetaireTheme = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    try {
+        // Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeId)
+            .select('_id titreFr titreEn dateDebut dateFin')
+            .lean();
+        
+        if (!theme) {
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+        }
+
+        // Récupérer toutes les dépenses du thème
+        const depenses = await Depense.find({ themeFormation: themeId })
+            .populate({
+                path: 'taxes',
+                select: 'natureFr natureEn taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
+
+        let totalPrevu = 0;
+        let totalReel = 0;
+        let nbDepenses = depenses.length;
+        let nbDepensesReelles = 0;
+        
+        const depensesParType = {
+            ACQUISITION_BIENS_SERVICES: { prevu: 0, reel: 0, count: 0 },
+            FRAIS_ADMINISTRATIF: { prevu: 0, reel: 0, count: 0 }
+        };
+
+        depenses.forEach(d => {
+            const quant = d.quantite ?? 1;
+            const tauxTotal = (d.taxes || []).reduce((acc, taxe) => acc + (taxe.taux || 0), 0);
+            const coeff = 1 + tauxTotal / 100;
+
+            const prevu = d.montantUnitairePrevu * quant * coeff;
+            const reel = d.montantUnitaireReel !== null 
+                ? d.montantUnitaireReel * quant * coeff 
+                : 0;
+
+            totalPrevu += prevu;
+            totalReel += reel;
+
+            if (d.montantUnitaireReel !== null) {
+                nbDepensesReelles++;
+            }
+
+            // Agrégation par type
+            if (depensesParType[d.type]) {
+                depensesParType[d.type].prevu += prevu;
+                depensesParType[d.type].reel += reel;
+                depensesParType[d.type].count++;
+            }
+        });
+
+        const tauxExecution = totalPrevu > 0 ? (totalReel / totalPrevu) * 100 : 0;
+        const ecart = totalReel - totalPrevu;
+        const pourcentageEcart = totalPrevu > 0 ? (ecart / totalPrevu) * 100 : 0;
+
+        return res.json({
+            success: true,
+            data: {
+                theme: {
+                    id: theme._id,
+                    titreFr: theme.titreFr,
+                    titreEn: theme.titreEn,
+                    dateDebut: theme.dateDebut,
+                    dateFin: theme.dateFin
+                },
+                budget: {
+                    totalPrevu: +totalPrevu.toFixed(2),
+                    totalReel: +totalReel.toFixed(2),
+                    ecart: +ecart.toFixed(2),
+                    pourcentageEcart: +pourcentageEcart.toFixed(2),
+                    tauxExecution: +tauxExecution.toFixed(2)
+                },
+                depenses: {
+                    total: nbDepenses,
+                    avecMontantReel: nbDepensesReelles,
+                    sansMontantReel: nbDepenses - nbDepensesReelles
+                },
+                parType: {
+                    acquisitionBiensServices: {
+                        prevu: +depensesParType.ACQUISITION_BIENS_SERVICES.prevu.toFixed(2),
+                        reel: +depensesParType.ACQUISITION_BIENS_SERVICES.reel.toFixed(2),
+                        count: depensesParType.ACQUISITION_BIENS_SERVICES.count
+                    },
+                    fraisAdministratif: {
+                        prevu: +depensesParType.FRAIS_ADMINISTRATIF.prevu.toFixed(2),
+                        reel: +depensesParType.FRAIS_ADMINISTRATIF.reel.toFixed(2),
+                        count: depensesParType.FRAIS_ADMINISTRATIF.count
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Erreur dans getAnalyseBudgetaireTheme:', err);
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
+    }
+};
+
+//Comparaison budgétaire entre plusieurs thèmes
+export const comparerBudgetsThemes = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { themeIds } = req.body; // Array d'IDs de thèmes
+
+    if (!Array.isArray(themeIds) || themeIds.length === 0) {
+        return res.status(400).json({ 
+            success: false, 
+            message: t('theme_ids_requis', lang) 
+        });
+    }
+
+    if (themeIds.some(id => !mongoose.Types.ObjectId.isValid(id))) {
+        return res.status(400).json({ 
+            success: false, 
+            message: t('identifiant_invalide', lang) 
+        });
+    }
+
+    try {
+        const themes = await ThemeFormation.find({ _id: { $in: themeIds } })
+            .select('_id titreFr titreEn')
+            .lean();
+
+        if (themes.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: t('themes_non_trouves', lang) 
+            });
+        }
+
+        const depenses = await Depense.find({ themeFormation: { $in: themeIds } })
+            .populate({
+                path: 'taxes',
+                select: 'taux',
+                options: { strictPopulate: false }
+            })
+            .lean();
+
+        const comparaison = themes.map(theme => {
+            const depensesDuTheme = depenses.filter(
+                d => d.themeFormation.toString() === theme._id.toString()
+            );
+
+            let totalPrevu = 0;
+            let totalReel = 0;
+
+            depensesDuTheme.forEach(d => {
+                const quant = d.quantite ?? 1;
+                const tauxTotal = (d.taxes || []).reduce((sum, taxe) => sum + (taxe.taux || 0), 0);
+                const coeff = 1 + tauxTotal / 100;
+
+                totalPrevu += d.montantUnitairePrevu * quant * coeff;
+                totalReel += (d.montantUnitaireReel ?? 0) * quant * coeff;
+            });
+
+            return {
+                themeId: theme._id,
+                titreFr: theme.titreFr,
+                titreEn: theme.titreEn,
+                budgetPrevu: +totalPrevu.toFixed(2),
+                budgetReel: +totalReel.toFixed(2),
+                ecart: +(totalReel - totalPrevu).toFixed(2),
+                tauxExecution: totalPrevu > 0 ? +((totalReel / totalPrevu) * 100).toFixed(2) : 0
+            };
+        });
+
+        return res.json({ success: true, data: comparaison });
+    } catch (err) {
+        console.error('Erreur dans comparerBudgetsThemes:', err);
+        return res.status(500).json({ 
+            success: false, 
+            message: t('erreur_serveur', lang), 
+            error: err.message 
+        });
+    }
 };
 
 

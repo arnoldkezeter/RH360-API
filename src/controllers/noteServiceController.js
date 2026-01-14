@@ -22,6 +22,7 @@ import PosteDeTravail from '../models/PosteDeTravail.js';
 import QRCode from 'qrcode';
 import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
+import Depense from '../models/Depense.js';
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -1477,7 +1478,7 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
         let noteExistante = await NoteService.findOne({ 
             theme: theme, 
             typeNote: 'convocation',
-            sousTypeConvocation: 'formateurs' // ✅ Distinction clé
+            sousTypeNote: 'formateurs' // ✅ Distinction clé
         });
         
         let noteEnregistree;
@@ -1886,7 +1887,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         let noteExistante = await NoteService.findOne({ 
             theme: theme, 
             typeNote: 'convocation',
-            sousTypeConvocation: 'participants'
+            sousTypeNote: 'participants'
         });
         
         let noteEnregistree;
@@ -2332,7 +2333,7 @@ export const genererFichesPresenceParticipants = async (req, res) => {
         let noteExistante = await NoteService.findOne({ 
             theme: finalThemeId, 
             typeNote: 'fiche_presence',
-            sousTypeConvocation: 'participants'
+            sousTypeNote: 'participants'
         });
         
         let noteEnregistree;
@@ -2630,7 +2631,7 @@ export const genererFichesPresenceFormateurs = async (req, res) => {
         let noteExistante = await NoteService.findOne({ 
             theme: theme, 
             typeNote: 'fiche_presence',
-            sousTypeConvocation: 'formateurs' // ✅ Distinction clé
+            sousTypeNote: 'formateurs' // ✅ Distinction clé
         });
         
         let noteEnregistree;
@@ -3256,12 +3257,12 @@ export const verifierNoteService = async (req, res) => {
 
             case 'convocation':
                 pdfBuffer = await genererPDFConvocation(note, lang);
-                nomFichier = `note-service-convocation-${note.sousTypeConvocation || 'general'}-${note.reference.replace(/\//g, '-')}.pdf`;
+                nomFichier = `note-service-convocation-${note.sousTypeNote || 'general'}-${note.reference.replace(/\//g, '-')}.pdf`;
                 break;
 
             case 'fiche_presence':
                 pdfBuffer = await genererPDFFichePresence(note, lang);
-                nomFichier = `fiche-presence-${note.sousTypeConvocation || 'general'}-${note.reference.replace(/\//g, '-')}.pdf`;
+                nomFichier = `fiche-presence-${note.sousTypeNote || 'general'}-${note.reference.replace(/\//g, '-')}.pdf`;
                 break;
 
             default:
@@ -3761,6 +3762,297 @@ const genererPDFFichePresence = async (note, lang) => {
 };
 
 /**
+ * Crée ou met à jour une note de service pour un budget et génère le PDF
+ */
+export const creerNoteServiceBudget = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const {
+            themeFormation,
+            budgetNomFr,
+            budgetNomEn,
+            creePar,
+            typeBudget // 'prevu' ou 'reel'
+        } = req.body;
+
+        // Validation
+        if (!themeFormation) {
+            return res.status(400).json({
+                success: false,
+                message: t('ref_theme_requis', lang)
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(themeFormation)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(creePar)) {
+            return res.status(400).json({
+                success: false,
+                message: t('identifiant_invalide', lang)
+            });
+        }
+
+        // Valider typeBudget
+        if (!typeBudget || !['prevu', 'reel'].includes(typeBudget)) {
+            return res.status(400).json({
+                success: false,
+                message: t('type_budget_invalide', lang)
+            });
+        }
+
+        // Vérifier que le thème existe
+        const theme = await ThemeFormation.findById(themeFormation).lean();
+        
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang)
+            });
+        }
+
+        // Récupérer le créateur
+        const createur = await Utilisateur.findById(creePar).select('nom prenom').lean();
+        
+        if (!createur) {
+            return res.status(404).json({
+                success: false,
+                message: t('utilisateur_non_trouve', lang)
+            });
+        }
+
+        // Récupérer toutes les dépenses du thème avec les taxes
+        const depenses = await Depense.find({ themeFormation: themeFormation })
+            .populate({
+                path: 'taxes',
+                select: 'natureFr natureEn taux',
+                options: { strictPopulate: false }
+            })
+            .sort({ type: 1, createdAt: 1 })
+            .lean();
+
+        if (!depenses || depenses.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: t('depense_non_trouvee', lang)
+            });
+        }
+
+        // Vérifier si une note existe déjà pour ce budget
+        let noteExistante = await NoteService.findOne({ 
+            themeFormation: themeFormation, 
+            typeNote: 'budget_formation',
+            sousTypeNote:typeBudget 
+        });
+        
+        let nouvelleNote;
+
+        if (noteExistante) {
+            // Mettre à jour la note existante
+            if (!noteExistante.reference) {
+                noteExistante.reference = await genererReference();
+            }
+            noteExistante.titreFr = budgetNomFr || "BUDGET DE FORMATION";
+            noteExistante.titreEn = budgetNomEn || "TRAINING BUDGET";
+            noteExistante.creePar = creePar;
+            noteExistante.valideParDG = false;
+            
+            nouvelleNote = await noteExistante.save({ session });
+        } else {
+            // Générer la référence uniquement pour une nouvelle note
+            const reference = await genererReference();
+
+            // Créer la nouvelle note de service
+            nouvelleNote = new NoteService({
+                reference,
+                themeFormation,
+                typeNote: 'budget_formation',
+                sousTypeNote:typeBudget,
+                titreFr: budgetNomFr || "BUDGET DE FORMATION",
+                titreEn: budgetNomEn || "TRAINING BUDGET",
+                creePar,
+                valideParDG: false
+            });
+            
+            nouvelleNote = await nouvelleNote.save({ session });
+        }
+
+        // Utiliser les paramètres budgetNomFr et budgetNomEn si fournis, sinon le titre du thème
+        const nomBudget = lang === 'fr' 
+            ? (budgetNomFr || theme.titreFr || theme.titreEn)
+            : (budgetNomEn || theme.titreEn || theme.titreFr);
+
+        // Générer le PDF
+        const pdfBuffer = await genererPDFBudget(
+            nouvelleNote,
+            theme,
+            depenses,
+            nomBudget,
+            lang,
+            createur,
+            typeBudget
+        );
+
+        // Définir le nom du fichier
+        const sanitizedThemeName = (theme.titreFr || theme.titreEn || 'Theme')
+            .replace(/[^a-z0-9]/gi, '_')
+            .substring(0, 50);
+        const typeBudgetLabel = typeBudget === 'prevu' ? 'Prevu' : 'Reel';
+        const nomFichier = `Budget_${typeBudgetLabel}_${sanitizedThemeName}_${nouvelleNote.reference.replace(/\//g, '-')}.pdf`;
+
+        // Valider la transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        // Envoyer le PDF
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'Content-Length': pdfBuffer.length
+        });
+        
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('Erreur lors de la création de la note de service budget:', error);
+
+        await session.abortTransaction();
+        session.endSession();
+
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+/**
+ * Génère le PDF pour le budget
+ */
+const genererPDFBudget = async (note, theme, depenses, nomBudget, lang, createur, typeBudget) => {
+    try {
+        // Générer l'URL de vérification de la note
+        const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
+        const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        
+        // Générer le QR code en base64
+        const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
+            errorCorrectionLevel: 'H',
+            type: 'image/png',
+            width: 100,
+            margin: 1,
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF'
+            }
+        });
+
+        // Préparer les données pour le template
+        const templateData = {
+            documentTitle: nomBudget,
+            budgetDescription: lang === 'fr' 
+                ? `Budget du thème: ${theme.titreFr || theme.titreEn}`
+                : `Budget for theme: ${theme.titreEn || theme.titreFr}`,
+            depenses: depenses,
+            typeBudget: typeBudget, // 'prevu' ou 'reel'
+            logoUrl: getLogoBase64(__dirname) || null,
+            // Référence système
+            referenceSysteme: note.reference || 'REF-XXX',
+            
+            // QR Code
+            qrCodeUrl: qrCodeDataUrl,
+            urlVerification: urlVerification,
+            dateDocument: new Date().toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            }),
+            // Créateur
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
+            // Date et heure
+            dateTime: new Date().toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            })
+        };
+
+        // Charger et compiler le template EJS
+        const templatePath = path.join(__dirname, '../views/budget_template.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        // Générer le PDF avec Puppeteer
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        const page = await browser.newPage();
+        
+        // Définir le contenu HTML
+        await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+
+        // Générer le PDF
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: '20px',
+                right: '20px',
+                bottom: '60px',
+                left: '20px'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
+                    <div style="text-align: left; flex: 1;">
+                        Généré par ${templateData.createurNom}
+                    </div>
+                    <div style="text-align: center; flex: 1;">
+                        Le ${templateData.dateTime}
+                    </div>
+                    <div style="text-align: right; flex: 1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>
+            `
+        });
+
+        await browser.close();
+        
+        return pdfBuffer;
+
+    } catch (error) {
+        console.error('Erreur lors de la génération du PDF budget:', error);
+        throw error;
+    }
+};
+
+/**
  * Génère une page HTML de vérification (pour affichage dans le navigateur)
  * Cette fonction reste disponible si vous voulez un aperçu HTML
  */
@@ -3979,7 +4271,7 @@ export const afficherVerificationNote = async (req, res) => {
                         
                         <div class="info-row">
                             <div class="label">Type de Note</div>
-                            <div class="value">${note.typeNote.toUpperCase()}${note.sousTypeConvocation ? ' - ' + note.sousTypeConvocation.toUpperCase() : ''}</div>
+                            <div class="value">${note.typeNote.toUpperCase()}${note.sousTypeNote ? ' - ' + note.sousTypeNote.toUpperCase() : ''}</div>
                         </div>
                         
                         <div class="info-row">

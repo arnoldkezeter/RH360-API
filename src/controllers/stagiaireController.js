@@ -7,6 +7,7 @@ import { Groupe } from '../models/Groupe.js';
 import Etablissement from '../models/Etablissement.js';
 import BaseUtilisateur from '../models/BaseUtilisateur.js';
 import { AffectationFinale } from '../models/AffectationFinale.js';
+import mongoose from 'mongoose';
 
 export const createStagiaire = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -526,6 +527,83 @@ export const getStagiaires = async (req, res) => {
                 ? 'An error occurred while retrieving interns'
                 : 'Une erreur est survenue lors de la récupération des stagiaires',
             error: error.message,
+        });
+    }
+};
+
+export const getStagiairesByEtablissements = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    const { etablissementIds, annee } = req.query;
+
+    try {
+        if (!etablissementIds) {
+            return res.status(400).json({
+                success: false,
+                message: t('etablissement_requis', lang),
+            });
+        }
+
+        // Convertir la chaîne d'IDs en tableau
+        const etablissementIdArray = etablissementIds.split(',').map(id => new mongoose.Types.ObjectId(id.trim()));
+        
+        // Construire le filtre
+        const filter = {
+            actif: true,
+            'parcours.etablissement': { $in: etablissementIdArray }
+        };
+
+        // Si une année est spécifiée, filtrer aussi par année
+        if (annee) {
+            filter['parcours.annee'] = parseInt(annee);
+        }
+
+        // Récupérer les stagiaires avec les détails de l'établissement et de la commune
+        const stagiaires = await Stagiaire.find(filter)
+            .populate('parcours.etablissement', 'nomFr nomEn')
+            .populate('commune', 'nomFr nomEn')
+            .select('_id nom prenom email genre telephone dateNaissance parcours')
+            .sort({ nom: 1, prenom: 1 })
+            .lean();
+
+        // Grouper les stagiaires par établissement pour faciliter l'affichage
+        const stagiairesByEtablissement = {};
+        
+        stagiaires.forEach(stagiaire => {
+            stagiaire.parcours.forEach(parcours => {
+                if (etablissementIdArray.some(id => id.equals(parcours.etablissement._id))) {
+                    const etablissementId = parcours.etablissement._id.toString();
+                    
+                    if (!stagiairesByEtablissement[etablissementId]) {
+                        stagiairesByEtablissement[etablissementId] = {
+                            etablissement: parcours.etablissement,
+                            stagiaires: []
+                        };
+                    }
+                    
+                    // Éviter les doublons
+                    const exists = stagiairesByEtablissement[etablissementId].stagiaires
+                        .some(s => s._id.toString() === stagiaire._id.toString());
+                    
+                    if (!exists) {
+                        stagiairesByEtablissement[etablissementId].stagiaires.push(stagiaire);
+                    }
+                }
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                stagiairesByEtablissement,
+                totalStagiaires: stagiaires.length,
+            },
+        });
+    } catch (err) {
+        console.error('Erreur getStagiairesByEtablissements:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
         });
     }
 };

@@ -156,7 +156,7 @@ export const creerNoteService = async (req, res) => {
                         { path: 'superviseur', select: 'nom prenom titre posteDeTravail service',
                             populate:[
                                 {path:'posteDeTravail', select:"nomFr nomEn"},
-                                {path:'service', select:"nomFr nomEn"}
+                                {path:'structure', select:"nomFr nomEn"}
                             ]
                          },
                         { path: 'chercheur', select: 'nom prenom etablissement doctorat domaineRecherche genre',
@@ -183,7 +183,7 @@ export const creerNoteService = async (req, res) => {
                         { path: 'superviseur', select: 'nom prenom titre posteDeTravail service',
                             populate:[
                                 {path:'posteDeTravail', select:"nomFr nomEn"},
-                                {path:'service', select:"nomFr nomEn"}
+                                {path:'structure', select:"nomFr nomEn"}
                             ]
                          },
                         { path: 'chercheur', select: 'nom prenom etablissement doctorat domaineRecherche genre',
@@ -294,7 +294,7 @@ export const creerNoteServiceStage = async (req, res) => {
             stagiaire: stageData.stagiaire._id
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -481,7 +481,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -497,7 +497,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -827,7 +827,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             
             // Informations d'affectations
             userService: affectations.service 
-                ? (lang === 'fr' ? affectations.service.nomFr : affectations.service.nomEn)
+                ? (lang === 'fr' ? affectations.structure.nomFr : affectations.structure.nomEn)
                 : "________________",
             dateDebut: affectations.dateDebut 
                 ? new Date(affectations.dateDebut).toLocaleDateString('fr-FR', {
@@ -979,7 +979,7 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
             });
 
             const nomService = affectation.service 
-                ? (lang === 'fr' ? affectation.service.nomFr : affectation.service.nomEn)
+                ? (lang === 'fr' ? affectation.structure.nomFr : affectation.structure.nomEn)
                 : "Service non défini";
 
             return {
@@ -1165,18 +1165,18 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
         const servicesSet = new Set();
 
         rotations.forEach(rotation => {
-            const serviceId = rotation.service._id.toString();
-            const serviceNom = lang === 'fr' ? rotation.service.nomFr : rotation.service.nomEn;
+            const structureId = rotation.structure._id.toString();
+            const structureNom = lang === 'fr' ? rotation.structure.nomFr : rotation.structure.nomEn;
             const groupeNumero = rotation.groupe.numero;
 
-            if (!chronogrammeRotations[serviceId]) {
-                chronogrammeRotations[serviceId] = {
-                    serviceNom,
+            if (!chronogrammeRotations[structureId]) {
+                chronogrammeRotations[structureId] = {
+                    structureNom,
                     groupes: {}
                 };
             }
 
-            chronogrammeRotations[serviceId].groupes[groupeNumero] = {
+            chronogrammeRotations[structureId].groupes[groupeNumero] = {
                 dateDebut: new Date(rotation.dateDebut).toLocaleDateString('fr-FR', {
                     day: '2-digit',
                     month: '2-digit',
@@ -1189,21 +1189,21 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
                 })
             };
 
-            servicesSet.add(serviceId);
+            servicesSet.add(structureId);
         });
 
         // Construire le tableau des affectations finales
         const affectationsFinalesParGroupe = {};
         affectations.forEach(affectation => {
             const groupeNumero = affectation.groupe.numero;
-            const serviceNom = lang === 'fr' ? affectation.service.nomFr : affectation.service.nomEn;
+            const structureNom = lang === 'fr' ? affectation.structure.nomFr : affectation.structure.nomEn;
             
             if (!affectationsFinalesParGroupe[groupeNumero]) {
                 affectationsFinalesParGroupe[groupeNumero] = [];
             }
 
             affectationsFinalesParGroupe[groupeNumero].push({
-                service: serviceNom,
+                service: structureNom,
                 dateDebut: new Date(affectation.dateDebut).toLocaleDateString('fr-FR', {
                     day: '2-digit',
                     month: 'long',
@@ -1800,7 +1800,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
                 select: 'famillesMetier nomFr nomEn' // Indispensable pour la vérification du ciblage
             })
             .populate({
-                path: 'service',
+                path: 'structure',
                 select: 'nomFr nomEn'
             })
             .lean(); 
@@ -1833,7 +1833,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
                         select: 'nomFr nomEn' // Peuplement du Poste de Travail
                     },
                     {
-                        path: 'service',
+                        path: 'structure',
                         select: 'nomFr nomEn' // Peuplement du Service
                     }
                 ]
@@ -1989,21 +1989,21 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
         participants.forEach(participant => {
             const utilisateur = participant.utilisateur;
             
-            // ... (Définition serviceId et serviceNom inchangée)
-            const serviceId = utilisateur.service?._id?.toString() || 'sans_service';
-            let serviceNom;
+            // ... (Définition structureId et structureNom inchangée)
+            const structureId = utilisateur.service?._id?.toString() || 'sans_service';
+            let structureNom;
             if (utilisateur.service) {
                 const nom = lang === 'fr' 
-                    ? utilisateur.service.nomFr 
-                    : utilisateur.service.nomEn;
-                serviceNom = nom || 'Nom de Service Manquant'; 
+                    ? utilisateur.structure.nomFr 
+                    : utilisateur.structure.nomEn;
+                structureNom = nom || 'Nom de Service Manquant'; 
             } else {
-                serviceNom = 'Service non spécifié';
+                structureNom = 'Service non spécifié';
             }
 
-            if (!participantsParService[serviceId]) {
-                participantsParService[serviceId] = {
-                    serviceNom,
+            if (!participantsParService[structureId]) {
+                participantsParService[structureId] = {
+                    structureNom,
                     participants: []
                 };
             }
@@ -2025,7 +2025,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
                 ? (lang === 'fr' ? utilisateur.posteDeTravail.nomFr : utilisateur.posteDeTravail.nomEn)
                 : '';
 
-            participantsParService[serviceId].participants.push({
+            participantsParService[structureId].participants.push({
                 nom: utilisateur.nom,
                 prenom: utilisateur.prenom || '',
                 poste,
@@ -2036,7 +2036,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
 
         // Tri des services (inchangé)
         const servicesOrdonnes = Object.values(participantsParService).sort((a, b) =>
-            a.serviceNom.localeCompare(b.serviceNom)
+            a.structureNom.localeCompare(b.structureNom)
         );
 
         let numeroGlobal = 1;
@@ -2073,7 +2073,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
                         numero: numeroGlobal++,
                         nom: `${participant.nom} ${participant.prenom}`.trim(),
                         fonction: participant.poste,
-                        service: service.serviceNom,
+                        service: service.structureNom,
                         
                         // Infos Rowspan (pour le template)
                         lieu: participant.lieu,
@@ -3209,7 +3209,7 @@ export const verifierNoteService = async (req, res) => {
                         select: 'nom prenom titre posteDeTravail service',
                         populate: [
                             { path: 'posteDeTravail', select: 'nomFr nomEn' },
-                            { path: 'service', select: 'nomFr nomEn' }
+                            { path: 'structure', select: 'nomFr nomEn' }
                         ]
                     },
                     { 
@@ -3332,7 +3332,7 @@ const genererPDFStage = async (note, lang) => {
             stagiaire: stageData.stagiaire._id
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -3377,7 +3377,7 @@ const genererPDFStage = async (note, lang) => {
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -3392,7 +3392,7 @@ const genererPDFStage = async (note, lang) => {
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
         .populate({
-            path: 'service',
+            path: 'structure',
             select: 'nomFr nomEn'
         })
         .populate({
@@ -3578,7 +3578,7 @@ const genererPDFConvocation = async (note, lang) => {
                 select: 'famillesMetier nomFr nomEn'
             })
             .populate({
-                path: 'service',
+                path: 'structure',
                 select: 'nomFr nomEn'
             })
             .lean();
@@ -3604,7 +3604,7 @@ const genererPDFConvocation = async (note, lang) => {
                 select: '_id nom prenom posteDeTravail service',
                 populate: [
                     { path: 'posteDeTravail', select: 'nomFr nomEn' },
-                    { path: 'service', select: 'nomFr nomEn' }
+                    { path: 'structure', select: 'nomFr nomEn' }
                 ]
             })
             .lean();

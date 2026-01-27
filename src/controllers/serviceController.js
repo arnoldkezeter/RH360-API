@@ -4,6 +4,7 @@ import Structure from '../models/Structure.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
+import PosteDeTravail from '../models/PosteDeTravail.js';
 
 // Créer un service
 export const createService = async (req, res) => {
@@ -454,3 +455,119 @@ export const getServicesForDropdownByStructure = async (req, res) => {
       });
     }
 };
+
+/**
+ * Récupère tous les services d'une structure et d'un poste
+ * GET /api/structures/:structureId/services
+ */
+export const getFilteredServicesByStructure = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    try {
+        const { structureId } = req.params;
+        const { search } = req.query;
+
+        // Vérifier si la structure existe
+        const structure = await Structure.findById(structureId);
+        if (!structure) {
+            return res.status(404).json({ 
+                success: false, 
+                message: t('structure_non_trouvee', lang)
+            });
+        }
+
+        // Construire la requête de recherche
+        const query = { structure: structureId };
+        
+        if (search) {
+        query.$or = [
+            { nomFr: { $regex: search, $options: 'i' } },
+            { nomEn: { $regex: search, $options: 'i' } }
+        ];
+        }
+
+        // Récupérer tous les services de cette structure
+        const services = await Service.find(query)
+        .populate('chefService', 'nom prenom email')
+        .populate('structure', 'nomFr nomEn')
+        .sort({ nomFr: 1 });
+
+        res.status(200).json({
+            success: true,
+            // count: services.length,
+            // structure: {
+            //     _id: structure._id,
+            //     nomFr: structure.nomFr,
+            //     nomEn: structure.nomEn
+            // },
+            data: {
+                services,
+                totalItems:services.length,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:services.length
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: t('erreur_serveur', lang),
+            error: error.message 
+        });
+    }
+};
+
+
+/**
+ * Récupère tous les services liés à un poste de travail
+ * GET /api/postes/:posteId/services
+ * Query params: search (recherche sur nomFr ou nomEn)
+ */
+export const getServicesByPoste = async (req, res) => {
+  try {
+    const { posteId } = req.params;
+    const { search } = req.query;
+
+    // Vérifier si le poste existe
+    const poste = await PosteDeTravail.findById(posteId);
+    if (!poste) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Poste de travail non trouvé' 
+      });
+    }
+
+    // Construire la requête de recherche
+    const query = { _id: { $in: poste.services } };
+    
+    if (search) {
+      query.$or = [
+        { nomFr: { $regex: search, $options: 'i' } },
+        { nomEn: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Récupérer tous les services liés à ce poste
+    const services = await Service.find(query)
+    .populate('chefService', 'nom prenom email')
+    .populate('structure', 'nomFr nomEn')
+    .sort({ nomFr: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: services.length,
+      poste: {
+        _id: poste._id,
+        nomFr: poste.nomFr,
+        nomEn: poste.nomEn
+      },
+      data: services
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la récupération des services',
+      error: error.message 
+    });
+  }
+};
+

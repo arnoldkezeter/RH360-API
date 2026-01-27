@@ -3,6 +3,8 @@ import { validationResult} from 'express-validator';
 import { t } from '../utils/i18n.js';
 import Utilisateur from '../models/Utilisateur.js';
 import mongoose from 'mongoose';
+import Service from '../models/Service.js';
+import PosteDeTravail from '../models/PosteDeTravail.js';
 
 
 
@@ -390,6 +392,79 @@ export const getStructuresForDropdown = async (req, res) => {
         message: t('erreur_serveur', lang),
         error: err.message,
       });
+    }
+};
+
+
+/**
+ * Récupère toutes les structures liées à un poste de travail
+ * GET /api/postes/:posteId/structures
+ * Query params: search (recherche sur nomFr ou nomEn)
+ */
+export const getStructuresByPoste = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    try {
+        const { posteId } = req.params;
+        const { search } = req.query;
+
+        // Vérifier si le poste existe
+        const poste = await PosteDeTravail.findById(posteId);
+        if (!poste) {
+            return res.status(404).json({ 
+                success: false, 
+                message: t('poste_non_trouve', lang) 
+            });
+        }
+
+        // Récupérer tous les services liés à ce poste pour obtenir leurs structures
+        const services = await Service.find({ 
+            _id: { $in: poste.services } 
+        }).select('structure');
+
+        // Extraire les IDs uniques des structures
+        const structureIds = [...new Set(
+        services
+            .map(service => service.structure)
+            .filter(structureId => structureId != null)
+        )];
+
+        // Construire la requête de recherche
+        const query = { _id: { $in: structureIds } };
+        
+        if (search) {
+        query.$or = [
+            { nomFr: { $regex: search, $options: 'i' } },
+            { nomEn: { $regex: search, $options: 'i' } }
+        ];
+        }
+
+        // Récupérer toutes les structures
+        const structures = await Structure.find(query)
+        .populate('chefStructure', 'nom prenom email')
+        .sort({ nomFr: 1 });
+
+        res.status(200).json({
+            success: true,
+            //   count: structures.length,
+            //   poste: {
+            //     _id: poste._id,
+            //     nomFr: poste.nomFr,
+            //     nomEn: poste.nomEn
+            //   },
+            data: {
+                structures,
+                totalItems:structures.lenght,
+                currentPage:1,
+                totalPages: 1,
+                pageSize:structures.lenght
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: t('erreur_serveur', lang),
+            error: error.message 
+        });
     }
 };
 

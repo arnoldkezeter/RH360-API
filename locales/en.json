@@ -273,7 +273,8 @@
     "pdf_ref_non_correspondance": "The reference does not match. Expected: %{referenceAttendue}, Found: %{referenceExtraite}.",
     "pdf_erreur_validation_generique": "Error during validation: %{errorDetail}",
     "reference_attendue_manquante": "The expected reference for this internship is missing in the database.",
-    "reference_pdf_invalide": "The reference found in the PDF does not match the expected reference."
+    "reference_pdf_invalide": "The reference found in the PDF does not match the expected reference.",
+    "note_service_deja_validee_DG":"It is not possible to delete this note because it has already been validated."
 
 }
   

@@ -86,54 +86,18 @@ export const executerTacheTheme = async (req, res) => {
       .populate({ path: 'theme', select:'titreFr titreEn', options: { strictPopulate: false } })
       .populate({ path: 'tache', options: { strictPopulate: false } })
     if (existingLink) {
-        // Sauvegarder l'ancien statut
-        const ancienStatut = existingLink.statut;
+      return res.status(409).json({ 
+        success: false, 
+        message: t('tache_deja_liee', lang) 
+      });
+    }
 
-        // Logique métier pour les changements de statut
-        if (statut === 'TERMINE' && !existingLink.estExecutee) {
-          return res.status(400).json({
-            success: false,
-            message: t('tache_non_executee', lang)
-          });
-        }
-
-        if (statut === 'EN_ATTENTE') {
-          existingLink.dateExecution = new Date();
-          existingLink.dateFin = new Date();
-        }
-
-        if (statut === 'EN_COURS') {
-          existingLink.dateExecution = new Date();
-        }
-
-        if (statut === 'TERMINE') {
-          existingLink.dateExecution = new Date();
-        }
-        existingLink.executePar = currentUser._id;
-        existingLink.statut = statut;
-        // tache.donnees = donnees;
-        await existingLink.save();
-
-        if (ancienStatut !== statut) {
-          try {
-            await notifierChangementStatutTache({
-              tache:existingLink,
-              ancienStatut,
-              nouveauStatut: statut,
-              modifiePar: currentUser._id,
-              theme: existingLink.theme
-            });
-          } catch (notifError) {
-            // Logger l'erreur mais ne pas bloquer la réponse
-            console.error('Erreur envoi notifications:', notifError);
-          }
-        }
-
-        return res.json({ 
-          success: true, 
-          message: t('modifier_succes', lang),
-          data: existingLink 
-        });
+    // Validation des dates
+    if (dateDebut && dateFin && new Date(dateDebut) >= new Date(dateFin)) {
+      return res.status(400).json({
+        success: false,
+        message: t('dates_invalides', lang)
+      });
     }
 
     // Création du lien tâche <-> thème
@@ -158,21 +122,8 @@ export const executerTacheTheme = async (req, res) => {
 
     // Populer les données pour la réponse
     await tacheTheme.populate([
-      { path: 'tache'},
-      { path: 'theme', select: 'titreFr titreEn' },
+      { path: 'tache', select: 'code nomFr nomEn type' },
     ]);
-    try {
-      await notifierChangementStatutTache({
-        tache:tacheTheme,
-        ancienStatut:"A_FAIRE",
-        nouveauStatut: statut,
-        modifiePar: currentUser._id,
-        theme: theme
-      });
-    } catch (notifError) {
-      // Logger l'erreur mais ne pas bloquer la réponse
-      console.error('Erreur envoi notifications:', notifError);
-    }
 
     return res.status(201).json({
       success: true,

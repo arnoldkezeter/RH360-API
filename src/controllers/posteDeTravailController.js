@@ -4,6 +4,7 @@ import FamilleMetier from '../models/FamilleMetier.js';
 import { validationResult } from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
+import Service from '../models/Service.js';
 
 // Ajouter un poste de travail
 export const createPosteDeTravail = async (req, res) => {
@@ -19,7 +20,7 @@ export const createPosteDeTravail = async (req, res) => {
     }
 
     try {
-        const { nomFr, nomEn, descriptionFr, descriptionEn, famillesMetier } = req.body;
+        const { nomFr, nomEn, descriptionFr, descriptionEn, famillesMetier, services } = req.body;
 
         // Vérifier l'unicité du nomFr et nomEn
         if (await PosteDeTravail.exists({ nomFr })) {
@@ -61,12 +62,39 @@ export const createPosteDeTravail = async (req, res) => {
             });
         }
 
+        // Valider service : tableau d’ObjectId
+        let serviceIds = [];
+        if (Array.isArray(services) && services.length > 0) {
+            for (const service of services) {
+                if (!mongoose.Types.ObjectId.isValid(service._id)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: t('identifiant_invalide', lang),
+                    });
+                }
+                const exists = await Service.exists({ _id: service._id });
+                if (!exists) {
+                    return res.status(404).json({
+                        success: false,
+                        message: t('service_non_trouve', lang),
+                    });
+                }
+                serviceIds.push(service._id);
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: t('service_requis', lang),
+            });
+        }
+
         const poste = await PosteDeTravail.create({
             nomFr,
             nomEn,
             descriptionFr,
             descriptionEn,
             famillesMetier: familleIds,
+            services:serviceIds
         });
 
         return res.status(201).json({
@@ -90,7 +118,7 @@ export const createPosteDeTravail = async (req, res) => {
 export const updatePosteDeTravail = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { id } = req.params;
-    const { nomFr, nomEn, descriptionFr, descriptionEn, famillesMetier } = req.body;
+    const { nomFr, nomEn, descriptionFr, descriptionEn, famillesMetier, services } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
@@ -163,6 +191,28 @@ export const updatePosteDeTravail = async (req, res) => {
                 familleIds.push(famille._id);
             }
             poste.famillesMetier = familleIds;
+        }
+
+        // Mise à jour service : remplacer entièrement
+        if (services && Array.isArray(services)) {
+            let serviceIds = [];
+            for (const service of services) {
+                if (!mongoose.Types.ObjectId.isValid(service._id)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: t('identifiant_invalide', lang),
+                    });
+                }
+                const exists = await Service.exists({ _id: service._id });
+                if (!exists) {
+                    return res.status(404).json({
+                        success: false,
+                        message: t('service_non_trouvee', lang),
+                    });
+                }
+                serviceIds.push(service._id);
+            }
+            poste.services = serviceIds;
         }
 
         await poste.save();
@@ -327,6 +377,11 @@ export const searchPostesDeTravailByName = async (req, res) => {
             select: 'nomFr nomEn',
             options: { strictPopulate: false },
         })
+        .populate({
+            path: 'services',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
         .lean();
 
         return res.status(200).json({
@@ -373,6 +428,11 @@ export const getPostesByFamilleMetier = async (req, res) => {
         .sort({[lang==='fr'?'nomFr':'nomEn']:1})
         .populate({
             path: 'famillesMetier',
+            select: 'nomFr nomEn',
+            options: { strictPopulate: false },
+        })
+        .populate({
+            path: 'services',
             select: 'nomFr nomEn',
             options: { strictPopulate: false },
         })
@@ -488,5 +548,111 @@ export const supprimerDoublonsPosteDeTravail = async (req, res) => {
             error: err.message,
         });
     }
+};
+
+
+/**
+ * Récupère tous les postes appartenant à une famille métier
+ * GET /api/familles-metier/:familleId/postes
+ */
+export const getPostesByFamille = async (req, res) => {
+    const lang = req.headers['accept-language'] || 'fr';
+    try {
+    const { familleId } = req.params;
+    const { search } = req.query;
+
+    // Vérifier si la famille métier existe
+    const famille = await FamilleMetier.findById(familleId);
+    if (!famille) {
+      return res.status(404).json({ 
+        success: false, 
+        message: t('famille_non_trouvee', lang) 
+      });
+    }
+
+    // Construire la requête de recherche
+    const query = { famillesMetier: familleId };
+    
+    if (search) {
+      query.$or = [
+        { nomFr: { $regex: search, $options: 'i' } },
+        { nomEn: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Récupérer tous les postes qui contiennent cette famille dans leur tableau
+    const postes = await PosteDeTravail.find(query)
+    .populate('famillesMetier', 'nomFr nomEn')
+    .populate('services', 'nomFr nomEn')
+    .sort({ nomFr: 1 });
+
+    res.status(200).json({
+      success: true,
+    //   count: postes.length,
+    //   famille: {
+    //     _id: famille._id,
+    //     nomFr: famille.nomFr,
+    //     nomEn: famille.nomEn
+    //   },
+      data: {
+            posteDeTravails : postes,
+            totalItems:postes.length,
+            currentPage:1,
+            totalPages: 1,
+            pageSize:postes.length 
+        },
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: t('erreur_serveur', lang),
+      error: error.message 
+    });
+  }
+};
+
+
+/**
+ * Récupère tous les services liés à un poste de travail
+ * GET /api/postes/:posteId/services
+ */
+export const getServicesByPoste = async (req, res) => {
+  try {
+    const { posteId } = req.params;
+
+    // Vérifier si le poste existe
+    const poste = await PosteDeTravail.findById(posteId);
+    if (!poste) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Poste de travail non trouvé' 
+      });
+    }
+
+    // Récupérer tous les services liés à ce poste
+    const services = await Service.find({ 
+      _id: { $in: poste.services } 
+    })
+    .populate('chefService', 'nom prenom email')
+    .populate('structure', 'nomFr nomEn')
+    .sort({ nomFr: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: services.length,
+      poste: {
+        _id: poste._id,
+        nomFr: poste.nomFr,
+        nomEn: poste.nomEn
+      },
+      data: services
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la récupération des services',
+      error: error.message 
+    });
+  }
 };
 

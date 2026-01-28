@@ -207,7 +207,7 @@
             font-size: 12px;
         }
 
-        .service-name {
+        .structure-name {
             font-weight: bold;
             text-align: left;
             padding-left: 10px;
@@ -414,15 +414,15 @@
                 </tr>
             </thead>
             <tbody>
-                <% servicesIds.forEach(function(serviceId) { %>
-                    <% const service = chronogrammeRotations[serviceId]; %>
+                <% structuresIds.forEach(function(structureId) { %>
+                    <% const structure = chronogrammeRotations[structureId]; %>
                     <tr>
-                        <td class="service-name"><%= service.serviceNom %></td>
+                        <td class="structure-name"><%= structure.structureNom %></td>
                         <% numerosGroupes.forEach(function(numero) { %>
                             <td class="periode-cell">
-                                <% if (service.groupes[numero]) { %>
-                                    Du <%= service.groupes[numero].dateDebut %><br>
-                                    au <%= service.groupes[numero].dateFin %>
+                                <% if (structure.groupes[numero]) { %>
+                                    Du <%= structure.groupes[numero].dateDebut %><br>
+                                    au <%= structure.groupes[numero].dateFin %>
                                 <% } else { %>
                                     -
                                 <% } %>
@@ -441,7 +441,7 @@
                     <h4>Groupe <%= groupeNumero %></h4>
                     <% affectationsFinalesParGroupe[groupeNumero].forEach(function(affectation) { %>
                         <p style="margin: 5px 0; padding-left: 20px;">
-                            <strong>• <%= affectation.service %></strong> : 
+                            <strong>• <%= affectation.structure %></strong> : 
                             du <%= affectation.dateDebut %> au <%= affectation.dateFin %>
                         </p>
                     <% }); %>

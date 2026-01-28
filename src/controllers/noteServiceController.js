@@ -153,9 +153,10 @@ export const creerNoteService = async (req, res) => {
                     path: 'mandat',
                     select: 'chercheur superviseur',
                     populate: [
-                        { path: 'superviseur', select: 'nom prenom titre posteDeTravail service',
+                        { path: 'superviseur', select: 'nom prenom genre titre posteDeTravail service structure',
                             populate:[
                                 {path:'posteDeTravail', select:"nomFr nomEn"},
+                                {path:'service', select:"nomFr nomEn"},
                                 {path:'structure', select:"nomFr nomEn"}
                             ]
                          },
@@ -826,7 +827,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             filiere: parcoursActuel?.filiere || "______________",
             
             // Informations d'affectations
-            userService: affectations.service 
+            userService: affectations.structure 
                 ? (lang === 'fr' ? affectations.structure.nomFr : affectations.structure.nomEn)
                 : "________________",
             dateDebut: affectations.dateDebut 
@@ -978,14 +979,14 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
                 year: 'numeric'
             });
 
-            const nomService = affectation.service 
+            const nomService = affectation.structure 
                 ? (lang === 'fr' ? affectation.structure.nomFr : affectation.structure.nomEn)
-                : "Service non défini";
+                : "Structure non défini";
 
             return {
                 numero: index + 1,
                 periode: `Du ${dateDebut} au ${dateFin}`,
-                service: nomService,
+                structure: nomService,
                 superviseur: affectation.superviseur 
                     ? `${affectation.superviseur.nom} ${affectation.superviseur.prenom || ''}`.trim()
                     : null
@@ -1162,7 +1163,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
 
         // Construire le chronogramme des rotations
         const chronogrammeRotations = {};
-        const servicesSet = new Set();
+        const structuresSet = new Set();
 
         rotations.forEach(rotation => {
             const structureId = rotation.structure._id.toString();
@@ -1189,7 +1190,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
                 })
             };
 
-            servicesSet.add(structureId);
+            structuresSet.add(structureId);
         });
 
         // Construire le tableau des affectations finales
@@ -1203,7 +1204,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
             }
 
             affectationsFinalesParGroupe[groupeNumero].push({
-                service: structureNom,
+                structure: structureNom,
                 dateDebut: new Date(affectation.dateDebut).toLocaleDateString('fr-FR', {
                     day: '2-digit',
                     month: 'long',
@@ -1246,7 +1247,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
             miseEnOeuvre: note.miseEnOeuvre || "Les Directeurs concernés",
             
             chronogrammeRotations,
-            servicesIds: Array.from(servicesSet),
+            structuresIds: Array.from(structuresSet),
             numerosGroupes,
             
             affectationsFinalesParGroupe,
@@ -1356,7 +1357,7 @@ export const genererPDFNote = async (req, res) => {
                     populate: [
                         { path: 'theme', select: 'libelle description' },
                         { path: 'directeur', select: 'nom prenom titre' },
-                        { path: 'superviseur', select: 'nom prenom titre poste structure' },
+                        { path: 'superviseur', select: 'nom prenom titre poste structure service genre' },
                         { path: 'chercheur', select: 'nom prenom etablissement doctorat genre' }
                     ]
                 },
@@ -3206,9 +3207,10 @@ export const verifierNoteService = async (req, res) => {
                 populate: [
                     { 
                         path: 'superviseur', 
-                        select: 'nom prenom titre posteDeTravail service',
+                        select: 'nom prenom titre posteDeTravail service structure genre',
                         populate: [
                             { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                            { path: 'service', select: 'nomFr nomEn' },
                             { path: 'structure', select: 'nomFr nomEn' }
                         ]
                     },

@@ -8,6 +8,7 @@ import EvaluationChaud from '../models/EvaluationAChaud.js';
 import Utilisateur from '../models/Utilisateur.js';
 import { CohorteUtilisateur } from '../models/CohorteUtilisateur.js';
 import { LieuFormation } from '../models/LieuFormation.js';
+import ThemeFormation from '../models/ThemeFormation.js';
 
 export const saveDraftEvaluationAChaudReponse = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
@@ -1303,12 +1304,71 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search?.trim();
 
-    // ✅ Optimisation: Utilisation d'une seule requête avec pipeline d'agrégation
-    const cohortesIds = await CohorteUtilisateur.find({ utilisateur: utilisateurId }).distinct('cohorte');
-    const themeIds = await LieuFormation.find({ cohortes: { $in: cohortesIds } }).distinct('theme');
+    // ✅ ÉTAPE 1: Récupérer l'utilisateur avec toutes ses infos pour vérifier la participation directe
+    const utilisateur = await Utilisateur.findById(utilisateurId)
+      .populate({ path: 'posteDeTravail', select: 'famillesMetier' })
+      .populate('structure')
+      .populate('service')
+      .lean();
 
+    if (!utilisateur) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
+
+    // ✅ ÉTAPE 2: Récupérer les cohortes de l'utilisateur
+    const cohortesUtilisateur = await CohorteUtilisateur.find({ 
+      utilisateur: utilisateurId 
+    }).distinct('cohorte');
+
+    // ✅ ÉTAPE 3: Récupérer les thèmes via les lieux de formation (cohortes)
+    const lieuxFormationParCohorte = await LieuFormation.find({ 
+      cohortes: { $in: cohortesUtilisateur } 
+    }).distinct('theme');
+
+    // ✅ ÉTAPE 4: Récupérer les thèmes où l'utilisateur est participant direct
+    const tousLesThemes = await ThemeFormation.find({}).lean();
+    const themesParticipantDirect = [];
+
+    // Parcourir tous les thèmes pour vérifier si l'utilisateur est ciblé directement
+    for (const theme of tousLesThemes) {
+      if (!theme.publicCible || theme.publicCible.length === 0) {
+        continue;
+      }
+
+      // Vérifier si l'utilisateur correspond au publicCible
+      const estCible = await verifierUtilisateurCible(utilisateur, theme.publicCible);
+      if (estCible) {
+        themesParticipantDirect.push(theme._id);
+      }
+    }
+
+    // ✅ ÉTAPE 5: Fusionner les deux listes de thèmes (cohorte + participant direct)
+    const tousLesThemesIds = [
+      ...new Set([
+        ...lieuxFormationParCohorte.map(id => id.toString()),
+        ...themesParticipantDirect.map(id => id.toString())
+      ])
+    ];
+
+    if (tousLesThemesIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          evaluationChauds: [],
+          totalItems: 0,
+          currentPage: page,
+          totalPages: 0,
+          pageSize: limit
+        }
+      });
+    }
+
+    // ✅ ÉTAPE 6: Construire le filtre pour les évaluations
     const filter = {
-      theme: { $in: themeIds },
+      theme: { $in: tousLesThemesIds },
       actif: true,
       ...(search && {
         $or: [
@@ -1318,7 +1378,7 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
       })
     };
 
-    // ✅ Optimisation: Requêtes parallèles avec Promise.all
+    // ✅ ÉTAPE 7: Requêtes parallèles optimisées
     const [total, evaluations, reponses] = await Promise.all([
       EvaluationChaud.countDocuments(filter),
       EvaluationChaud.find(filter)
@@ -1331,7 +1391,7 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      // ✅ Pré-charger toutes les réponses en une seule requête
+      // Pré-charger toutes les réponses en une seule requête
       EvaluationChaud.find(filter)
         .skip((page - 1) * limit)
         .limit(limit)
@@ -1345,16 +1405,16 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
         })
     ]);
 
-    // ✅ Optimisation: Map unique pour les réponses
+    // ✅ ÉTAPE 8: Map unique pour les réponses
     const reponsesByModele = new Map(
       reponses.map(rep => [rep.modele.toString(), rep])
     );
 
-    // ✅ Optimisation: Traitement en lot avec une seule boucle
+    // ✅ ÉTAPE 9: Enrichissement des évaluations avec les réponses
     const evaluationsEnrichies = evaluations.map(evaluation => {
       const reponse = reponsesByModele.get(evaluation._id.toString());
 
-      // ✅ Calcul optimisé de la progression
+      // Calcul optimisé de la progression
       let totalQuestions = 0;
       let totalRepondu = 0;
 
@@ -1381,9 +1441,9 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
         ? Math.round((totalRepondu / totalQuestions) * 100)
         : 0;
 
-      // ✅ Enrichissement optimisé des rubriques
+      // Enrichissement optimisé des rubriques
       if (reponse?.rubriques) {
-        // Création de maps pour accès O(1) au lieu de find() O(n)
+        // Création de maps pour accès O(1)
         const rubriqueReponseMap = new Map(
           reponse.rubriques.map(rr => [rr.rubriqueId.toString(), rr])
         );
@@ -1408,7 +1468,7 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
 
             if (!questionReponse) return questionEnrichie;
 
-            // ✅ Traitement optimisé des réponses
+            // Traitement optimisé des réponses
             if (questionReponse.reponseEchelleId && (!questionEval.sousQuestions || questionEval.sousQuestions.length === 0)) {
               questionEnrichie.reponseEchelleId = questionReponse.reponseEchelleId;
             }
@@ -1417,7 +1477,7 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
               questionEnrichie.commentaireGlobal = questionReponse.commentaireGlobal;
             }
 
-            // ✅ Traitement optimisé des sous-questions
+            // Traitement optimisé des sous-questions
             if (questionEval.sousQuestions?.length > 0 && questionReponse.sousQuestions) {
               const sousReponseMap = new Map(
                 questionReponse.sousQuestions.map(sr => [sr.sousQuestionId.toString(), sr])
@@ -1473,6 +1533,66 @@ export const getEvaluationsChaudByUtilisateurAvecEchelles = async (req, res) => 
     });
   }
 };
+
+/**
+ * Fonction auxiliaire pour vérifier si un utilisateur correspond au publicCible
+ * @param {Object} utilisateur - L'utilisateur avec ses données populées
+ * @param {Array} publicCible - Le tableau publicCible du thème
+ * @returns {boolean}
+ */
+async function verifierUtilisateurCible(utilisateur, publicCible) {
+  if (!utilisateur.posteDeTravail || !utilisateur.posteDeTravail.famillesMetier) {
+    return false;
+  }
+
+  const userFamilleIds = utilisateur.posteDeTravail.famillesMetier.map(id => id.toString());
+
+  for (const familleCible of publicCible) {
+    const targetedFamilleId = familleCible.familleMetier.toString();
+
+    // Vérifier si l'utilisateur appartient à cette famille de métier
+    if (!userFamilleIds.includes(targetedFamilleId)) {
+      continue;
+    }
+
+    // Pas de restriction sur les postes → utilisateur ciblé
+    if (!familleCible.postes || familleCible.postes.length === 0) {
+      return true;
+    }
+
+    // Vérifier les restrictions de postes
+    for (const posteRestriction of familleCible.postes) {
+      if (utilisateur.posteDeTravail._id.toString() !== posteRestriction.poste.toString()) {
+        continue;
+      }
+
+      // Pas de restriction sur les structures → utilisateur ciblé
+      if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+        return true;
+      }
+
+      // Vérifier les restrictions de structures
+      for (const structureRestriction of posteRestriction.structures) {
+        if (!utilisateur.structure || utilisateur.structure._id.toString() !== structureRestriction.structure.toString()) {
+          continue;
+        }
+
+        // Pas de restriction sur les services → utilisateur ciblé
+        if (!structureRestriction.services || structureRestriction.services.length === 0) {
+          return true;
+        }
+
+        // Vérifier les restrictions de services
+        const serviceIds = structureRestriction.services.map(s => s.service.toString());
+        if (utilisateur.service && serviceIds.includes(utilisateur.service._id.toString())) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
 
 
 

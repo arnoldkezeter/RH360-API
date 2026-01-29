@@ -650,6 +650,7 @@ const genererPDFSelonType = async (note, lang, createur) => {
         // Préparer les données selon le type de note
         switch (note.typeNote) {
             case 'mandat':
+                const service = note.mandat.superviseur?.service?.nomFr || "null"
                 templateData = {
                     ...donneesCommunes,
                    
@@ -662,7 +663,8 @@ const genererPDFSelonType = async (note, lang, createur) => {
                     userSupervisorSexe: note.mandat.superviseur?.genre === 'M'?"Monsieur":"Madame",
                     userSupervisorFullName: `${note.mandat.superviseur?.nom} ${note.mandat.superviseur?.prenom}`,
                     userSupervisorPoste: note.mandat.superviseur?.posteDeTravail?.nomFr || "______________",
-                    userSupervisorStructure: note.mandat.superviseur?.service?.nomFr || "______________"
+                    userSupervisorStructure: note.mandat.superviseur?.service?.nomFr || "______________",
+                    article: getArticle(service) || "______________"
                 };
                 templatePath = path.join(__dirname, '../views/note-service-mandat.ejs');
                 break;

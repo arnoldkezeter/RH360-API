@@ -205,7 +205,7 @@
     <!-- TITRE -->
     <div class="note-title">
         <h3 class="document-title">
-            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+            Note de service N°____________ MINFI/DGI/DAG/CPFC<%= noteAbr %> du ___________<br>
             <%= noteTitle %>
         </h3>
     </div>
@@ -225,7 +225,7 @@
         <% rotations.forEach(function(rotation) { %>
             <div class="rotation-item">
                 <span class="rotation-periode">- <%= rotation.periode %> :</span>
-                <span class="rotation-service"><%= rotation.service %></span>
+                <span class="rotation-service"><%= rotation.structure %></span>
             </div>
         <% }); %>
     </div>

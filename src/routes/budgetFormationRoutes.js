@@ -4,10 +4,10 @@ import {
   updateBudget,
   deleteBudget,
   getBudgetEcartParTheme,
-  getTotauxBudgetParFormation,
   getBudgetFormationsByFormation,
   getBudgetFormationForDropdown,
   getBudgetsFormationsByFormationPaginated,
+  getTotauxBudgetParTheme,
 } from '../controllers/budgetFormationController.js';
 import { validateFields } from '../middlewares/validateFields/validateBudgetFormation.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -26,9 +26,9 @@ router.get('/dropdown/formation/:formationId', authentificate, getBudgetFormatio
 
 
 // Écarts budget prévu / réel par thème (histogramme)
-router.get('/histogramme/:formationId', authentificate, getBudgetEcartParTheme);
+router.get('/histogramme/:themeId', authentificate, getBudgetEcartParTheme);
 
 // Route : Totaux du budget par formation
-router.get('/totaux/:formationId', authentificate, getTotauxBudgetParFormation);
+router.get('/totaux/:themeId', authentificate, getTotauxBudgetParTheme);
 
 export default router;

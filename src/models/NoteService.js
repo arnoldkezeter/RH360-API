@@ -6,14 +6,8 @@ const noteServiceSchema = new mongoose.Schema({
     theme: {type: mongoose.Schema.Types.ObjectId, ref: 'ThemeFormation'},
     stage: {type: mongoose.Schema.Types.ObjectId, ref: 'Stage'},
     mandat: {type: mongoose.Schema.Types.ObjectId, ref: 'StageRecherche'},
-    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat", "fiche_presence"]},
-    sousTypeConvocation: {
-        type: String,
-        enum: ['participants', 'formateurs'],
-        required: function() {
-            return this.typeNote === 'convocation';
-        }
-    },
+    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat", "fiche_presence", "budget_formation"]},
+    sousTypeNote: {type: String},
     titreFr:{type:String},
     titreEn:{type:String},
     descriptionFr:{type:String},

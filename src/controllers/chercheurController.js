@@ -67,7 +67,7 @@ export const createChercheur = async (req, res) => {
             doctorat
         });
 
-        await sendAccountEmail(email, email, password);
+        // await sendAccountEmail(email, email, password);
         const chercheurPopulate = await chercheur.populate('etablissement');
         return res.status(201).json({
             success: true,

@@ -2328,4 +2328,71 @@ export const getFormationsUtilisateur = async (req, res) => {
     }
 };
 
-// Fonction utilitaire (à réutiliser ou importer)
+export const getCoutsParTheme = async (req, res) => {
+    const { id } = req.params;
+    const lang = req.headers['accept-language'] || 'fr';
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+        });
+    }
+
+    try {
+        // Récupérer le thème
+        const theme = await ThemeFormation.findById(id).select('_id titreFr titreEn').lean();
+        if (!theme) {
+            return res.status(404).json({
+                success: false,
+                message: t('theme_non_trouve', lang),
+            });
+        }
+
+        // Récupérer toutes les dépenses du thème
+        const depenses = await Depense.find({ themeFormation: id })
+            .populate({ path: 'taxes', select: 'taux', options: { strictPopulate: false } })
+            .lean();
+
+        let coutPrevu = 0;
+        let coutReel = 0;
+        let nbDepenses = depenses.length;
+        let nbDepensesReelles = 0;
+
+        for (const dep of depenses) {
+            const qte = dep.quantite || 1;
+            const tauxTaxes = (dep.taxes || []).reduce((sum, tax) => sum + (tax.taux || 0), 0);
+            const coeffTaxes = 1 + tauxTaxes / 100;
+
+            const prevuHT = dep.montantUnitairePrevu || 0;
+            coutPrevu += prevuHT * qte * coeffTaxes;
+
+            if (dep.montantUnitaireReel !== null) {
+                const reelHT = dep.montantUnitaireReel;
+                coutReel += reelHT * qte * coeffTaxes;
+                nbDepensesReelles++;
+            }
+        }
+
+        const result = {
+            themeId: theme._id,
+            titreFr: theme.titreFr,
+            titreEn: theme.titreEn,
+            coutPrevu: Math.round(coutPrevu * 100) / 100,
+            coutReel: Math.round(coutReel * 100) / 100,
+            nbDepenses,
+            nbDepensesReelles,
+            tauxExecution: coutPrevu > 0 ? Math.round((coutReel / coutPrevu) * 100 * 100) / 100 : 0
+        };
+
+        return res.status(200).json({ success: true, data: result });
+
+    } catch (err) {
+        console.error('Erreur dans getCoutsParTheme:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
+        });
+    }
+};

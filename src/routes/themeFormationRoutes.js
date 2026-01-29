@@ -15,7 +15,8 @@ import {
   getThemeById,
   getFormationsUtilisateur,
   getThemesEnCoursParticipant,
-  getThemesEnCoursResponsable
+  getThemesEnCoursResponsable,
+  getCoutsParTheme
 } from '../controllers/themeFormationController.js';
 import { validateFields } from '../middlewares/validateFields/validateTheme.js';
 import { authentificate } from '../middlewares/auth.js';
@@ -31,7 +32,7 @@ router.put('/:id', validateFields, authentificate, updateThemeFormation);
 router.delete('/:id', authentificate, deleteThemeFormation);
 router.get('/filtre', authentificate, getFilteredThemes);
 
-
+router.get('/couts/theme/:id', getCoutsParTheme);
 router.put('/:id/formateur', authentificate, ajouterFormateur);
 router.delete('/:id/formateur/:formateurId', authentificate, supprimerFormateur);
 

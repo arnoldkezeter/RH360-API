@@ -140,8 +140,8 @@ export const createStage = async (req, res) => {
             });
         } 
         rotations.forEach((rot, idx) => {
-            if (!rot.service || !rot.dateDebut || !rot.dateFin)
-                throw new Error(`Rotation #${idx + 1}: service, dateDebut et dateFin obligatoires`);
+            if (!rot.structure || !rot.dateDebut || !rot.dateFin)
+                throw new Error(`Rotation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
             if (!isValidDateRange(rot.dateDebut, rot.dateFin))
                 throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
             if (rot.stagiaire && rot.groupe)
@@ -167,8 +167,8 @@ export const createStage = async (req, res) => {
     if (affectationsFinales) {
       if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
       affectationsFinales.forEach((aff, idx) => {
-        if (!aff.service || !aff.dateDebut || !aff.dateFin)
-          throw new Error(`Affectation finale #${idx + 1}: service, dateDebut et dateFin obligatoires`);
+        if (!aff.structure || !aff.dateDebut || !aff.dateFin)
+          throw new Error(`Affectation finale #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
         if (!isValidDateRange(aff.dateDebut, aff.dateFin))
           throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
         if (aff.stagiaire && aff.groupe)
@@ -223,7 +223,7 @@ export const createStage = async (req, res) => {
 
         const rotationDoc = new Rotation({
           stage: stage._id,
-          service: rot.service,
+          structure: rot.structure,
           superviseur: rot.superviseur||null,
           dateDebut: rot.dateDebut,
           dateFin: rot.dateFin,
@@ -249,7 +249,7 @@ export const createStage = async (req, res) => {
 
         const affDoc = new AffectationFinale({
           stage: stage._id,
-          service: aff.service,
+          structure: aff.structure,
           superviseur: aff.superviseur || null,
           stagiaire: aff.stagiaire || null,
           groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
@@ -362,7 +362,7 @@ export const getStageByIdAndType = async (req, res) => {
 
     // Récupération des rotations associées au stage
     const rotations = await Rotation.find({ stage: id })
-      .populate('service', 'nomEn nomFr')
+      .populate('structure', 'nomEn nomFr')
       .populate('superviseur', 'nom prenom')
       .populate('stagiaire', 'nom prenom')
       .populate({
@@ -376,7 +376,7 @@ export const getStageByIdAndType = async (req, res) => {
 
     // Récupération des affectations finales associées au stage
     const affectationsFinales = await AffectationFinale.find({ stage: id })
-      .populate('service', 'nomEn nomFr')
+      .populate('structure', 'nomEn nomFr')
       .populate('superviseur', 'nom prenom')
       .populate('stagiaire', 'nom prenom')
       .populate({
@@ -544,8 +544,8 @@ export const updateStage = async (req, res) => {
             });
         } 
         rotations.forEach((rot, idx) => {
-            if (!rot.service || !rot.superviseur || !rot.dateDebut || !rot.dateFin)
-                throw new Error(`Rotation #${idx + 1}: service, superviseur, dateDebut et dateFin obligatoires`);
+            if (!rot.structure || !rot.dateDebut || !rot.dateFin)
+                throw new Error(`Rotation #${idx + 1}: structure, superviseur, dateDebut et dateFin obligatoires`);
             if (!isValidDateRange(rot.dateDebut, rot.dateFin))
                 throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
             if (rot.stagiaire && rot.groupe)
@@ -571,8 +571,8 @@ export const updateStage = async (req, res) => {
     if (affectationsFinales) {
       if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
       affectationsFinales.forEach((aff, idx) => {
-        if (!aff.service || !aff.dateDebut || !aff.dateFin)
-          throw new Error(`Affectation finale #${idx + 1}: service, dateDebut et dateFin obligatoires`);
+        if (!aff.structure || !aff.dateDebut || !aff.dateFin)
+          throw new Error(`Affectation finale #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
         if (!isValidDateRange(aff.dateDebut, aff.dateFin))
           throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
         if (aff.stagiaire && aff.groupe)
@@ -655,8 +655,8 @@ export const updateStage = async (req, res) => {
 
         const rotationDoc = new Rotation({
           stage: stageId,
-          service: rot.service,
-          superviseur: rot.superviseur,
+          structure: rot.structure,
+          superviseur: rot.superviseur || null,
           dateDebut: rot.dateDebut,
           dateFin: rot.dateFin,
           stagiaire: rot.stagiaire || null,
@@ -681,7 +681,7 @@ export const updateStage = async (req, res) => {
 
         const affDoc = new AffectationFinale({
           stage: stageId,
-          service: aff.service,
+          structure: aff.structure,
           superviseur: aff.superviseur || null,
           stagiaire: aff.stagiaire || null,
           groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
@@ -1181,7 +1181,7 @@ export const getGroupeById = async (req, res) => {
 export const getRotationsByStage = async (req, res) => {
   try {
     const rotations = await Rotation.find({ stage: req.params.stageId })
-      .populate('service superviseur stagiaire groupe');
+      .populate('structure superviseur stagiaire groupe');
     res.json({ success: true, data: rotations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1191,7 +1191,7 @@ export const getRotationsByStage = async (req, res) => {
 export const getRotationById = async (req, res) => {
   try {
     const rotation = await Rotation.findById(req.params.id)
-      .populate('service superviseur stagiaire groupe');
+      .populate('structure superviseur stagiaire groupe');
     if (!rotation) return res.status(404).json({ success: false, message: 'Rotation non trouvée' });
     res.json({ success: true, data: rotation });
   } catch (error) {
@@ -1222,7 +1222,7 @@ export const deleteRotation = async (req, res) => {
 export const getAffectationsByStage = async (req, res) => {
   try {
     const affectations = await AffectationFinale.find({ stage: req.params.stageId })
-      .populate('service superviseur stagiaire groupe');
+      .populate('structure superviseur stagiaire groupe');
     res.json({ success: true, data: affectations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1232,7 +1232,7 @@ export const getAffectationsByStage = async (req, res) => {
 export const getAffectationById = async (req, res) => {
   try {
     const aff = await AffectationFinale.findById(req.params.id)
-      .populate('service superviseur stagiaire groupe');
+      .populate('structure superviseur stagiaire groupe');
     if (!aff) return res.status(404).json({ success: false, message: 'Affectation non trouvée' });
     res.json({ success: true, data: aff });
   } catch (error) {
@@ -1517,15 +1517,15 @@ export const calendrierRotations = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
 
     try {
-        // Récupérer les rotations avec leurs groupes et services
+        // Récupérer les rotations avec leurs groupes et structures
         const rotations = await Rotation.find()
             .populate('groupe', 'numero')
-            .populate('service', 'nomFr nomEn structure')
+            .populate('structure', 'nomFr nomEn')
             .sort({ dateDebut: 1 });
 
         // Récupérer les stages finaux pour chaque groupe
         const stagesFinaux = await Groupe.find()
-            .populate('serviceFinal.service', 'nomFr nomEn structure')
+            .populate('structureFinal.structure', 'nomFr nomEn')
             .populate('numero', 'numero');
 
         // Construire le calendrier
@@ -1534,36 +1534,34 @@ export const calendrierRotations = async (req, res) => {
         // Ajouter les rotations
         rotations.forEach((rotation) => {
             const groupe = `Groupe ${rotation.groupe.numero}`;
-            const service = {
-                nomFr: rotation.service.nomFr,
-                nomEn: rotation.service.nomEn,
-                structure: rotation.service.structure,
+            const structure = {
+                nomFr: rotation.structure.nomFr,
+                nomEn: rotation.structure.nomEn,
             };
             const periode = `${rotation.dateDebut.toISOString()} - ${rotation.dateFin.toISOString()}`;
 
             if (!calendrier[groupe]) calendrier[groupe] = {};
-            if (!calendrier[groupe][service.nomFr]) calendrier[groupe][service.nomFr] = [];
+            if (!calendrier[groupe][structure.nomFr]) calendrier[groupe][structure.nomFr] = [];
 
-            calendrier[groupe][service.nomFr].push(periode);
+            calendrier[groupe][structure.nomFr].push(periode);
         });
 
         // Ajouter les stages finaux
         stagesFinaux.forEach((groupe) => {
             const groupeKey = `Groupe ${groupe.numero}`;
-            const service = groupe.serviceFinal.service;
+            const structure = groupe.structureFinal.structure;
 
-            if (service) {
-                const serviceDetails = {
-                    nomFr: service.nomFr,
-                    nomEn: service.nomEn,
-                    structure: service.structure,
+            if (structure) {
+                const structureDetails = {
+                    nomFr: structure.nomFr,
+                    nomEn: structure.nomEn,
                 };
                 const periode = 'Stage final';
 
                 if (!calendrier[groupeKey]) calendrier[groupeKey] = {};
-                if (!calendrier[groupeKey][serviceDetails.nomFr]) calendrier[groupeKey][serviceDetails.nomFr] = [];
+                if (!calendrier[groupeKey][structureDetails.nomFr]) calendrier[groupeKey][structureDetails.nomFr] = [];
 
-                calendrier[groupeKey][serviceDetails.nomFr].push(periode);
+                calendrier[groupeKey][structureDetails.nomFr].push(periode);
             }
         });
 
@@ -2532,7 +2530,7 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
         const dateFinFilter = new Date(dateFin);
         dateFinFilter.setHours(23, 59, 59, 999);
 
-        // 💡 ASSUMPTION: L'ID du service est dans AffectationFinale.service
+        // 💡 ASSUMPTION: L'ID du structure est dans AffectationFinale.structure
         // 💡 ASSUMPTION: L'ID du stage est dans AffectationFinale.stage pour les individus
         
         const pipeline = [
@@ -2540,7 +2538,7 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
                 $facet: {
                     // Stagiaires individuels
                     individuels: [
-                        { $match: { stagiaire: { $exists: true, $ne: null }, groupe: null, service: { $exists: true, $ne: null } } },
+                        { $match: { stagiaire: { $exists: true, $ne: null }, groupe: null, structure: { $exists: true, $ne: null } } },
                         
                         // 1. Lookup Stage pour les VRAIES dates et le filtre
                         {
@@ -2562,14 +2560,14 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
                         },
                         {
                             $project: {
-                                service: '$service',
+                                structure: '$structure',
                                 stagiaires: ['$stagiaire']
                             }
                         }
                     ],
                     // Stagiaires de groupe
                     groupes: [
-                        { $match: { groupe: { $exists: true, $ne: null }, stagiaire: null, service: { $exists: true, $ne: null } } },
+                        { $match: { groupe: { $exists: true, $ne: null }, stagiaire: null, structure: { $exists: true, $ne: null } } },
                         
                         // 1. Lookup Groupe
                         {
@@ -2602,7 +2600,7 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
                         },
                         {
                             $project: {
-                                service: '$service',
+                                structure: '$structure',
                                 stagiaires: '$groupeInfo.stagiaires' 
                             }
                         }
@@ -2617,18 +2615,18 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
             },
             { $unwind: '$tousLesStages' },
             
-            // Regrouper par service et consolider TOUS les IDs de stagiaires
+            // Regrouper par structure et consolider TOUS les IDs de stagiaires
             {
                 $group: {
-                    _id: '$tousLesStages.service',
+                    _id: '$tousLesStages.structure',
                     stagiairesListes: { $push: '$tousLesStages.stagiaires' }
                 }
             },
             
-            // Calculer le nombre de stagiaires uniques par service
+            // Calculer le nombre de stagiaires uniques par structure
             {
                 $project: {
-                    serviceId: '$_id',
+                    structureId: '$_id',
                     stagiairesUniques: {
                         $setUnion: {
                             $reduce: {
@@ -2642,36 +2640,36 @@ export const repartitionStagiairesParServiceSurPeriode = async (req, res) => {
             },
             {
                 $project: {
-                    serviceId: '$serviceId',
+                    structureId: '$structureId',
                     nombreStagiaires: { $size: '$stagiairesUniques' }
                 }
             },
             
-            // 💡 CORRECTION : Lookup vers la collection 'services' pour obtenir les noms
+            // 💡 CORRECTION : Lookup vers la collection 'structures' pour obtenir les noms
             {
                 $lookup: {
-                    from: 'services', // ASSUMPTION : nom de la collection de services
-                    localField: 'serviceId',
+                    from: 'structures', // ASSUMPTION : nom de la collection de la structures
+                    localField: 'structureId',
                     foreignField: '_id',
-                    as: 'serviceDetails'
+                    as: 'structureDetails'
                 }
             },
             { 
                 $unwind: { 
-                    path: '$serviceDetails', 
-                    preserveNullAndEmptyArrays: true // S'assurer qu'on garde les services même si le lookup échoue
+                    path: '$structureDetails', 
+                    preserveNullAndEmptyArrays: true // S'assurer qu'on garde les structures même si le lookup échoue
                 } 
             },
             
-            // 💡 CORRECTION : Projection finale pour retourner le serviceId et les noms
+            // 💡 CORRECTION : Projection finale pour retourner le structureId et les noms
             {
                 $project: {
                     _id: 0,
-                    serviceId: '$serviceId',
+                    structureId: '$structureId',
                     nombreStagiaires: '$nombreStagiaires',
                     // Récupération des noms, avec fallback au cas où le lookup ne trouve rien
-                    nomFr: { $ifNull: ['$serviceDetails.nomFr', 'Inconnu (FR)'] },
-                    nomEn: { $ifNull: ['$serviceDetails.nomEn', 'Unknown (EN)'] },
+                    nomFr: { $ifNull: ['$structureDetails.nomFr', 'Inconnu (FR)'] },
+                    nomEn: { $ifNull: ['$structureDetails.nomEn', 'Unknown (EN)'] },
                 }
             },
             // Optionnel : Trier par nombre de stagiaires

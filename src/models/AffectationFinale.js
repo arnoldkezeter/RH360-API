@@ -7,7 +7,7 @@ const affectationFinaleSchema = new mongoose.Schema({
   stagiaire: { type: mongoose.Schema.Types.ObjectId, ref: "Stagiaire" }, // si individuel
   groupe: { type: mongoose.Schema.Types.ObjectId, ref: "Groupe" },       // si groupe
 
-  service: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true },
+  structure: { type: mongoose.Schema.Types.ObjectId, ref: "Structure", required: true },
   superviseur: { type: mongoose.Schema.Types.ObjectId, ref: "Utilisateur" },
   dateDebut:{type:Date, required:true},
   dateFin:{type:Date, required:true}
@@ -18,6 +18,6 @@ affectationFinaleSchema.index(
   { groupe: 1, stage: 1 },
   { unique: true, partialFilterExpression: { groupe: { $ne: null } } }
 );
-affectationFinaleSchema.index({ service: 1 });
+affectationFinaleSchema.index({ structure: 1 });
 
 export const AffectationFinale = mongoose.model('AffectationFinale', affectationFinaleSchema);

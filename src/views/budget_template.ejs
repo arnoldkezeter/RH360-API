@@ -5,7 +5,7 @@
     <title>Budget - <%= documentTitle %></title>
     <style>
         @page {
-            margin: 2cm 2cm 2cm 2cm;
+            margin: 1.5cm 1.5cm 1.5cm 1.5cm;
             size: A4;
         }
         
@@ -18,13 +18,12 @@
             color: #000;
         }
         
+        /* HEADER */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 0;
-            margin-bottom: 30px;
-            min-height: 120px;
+            margin-bottom: 40px;
         }
         
         .header-left, .header-right {
@@ -36,15 +35,15 @@
         }
         
         .header-center {
-            text-align: center;
             width: 20%;
+            text-align: center;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         
         .header-center img {
-            max-width: 100px;
+            max-width: 90px;
             height: auto;
         }
         
@@ -56,17 +55,23 @@
         .header-section {
             margin-bottom: 2px;
         }
+
+        .note-title {
+            text-align: center;
+            margin-bottom: 20px;
+        }
         
+        /* TITRE */
         .document-title {
             text-align: center;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: bold;
             color: #000;
-            margin: 30px 0;
-            text-decoration: underline;
-            text-transform: uppercase;
+            margin: 0 0 20px 0;
+            line-height: 1.4;
         }
 
+        /* TABLES */
         .table-container {
             margin: 20px 0;
             overflow-x: auto;
@@ -75,7 +80,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
+            font-size: 14px;
         }
         
         table th {
@@ -84,7 +89,7 @@
             text-align: center;
             font-weight: bold;
             border: 1px solid #000;
-            font-size: 12px;
+            font-size: 14px;
             vertical-align: middle;
         }
         
@@ -113,14 +118,14 @@
             font-weight: bold;
             text-align: center !important;
             padding: 12px 10px !important;
-            font-size: 11px;
+            font-size: 14px;
             text-transform: uppercase;
         }
 
         .subtotal-row {
             background-color: #e8f4f8 !important;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 14px;
         }
 
         .subtotal-row td {
@@ -130,7 +135,7 @@
         .total-row {
             background-color: #d4e6f1 !important;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 14px;
         }
 
         .total-row td {
@@ -141,15 +146,29 @@
             white-space: nowrap;
         }
 
-        .tax-list {
-            margin: 0;
-            padding: 0;
+        /* QR CODE sous la section copie */
+        .verification-section {
+            margin-top: 20px;
+            width: 150px;
+            text-align: center;
+            page-break-inside: avoid;
         }
 
-        .tax-item {
-            margin: 3px 0;
-            font-size: 9px;
-            line-height: 1.3;
+        .qr-code-container img {
+            width: 40px;
+            height: 40px;
+        }
+
+        .reference-systeme {
+            font-size: 8px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .verification-text {
+            font-size: 6px;
+            color: #555;
+            margin-top: 3px;
         }
 
         @media print {
@@ -174,47 +193,54 @@
     </style>
 </head>
 <body>
+
+    <!-- HEADER -->
     <div class="header">
         <div class="header-left">
-            <div class="header-section">REPUBLIQUE DU CAMEROUN</div>
-            <div class="header-section">Paix-Travail-Patrie</div>
+            REPUBLIQUE DU CAMEROUN<br>
+            Paix - Travail - Patrie<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">MINISTERE DES FINANCES</div>
+            MINISTERE DES FINANCES<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTION GENERALE DES IMPOTS</div>
+            DIRECTION GENERALE DES IMPOTS<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTION DES AFFAIRES GENERALES</div>
+            DIRECTION DES AFFAIRES GENERALES<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">CELLULE DU PERFECTIONNEMENT ET DE</div>
-            <div class="header-section">LA FORMATION CONTINUE</div>
+            CELLULE DU PERFECTIONNEMENT ET DE<br>
+            LA FORMATION CONTINUE<br>
             <div class="separator">----------------------</div>
-            <div class="reference-line">N°_____________ MINFI/DGI/DAG/CPFC</div>
         </div>
-        
+
         <div class="header-center">
             <% if (logoUrl) { %>
                 <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
             <% } %>
         </div>
-        
+
         <div class="header-right">
-            <div class="header-section">REPUBLIC OF CAMEROON</div>
-            <div class="header-section">Peace-Work-Fatherland</div>
+            REPUBLIC OF CAMEROON<br>
+            Peace - Work - Fatherland<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">MINISTRY OF FINANCE</div>
+            MINISTRY OF FINANCE<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">DIRECTORATE GENERAL OF TAXATION</div>
+            DIRECTORATE GENERAL OF TAXATION<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">DEPARTMENT OF GENERAL AFFAIRS</div>
+            DEPARTMENT OF GENERAL AFFAIRS<br>
             <div class="separator">----------------------</div>
-            <div class="header-section">TRAINING AND SKILLS PERFECTION UNIT</div>
+            TRAINING AND SKILLS PERFECTION UNIT<br>
             <div class="separator">----------------------</div>
-            <div class="date-line">Yaoundé, le _______________</div>
         </div>
     </div>
    
-    <h3 class="document-title"><%= documentTitle || 'BUDGET DÉTAILLÉ' %></h3>
+    <!-- TITRE -->
+    <div class="note-title">
+        <h3 class="document-title">
+            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+            <%= documentTitle || 'BUDGET DÉTAILLÉ' %>
+        </h3>
+    </div>
 
+    <!-- TABLE -->
     <div class="table-container">
         <table>
             <thead>
@@ -261,12 +287,15 @@
                 
                 <%
                     depensesGroupe.forEach(function(depense) {
-                        const prixUnitaire = depense.montantUnitaireReel || 0;
+                        // ✅ Utiliser le bon montant selon le type de budget
+                        const prixUnitaire = typeBudget === 'reel' 
+                            ? (depense.montantUnitaireReel || 0) 
+                            : (depense.montantUnitairePrevu || 0);
+                        
                         const quantite = depense.quantite || 1;
                         const montantHT = prixUnitaire * quantite;
 
                         if (!depense.taxes || depense.taxes.length === 0) {
-                            // Pas de taxe → ligne simple
                             const montantTTC = montantHT;
                             const nap = montantTTC;
 
@@ -286,7 +315,6 @@
                         </tr>
                     <%
                         } else {
-                            // Avec taxes → rowspan
                             const nbTaxes = depense.taxes.length;
                             let totalMontantTaxes = 0;
 
@@ -295,7 +323,6 @@
                                 const montantTaxe = montantHT * tauxDecimal;
                                 totalMontantTaxes += montantTaxe;
 
-                                // Première ligne → affiche tout
                                 if (index === 0) {
                                     const montantTTC = montantHT + totalMontantTaxes;
                                     const nap = montantTTC;
@@ -319,7 +346,6 @@
                         </tr>
                     <%
                                 } else {
-                                    // Lignes suivantes → seulement les taxes
                                     subtotalTaxes += montantTaxe;
                     %>
                         <tr>
@@ -372,6 +398,21 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <!-- QR CODE -->
+    <div class="verification-section">
+        <div class="qr-code-container">
+            <img src="<%= qrCodeUrl %>" alt="QR Code">
+        </div>
+
+        <div class="reference-systeme">
+            Réf. Système : <%= referenceSysteme %>
+        </div>
+
+        <div class="verification-text">
+            Scanner pour vérifier l'authenticité
+        </div>
     </div>
 
 </body>

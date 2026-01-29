@@ -1,5 +1,5 @@
 import express from 'express';
-import { createDepense, getFilteredDepenses, updateDepense, deleteDepense, generateBudgetPDF } from '../controllers/depenseController.js';
+import { createDepense, getFilteredDepenses, updateDepense, deleteDepense, generateBudgetPDF, getThemeBudgetSummary } from '../controllers/depenseController.js';
 import { authentificate } from '../middlewares/auth.js';
 import { validateNatureDepense } from '../middlewares/validateFields/validateBudgetFormation.js';
 
@@ -8,12 +8,12 @@ const router = express.Router();
 
 
 
-router.post('/:budgetId',authentificate, validateNatureDepense, createDepense);
-router.put('/:budgetId/depense/:id', authentificate, validateNatureDepense, updateDepense);
+router.post('/:themeFormationId',authentificate, validateNatureDepense, createDepense);
+router.get('/filtre/:themeFormationId', authentificate, getFilteredDepenses);
+router.get('/:themeFormationId/:userId/pdf', authentificate, generateBudgetPDF);
+router.get('/summary/:themeFormationId', getThemeBudgetSummary); // NOUVEAU
+router.put('/:id', authentificate, validateNatureDepense, updateDepense);
 router.delete('/:id',authentificate, deleteDepense);
-router.get('/filtre/:budgetId', authentificate, getFilteredDepenses);
-router.get('/:budgetId/:userId/pdf', authentificate, generateBudgetPDF);
-
 
 
 export default router;

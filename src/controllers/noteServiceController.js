@@ -23,6 +23,7 @@ import QRCode from 'qrcode';
 import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
+import { capitalizeTitle, getArticle } from '../utils/wordHelper.js';
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -784,6 +785,9 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
         const noteAbr = createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:""
+        const structure = affectations.structure 
+                ? (lang === 'fr' ? affectations.structure.nomFr : affectations.structure.nomEn)
+                : null;
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -819,6 +823,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             etudiant: stageData.stagiaire.genre === 'M' ? "étudiant" : "étudiante",
             stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
+            admis: stageData.stagiaire.genre === 'M' ? "admis" : "admise",
             userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
             
             // Informations académiques
@@ -829,8 +834,9 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             filiere: parcoursActuel?.filiere || "______________",
             
             // Informations d'affectations
-            userService: affectations.structure 
-                ? (lang === 'fr' ? affectations.structure.nomFr : affectations.structure.nomEn)
+            article:structure?getArticle(structure):"_____",
+            userService: structure 
+                ? structure
                 : "________________",
             dateDebut: affectations.dateDebut 
                 ? new Date(affectations.dateDebut).toLocaleDateString('fr-FR', {

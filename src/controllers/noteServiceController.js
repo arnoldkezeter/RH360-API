@@ -201,9 +201,9 @@ export const creerNoteService = async (req, res) => {
                 }
             ]);
         }
-
+        const createur = await Utilisateur.findById(creePar).lean();
         // Générer automatiquement le PDF selon le type
-        const pdfBuffer = await genererPDFSelonType(noteEnregistree, lang);
+        const pdfBuffer = await genererPDFSelonType(noteEnregistree, lang, createur);
 
         // Définir le nom du fichier PDF
         const nomFichier = `note-service-${typeNote}-${noteEnregistree.reference.replace(/\//g, '-')}.pdf`;
@@ -600,13 +600,14 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
 /**
  * Génère le PDF selon le type de note de service
  */
-const genererPDFSelonType = async (note, lang) => {
+const genererPDFSelonType = async (note, lang, createur) => {
     try {
         let templateData = {};
         let templatePath = '';
         // Générer l'URL de vérification de la note
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        const noteAbr = createur?createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:"":""
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -625,7 +626,7 @@ const genererPDFSelonType = async (note, lang) => {
             logoUrl: getLogoBase64(__dirname), // Image en base64
             // Référence système
             referenceSysteme: note.reference || 'REF-XXX',
-            
+            noteAbr:noteAbr,
             // QR Code
             qrCodeUrl: qrCodeDataUrl,
             urlVerification: urlVerification,
@@ -782,6 +783,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         // Générer l'URL de vérification de la note
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        const noteAbr = createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:""
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -802,7 +804,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             
             // Référence système
             referenceSysteme: note.reference || 'REF-XXX',
-            
+            noteAbr:noteAbr,
             // QR Code
             qrCodeUrl: qrCodeDataUrl,
             urlVerification: urlVerification,
@@ -952,6 +954,7 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
         // Générer l'URL de vérification de la note
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        const noteAbr = createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:""
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -1012,7 +1015,7 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
             logoUrl: getLogoBase64(__dirname),
             // Référence système
             referenceSysteme: note.reference || 'REF-XXX',
-            
+            noteAbr:noteAbr,
             // QR Code
             qrCodeUrl: qrCodeDataUrl,
             urlVerification: urlVerification,
@@ -1135,6 +1138,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
         // Générer l'URL de vérification de la note
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        const noteAbr = createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:""
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -1224,7 +1228,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
         const templateData = {
             documentTitle: 'Note de Service - Acceptation de Stage en Groupe',
             logoUrl: getLogoBase64(__dirname),
-            
+            noteAbr:noteAbr,
             // QR Code et référence
             qrCodeUrl: qrCodeDataUrl,
             urlVerification: urlVerification,

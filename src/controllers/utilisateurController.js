@@ -28,7 +28,7 @@ export const createUtilisateur = async (req, res) => {
     try {
         const {
             matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone,grade, familleMetier,
-            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
+            role, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, abreviationNoteServie
         } = req.body;
 
         const exists = await Utilisateur.exists({ email });
@@ -57,7 +57,7 @@ export const createUtilisateur = async (req, res) => {
         const password = generateRandomPassword();
         const utilisateur = new Utilisateur({
             matricule, nom, prenom, email, motDePasse : password, genre, dateNaissance, lieuNaissance, telephone,
-            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, grade, familleMetier
+            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, grade, familleMetier, abreviationNoteServie
         });
 
         await utilisateur.save();
@@ -113,7 +113,7 @@ export const updateUtilisateur = async (req, res) => {
 
         const {
             matricule, nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, grade, familleMetier,
-            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune
+            role, roles, dateEntreeEnService, service, categorieProfessionnelle, posteDeTravail, actif, commune, abreviationNoteServie
         } = req.body;
 
 
@@ -169,6 +169,7 @@ export const updateUtilisateur = async (req, res) => {
         utilisateur.commune = commune ?? utilisateur.commune;
         utilisateur.grade = grade
         utilisateur.familleMetier=familleMetier
+        utilisateur.abreviationNoteServie=abreviationNoteServie??utilisateur.abreviationNoteServie
 
         await utilisateur.save();
 

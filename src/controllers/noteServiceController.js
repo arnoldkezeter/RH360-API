@@ -23,7 +23,7 @@ import QRCode from 'qrcode';
 import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
-import { capitalizeTitle, getArticle } from '../utils/wordHelper.js';
+import { capitalizeTitle, formatWithArticle, getArticle } from '../utils/wordHelper.js';
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -609,7 +609,7 @@ const genererPDFSelonType = async (note, lang, createur) => {
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
         const noteAbr = createur?createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:"":""
-        
+        const etablissement = note.mandat.chercheur?.etablissement?.nomFr
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
             errorCorrectionLevel: 'H',
@@ -658,7 +658,9 @@ const genererPDFSelonType = async (note, lang, createur) => {
                     userFullName: `${note.mandat.chercheur?.nom} ${note.mandat.chercheur?.prenom}`,
                     inscrit: note.mandat.chercheur?.genre === 'M'?"inscrit":"inscrite",
                     userDoctorat: note.mandat.chercheur?.doctorat || "__________",
-                    userUniversity: note.mandat.chercheur?.etablissement?.nomFr || "___________",
+                    // article_etablissement:etablissement?getArticle(etablissement):"_____",
+                    userUniversity: etablissement?formatWithArticle(etablissement) : "___________",
+                    
                     userTheme: note.mandat?.chercheur.domaineRecherche || "______________",
                     userSupervisorSexe: note.mandat.superviseur?.genre === 'M'?"Monsieur":"Madame",
                     userSupervisorFullName: `${note.mandat.superviseur?.nom} ${note.mandat.superviseur?.prenom}`,
@@ -790,6 +792,9 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         const structure = affectations.structure 
                 ? (lang === 'fr' ? affectations.structure.nomFr : affectations.structure.nomEn)
                 : null;
+        const etablissement = parcoursActuel?.etablissement 
+                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
+                : null;
         
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
@@ -827,11 +832,10 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
             admis: stageData.stagiaire.genre === 'M' ? "admis" : "admise",
             userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
-            
+            // article_etablissement:etablissement?getArticle(etablissement):"_____",
             // Informations académiques
-            userUniversity: parcoursActuel?.etablissement 
-                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
-                : "______________",
+            userUniversity: etablissement?formatWithArticle(etablissement) :"______________",
+            
             niveau: parcoursActuel?.niveau || "______________",
             filiere: parcoursActuel?.filiere || "______________",
             
@@ -963,7 +967,9 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
         const noteAbr = createur.abreviationNoteServie?`/${createur.abreviationNoteServie}`:""
-        
+        const etablissement = parcoursActuel?.etablissement 
+                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
+                : null;
         // Générer le QR code en base64
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
             errorCorrectionLevel: 'H',
@@ -1039,11 +1045,9 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
             stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
             userFullName: `${stageData.stagiaire.nom} ${stageData.stagiaire.prenom || ''}`.trim(),
-            
+            // article_etablissement:etablissement?getArticle(etablissement):"_____",
             // Informations académiques
-            userUniversity: parcoursActuel?.etablissement 
-                ? (lang === 'fr' ? parcoursActuel.etablissement.nomFr : parcoursActuel.etablissement.nomEn)
-                : "______________",
+            userUniversity: etablissement?formatWithArticle(etablissement) : "______________",
             niveau: parcoursActuel?.niveau || "______________",
             filiere: parcoursActuel?.filiere || "______________",
             

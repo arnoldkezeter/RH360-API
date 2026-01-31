@@ -6,6 +6,19 @@
 
 import abbreviations from "../config/abbreviation.js";
 
+
+
+/**
+ * Détecte si le texte commence par une abréviation connue
+ * @param {string} text - Le texte à analyser
+ * @returns {object|null} L'objet abréviation ou null
+ */
+/**
+ * Helper pour déterminer automatiquement l'article approprié (à la/au/à l'/aux) 
+ * en fonction du genre grammatical du mot en français
+ * Supporte les abréviations et les élisions
+ */
+
 /**
  * Normalise une chaîne pour la recherche d'abréviation
  * @param {string} text - Le texte à normaliser
@@ -18,6 +31,102 @@ function normalizeForAbbreviation(text) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Enlever les accents
         .replace(/\s+/g, '');
+}
+
+/**
+ * Vérifie si un mot commence par une voyelle ou un h muet
+ * @param {string} word - Le mot à vérifier
+ * @returns {boolean} True si le mot commence par une voyelle ou h muet
+ */
+function startsWithVowelSound(word) {
+    if (!word || word.length === 0) return false;
+    
+    const normalized = word.toLowerCase().trim();
+    const firstChar = normalized.charAt(0);
+    
+    // Voyelles
+    const vowels = ['a', 'e', 'i', 'o', 'u', 'y', 'à', 'â', 'é', 'è', 'ê', 'ë', 'î', 'ï', 'ô', 'ù', 'û', 'ü'];
+    if (vowels.includes(firstChar)) {
+        return true;
+    }
+    
+    // H muet (liste des mots communs avec h muet en français)
+    const hMuetWords = [
+        'heure', 'homme', 'honneur', 'hôpital', 'hôtel', 'histoire', 
+        'habitude', 'harmonie', 'herbe', 'hiver', 'huile', 'humain',
+        'humeur', 'humidité', 'humble', 'hommage', 'horloge', 'horizon'
+    ];
+    
+    if (firstChar === 'h') {
+        // Vérifier si c'est un h muet connu
+        for (const word of hMuetWords) {
+            if (normalized.startsWith(word)) {
+                return true;
+            }
+        }
+        // Par défaut, traiter h comme aspiré (pas d'élision)
+        return false;
+    }
+    
+    return false;
+}
+
+/**
+ * Vérifie si le texte est au pluriel
+ * @param {string} text - Le texte à vérifier
+ * @returns {boolean} True si le texte est au pluriel
+ */
+function isPlural(text) {
+    if (!text || text.length === 0) return false;
+    
+    const normalized = text.toLowerCase().trim();
+    
+    // Mots qui indiquent clairement un pluriel
+    const pluralIndicators = [
+        'autres administrations',
+        'services du premier ministre',
+        'autres',
+        'services',
+        'directions',
+        'centres',
+        'divisions',
+        'cellules',
+        'programmes',
+        'ministères'
+    ];
+    
+    for (const indicator of pluralIndicators) {
+        if (normalized.startsWith(indicator)) {
+            return true;
+        }
+    }
+    
+    // Vérifier si le premier mot se termine par 's' ou 'x' (indicateur de pluriel)
+    const firstWord = normalized.split(/[\s\/\-]/)[0];
+    
+    // Exceptions : mots qui se terminent par 's' mais sont singuliers
+    const singularSWords = [
+        'impôts', 'impots', 'bus', 'cas', 'bras', 'dos', 'fils', 
+        'corps', 'cours', 'temps', 'pays', 'poids', 'choix'
+    ];
+    
+    if (singularSWords.includes(firstWord)) {
+        return false;
+    }
+    
+    // Si le premier mot se termine par 's' et le deuxième est un article ou déterminant pluriel
+    if (firstWord.endsWith('s') || firstWord.endsWith('x')) {
+        const words = normalized.split(/\s+/);
+        if (words.length > 1) {
+            const secondWord = words[1];
+            const pluralArticles = ['des', 'les', 'ces', 'nos', 'vos', 'leurs', 'plusieurs'];
+            if (pluralArticles.includes(secondWord)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
 }
 
 /**
@@ -151,15 +260,18 @@ function getGender(word) {
 }
 
 /**
- * Formate un texte avec l'article contracté approprié (à la/au)
- * Gère les abréviations et structures administratives automatiquement
+ * Formate un texte avec l'article contracté approprié (à la/au/à l'/aux)
+ * Gère les abréviations, structures administratives et élisions automatiquement
  * @param {string} text - Le texte à formater
  * @returns {string} Le texte préfixé par l'article approprié
  * 
  * @example
- * formatWithArticle("Centre Régional des Impôts du Centre 1")  // "au Centre Régional des Impôts du Centre 1"
- * formatWithArticle("Direction des Grandes Entreprises")        // "à la Direction des Grandes Entreprises"
- * formatWithArticle("Division du Contentieux")                  // "à la Division du Contentieux"
+ * formatWithArticle("Centre Régional des Impôts du Centre 1")      // "au Centre Régional des Impôts du Centre 1"
+ * formatWithArticle("Direction des Grandes Entreprises")            // "à la Direction des Grandes Entreprises"
+ * formatWithArticle("Inspection des Services des Impôts")           // "à l'Inspection des Services des Impôts"
+ * formatWithArticle("Autres Administrations du MINFI")              // "aux Autres Administrations du MINFI"
+ * formatWithArticle("École Nationale d'Administration")             // "à l'École Nationale d'Administration"
+ * formatWithArticle("Université de Yaoundé")                        // "à l'Université de Yaoundé"
  */
 export function formatWithArticle(text) {
     if (!text || typeof text !== 'string') {
@@ -167,15 +279,29 @@ export function formatWithArticle(text) {
     }
     
     const trimmedText = text.trim();
+    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
+    
+    // Vérifier si c'est au pluriel d'abord
+    if (isPlural(trimmedText)) {
+        return `aux ${trimmedText}`;
+    }
     
     // Vérifier d'abord si c'est une abréviation
     const abbr = detectAbbreviation(trimmedText);
     if (abbr) {
+        // Vérifier l'élision même pour les abréviations
+        if (startsWithVowelSound(firstWord)) {
+            return `à l'${trimmedText}`;
+        }
         return abbr.gender === 'm' ? `au ${trimmedText}` : `à la ${trimmedText}`;
     }
     
+    // Vérifier l'élision (voyelle ou h muet)
+    if (startsWithVowelSound(firstWord)) {
+        return `à l'${trimmedText}`;
+    }
+    
     // Sinon, analyser le premier mot normalement
-    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
     const gender = getGender(firstWord);
     
     if (gender === 'm') {
@@ -190,7 +316,7 @@ export function formatWithArticle(text) {
 /**
  * Obtient uniquement l'article (sans le texte)
  * @param {string} text - Le texte à analyser
- * @returns {string} L'article approprié ('au', 'à la', ou 'à la/au')
+ * @returns {string} L'article approprié ('au', 'à la', 'à l'', 'aux', ou 'à la/au')
  */
 export function getArticle(text) {
     if (!text || typeof text !== 'string') {
@@ -198,15 +324,29 @@ export function getArticle(text) {
     }
     
     const trimmedText = text.trim();
+    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
+    
+    // Vérifier si c'est au pluriel
+    if (isPlural(trimmedText)) {
+        return 'aux';
+    }
     
     // Vérifier d'abord si c'est une abréviation
     const abbr = detectAbbreviation(trimmedText);
     if (abbr) {
+        // Vérifier l'élision même pour les abréviations
+        if (startsWithVowelSound(firstWord)) {
+            return "à l'";
+        }
         return abbr.gender === 'm' ? 'au' : 'à la';
     }
     
+    // Vérifier l'élision
+    if (startsWithVowelSound(firstWord)) {
+        return "à l'";
+    }
+    
     // Sinon, analyser le premier mot
-    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
     const gender = getGender(firstWord);
     
     if (gender === 'm') {
@@ -217,6 +357,9 @@ export function getArticle(text) {
         return 'à la/au';
     }
 }
+
+
+
 
 /**
  * Ajoute une nouvelle abréviation au dictionnaire

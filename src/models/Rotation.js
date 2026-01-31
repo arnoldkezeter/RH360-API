@@ -13,17 +13,17 @@ const rotationSchema = new mongoose.Schema({
 
 
 
-// Empêche un groupe d'avoir deux rotations qui se chevauchent dans des structures différents
-rotationSchema.index(
-  { groupe: 1, dateDebut: 1, dateFin: 1 },
-  { unique: true, partialFilterExpression: { groupe: { $exists: true } } }
-);
+// // Empêche un groupe d'avoir deux rotations qui se chevauchent dans des structures différents
+// rotationSchema.index(
+//   { groupe: 1, dateDebut: 1, dateFin: 1 },
+//   { unique: true, partialFilterExpression: { groupe: { $exists: true } } }
+// );
 
-// Empêche qu'un structure accueille deux groupes/stagiaires différents en même temps
-rotationSchema.index(
-  { structure: 1, dateDebut: 1, dateFin: 1 },
-  { unique: false }
-);
+// // Empêche qu'un structure accueille deux groupes/stagiaires différents en même temps
+// rotationSchema.index(
+//   { structure: 1, dateDebut: 1, dateFin: 1 },
+//   { unique: false }
+// );
 
 
 export const Rotation = mongoose.model('Rotation', rotationSchema);

@@ -24,6 +24,7 @@ import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
 import { capitalizeTitle, formatWithArticle, getArticle } from '../utils/wordHelper.js';
+import logger from '../utils/logger.js';
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -224,7 +225,7 @@ export const creerNoteService = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service:', error);
-
+        logger.error('Note exception:', error);
         // Annuler la transaction si erreur
         await session.abortTransaction();
         session.endSession();
@@ -399,7 +400,7 @@ export const creerNoteServiceStage = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service stage:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -585,7 +586,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service stage groupe:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -770,6 +771,7 @@ const genererPDFSelonType = async (note, lang, createur) => {
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF:', error);
         throw error;
     }
@@ -948,6 +950,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage individuel:', error);
         throw error;
     }
@@ -1137,6 +1140,7 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage rotations:', error);
         throw error;
     }
@@ -1341,6 +1345,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage groupe:', error);
         throw error;
     }
@@ -1403,7 +1408,7 @@ export const genererPDFNote = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la génération du PDF:', error);
-        
+        logger.error('Note exception:', error);
         if (!res.headersSent) {
             res.status(500).json({
                 success: false,
@@ -1572,7 +1577,7 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de convocation:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -1703,6 +1708,7 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF de convocation:', error);
         throw error;
     }
@@ -1966,7 +1972,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la convocation participants:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -2189,6 +2195,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF de convocation participants:', error);
         throw error;
     }
@@ -2418,7 +2425,7 @@ export const genererFichesPresenceParticipants = async (req, res) => {
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-        
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération des fiches de présence:', error);
 
         return res.status(500).json({
@@ -2578,6 +2585,7 @@ const genererPDFFichesPresence = async (themeData, lieuxAvecParticipants, lang, 
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('!!! ERREUR CRITIQUE lors de la génération du PDF des fiches de présence:', error.message, error.stack);
         throw error;
     }
@@ -2738,7 +2746,7 @@ export const genererFichesPresenceFormateurs = async (req, res) => {
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération des fiches de présence des formateurs:', error);
 
         return res.status(500).json({
@@ -2884,6 +2892,7 @@ const genererPDFFichesPresenceFormateurs = async (
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF des fiches de présence des formateurs:', error);
         throw error;
     }
@@ -3301,7 +3310,7 @@ export const verifierNoteService = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la vérification de la note:', error);
-        
+        logger.error('Note exception:', error);
         return res.status(500).json({
             success: false,
             authentique: false,
@@ -3940,7 +3949,7 @@ export const creerNoteServiceBudget = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service budget:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -4065,6 +4074,7 @@ const genererPDFBudget = async (note, theme, depenses, nomBudget, lang, createur
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF budget:', error);
         throw error;
     }
@@ -4344,7 +4354,7 @@ export const afficherVerificationNote = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de l\'affichage de la vérification:', error);
-        
+        logger.error('Note exception:', error);
         return res.status(500).send(`
             <!DOCTYPE html>
             <html lang="fr">
@@ -4391,6 +4401,7 @@ export const validerNoteService = async (req, res) => {
             try {
                 await unlinkAsync(req.file.path);
             } catch (error) {
+                logger.error('Note exception:', error);
                 console.error('Erreur lors de la suppression du fichier uploadé:', error);
             }
         }
@@ -4496,6 +4507,7 @@ export const validerNoteService = async (req, res) => {
 
     } catch (error) {
         await cleanupUploadedFile();
+        logger.error('Note exception:', error);
         console.error('Erreur validerNoteService:', error);
         return res.status(500).json({
             success: false,

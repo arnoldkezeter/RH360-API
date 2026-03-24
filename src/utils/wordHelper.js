@@ -4,214 +4,20 @@
  * Supporte les abréviations courantes de l'administration camerounaise
  */
 
+import abbreviations from "../config/abbreviation.js";
+
+
+
 /**
- * Dictionnaire des abréviations et structures administratives
- * Basé sur les structures réelles de la DGI du Cameroun
- * Mis à jour avec toutes les structures identifiées
+ * Détecte si le texte commence par une abréviation connue
+ * @param {string} text - Le texte à analyser
+ * @returns {object|null} L'objet abréviation ou null
  */
-const abbreviations = {
-    // === CENTRES RÉGIONAUX DES IMPÔTS (Masculins) ===
-    'cri': { full: 'Centre Régional des Impôts', gender: 'm' },
-    'cri centre 1': { full: 'Centre Régional des Impôts du Centre 1', gender: 'm' },
-    'cri centre 2': { full: 'Centre Régional des Impôts du Centre 2', gender: 'm' },
-    'cri centre ext': { full: 'Centre Régional des Impôts du Centre Extérieur', gender: 'm' },
-    'cri littoral 1': { full: 'Centre Régional des Impôts du Littoral 1', gender: 'm' },
-    'cri littoral 2': { full: 'Centre Régional des Impôts du Littoral 2', gender: 'm' },
-    'cri littoral ext': { full: 'Centre Régional des Impôts du Littoral Extérieur', gender: 'm' },
-    'cri sud': { full: 'Centre Régional des Impôts du Sud', gender: 'm' },
-    'cri sud ouest': { full: 'Centre Régional des Impôts du Sud Ouest', gender: 'm' },
-    'cri nord': { full: 'Centre Régional des Impôts du Nord', gender: 'm' },
-    'cri nord ouest': { full: 'Centre Régional des Impôts du Nord Ouest', gender: 'm' },
-    'cri ouest': { full: 'Centre Régional des Impôts de l\'Ouest', gender: 'm' },
-    'cri est': { full: 'Centre Régional des Impôts de l\'Est', gender: 'm' },
-    'cri adamaoua': { full: 'Centre Régional des Impôts de l\'Adamaoua', gender: 'm' },
-    'cri extreme nord': { full: 'Centre Régional des Impôts de l\'Extrême Nord', gender: 'm' },
-    'centre': { full: 'Centre', gender: 'm' },
-    
-    // === DIRECTIONS (Féminines) ===
-    'dge': { full: 'Direction des Grandes Entreprises', gender: 'f' },
-    'dag': { full: 'Direction des Affaires Générales', gender: 'f' },
-    'drvfc': { full: 'Direction du Recouvrement, des Valeurs Fiscales et de la Curatelle', gender: 'f' },
-    'direction': { full: 'Direction', gender: 'f' },
-    'dir': { full: 'Direction', gender: 'f' },
-    
-    // === DIVISIONS (Féminines) ===
-    'depscf': { full: 'Division des Enquêtes, de la Programmation et du Suivi du Contrôle Fiscal', gender: 'f' },
-    'deprf': { full: 'Division des Études de la Planification et des Réformes Fiscales', gender: 'f' },
-    'dc': { full: 'Division du Contentieux', gender: 'f' },
-    'dcont': { full: 'Division du Contentieux', gender: 'f' },
-    'di': { full: 'Division de l\'Informatique', gender: 'f' },
-    'dinf': { full: 'Division de l\'Informatique', gender: 'f' },
-    'dlrfi': { full: 'Division de la Législation et des Relations Fiscales Internationales', gender: 'f' },
-    'dssi': { full: 'Division des Statistiques, des Simulations et de l\'Immatriculation', gender: 'f' },
-    'div': { full: 'Division', gender: 'f' },
-    'division': { full: 'Division', gender: 'f' },
-    
-    // === CELLULES (Féminines) ===
-    'cic': { full: 'Cellule de l\'Information et de la Communication', gender: 'f' },
-    'cell': { full: 'Cellule', gender: 'f' },
-    'cellule': { full: 'Cellule', gender: 'f' },
-    
-    // === PROGRAMMES DE SÉCURISATION (Masculins) ===
-    'psr': { full: 'Programme de Sécurisation des Recettes', gender: 'm' },
-    'psrr': { full: 'Programme de Sécurisation des Recettes Routières', gender: 'm' },
-    'psrf': { full: 'Programme de Sécurisation des Recettes Forestières', gender: 'm' },
-    'psrep': { full: 'Programme de Sécurisation des Recettes de l\'Élevage et des Pêches', gender: 'm' },
-    'psrmee': { full: 'Programme de Sécurisation des Recettes Minières, de l\'Eau et de l\'Énergie', gender: 'm' },
-    'psrdcf': { full: 'Programme de Sécurisation des Recettes Domaniales, Cadastrales et Foncières', gender: 'm' },
-    'programme': { full: 'Programme', gender: 'm' },
-    
-    // === INSPECTION (Féminine) ===
-    'isi': { full: 'Inspection des Services des Impôts', gender: 'f' },
-    'insp': { full: 'Inspection', gender: 'f' },
-    'inspection': { full: 'Inspection', gender: 'f' },
-    
-    // === CABINET (Masculin) ===
-    'cab': { full: 'Cabinet', gender: 'm' },
-    'cabinet': { full: 'Cabinet', gender: 'm' },
-    
-    // === SERVICES (Masculins) ===
-    'so': { full: 'Service d\'Ordre', gender: 'm' },
-    'spm': { full: 'Services du Premier Ministre', gender: 'm' },
-    'srv': { full: 'Service', gender: 'm' },
-    'service': { full: 'Service', gender: 'm' },
-    
-    // === CONTRÔLE (Masculin) ===
-    'cse': { full: 'Contrôle Supérieur de l\'État', gender: 'm' },
-    'controle': { full: 'Contrôle', gender: 'm' },
-    'contrôle': { full: 'Contrôle', gender: 'm' },
-    
-    // === SECRÉTARIAT (Masculin) ===
-    'sg/prc': { full: 'Secrétariat Général/PRC', gender: 'm' },
-    'sg': { full: 'Secrétariat Général', gender: 'm' },
-    'secr': { full: 'Secrétariat', gender: 'm' },
-    'secrétariat': { full: 'Secrétariat', gender: 'm' },
-    
-    // === DÉLÉGATION (Féminine) ===
-    'dgsn': { full: 'Délégation Générale à la Sûreté Nationale', gender: 'f' },
-    'deleg': { full: 'Délégation', gender: 'f' },
-    'délégation': { full: 'Délégation', gender: 'f' },
-    
-    // === MINISTÈRES (Masculins) ===
-    'minfi': { full: 'Ministère des Finances', gender: 'm' },
-    'minat': { full: 'Ministère de l\'Administration Territoriale', gender: 'm' },
-    'minsante': { full: 'Ministère de la Santé Publique', gender: 'm' },
-    'minepat': { full: 'Ministère de l\'Économie, de la Planification et de l\'Aménagement du Territoire', gender: 'm' },
-    'mindcaf': { full: 'Ministère des Domaines, du Cadastre et des Affaires Foncières', gender: 'm' },
-    'minddevel': { full: 'Ministère de la Décentralisation et du Développement Local', gender: 'm' },
-    'mincommerce': { full: 'Ministère du Commerce', gender: 'm' },
-    'minminidt': { full: 'Ministère de l\'Industrie, des Mines et du Développement Technologique', gender: 'm' },
-    'minee': { full: 'Ministère de l\'Eau et de l\'Énergie', gender: 'm' },
-    'mintransport': { full: 'Ministère des Transports', gender: 'm' },
-    'minpostel': { full: 'Ministère des Postes et Télécommunications', gender: 'm' },
-    'minefop': { full: 'Ministère de l\'Emploi et de la Formation Professionnelle', gender: 'm' },
-    'minesup': { full: 'Ministère de l\'Enseignement Supérieur et de la Recherche', gender: 'm' },
-    'minproff': { full: 'Ministère de la Promotion de la Femme et de la Famille', gender: 'm' },
-    'minader': { full: 'Ministère de l\'Agriculture et du Développement Rural', gender: 'm' },
-    'minfof': { full: 'Ministère des Forêts et de la Faune', gender: 'm' },
-    'mincom': { full: 'Ministère de la Communication', gender: 'm' },
-    'minpmeesa': { full: 'Ministère des Petites et Moyennes Entreprises, de l\'Économie Sociale et de l\'Artisanat', gender: 'm' },
-    'minmap': { full: 'Ministère Délégué à la Présidence chargé des Marchés Publics', gender: 'm' },
-    'ministere': { full: 'Ministère', gender: 'm' },
-    'ministère': { full: 'Ministère', gender: 'm' },
-    
-    // === DIRECTION GÉNÉRALE DES IMPÔTS (Féminine) ===
-    'dgi': { full: 'Direction Générale des Impôts', gender: 'f' },
-    
-    // === ORGANISMES ET ENTREPRISES ===
-    'elecam': { full: 'Elections Cameroon', gender: 'f' },
-    'sonara': { full: 'Société Nationale de Raffinage', gender: 'f' },
-    'cf': { full: 'Crédit Foncier', gender: 'm' },
-    
-    // === AUTRES TERMES ADMINISTRATIFS ===
-    // Masculins
-    'bur': { full: 'Bureau', gender: 'm' },
-    'bureau': { full: 'Bureau', gender: 'm' },
-    'dept': { full: 'Département', gender: 'm' },
-    'dpt': { full: 'Département', gender: 'm' },
-    'département': { full: 'Département', gender: 'm' },
-    'sect': { full: 'Secteur', gender: 'm' },
-    'secteur': { full: 'Secteur', gender: 'm' },
-    'pole': { full: 'Pôle', gender: 'm' },
-    'pôle': { full: 'Pôle', gender: 'm' },
-    'comite': { full: 'Comité', gender: 'm' },
-    'comité': { full: 'Comité', gender: 'm' },
-    'conseil': { full: 'Conseil', gender: 'm' },
-    'guichet': { full: 'Guichet', gender: 'm' },
-    'audit': { full: 'Audit', gender: 'm' },
-    
-    // Féminins
-    'unite': { full: 'Unité', gender: 'f' },
-    'unité': { full: 'Unité', gender: 'f' },
-    'brig': { full: 'Brigade', gender: 'f' },
-    'brigade': { full: 'Brigade', gender: 'f' },
-    'sect.': { full: 'Section', gender: 'f' },
-    'section': { full: 'Section', gender: 'f' },
-    'ag': { full: 'Agence', gender: 'f' },
-    'agence': { full: 'Agence', gender: 'f' },
-    'ant': { full: 'Antenne', gender: 'f' },
-    'antenne': { full: 'Antenne', gender: 'f' },
-    's/dir': { full: 'Sous-Direction', gender: 'f' },
-    'sdir': { full: 'Sous-Direction', gender: 'f' },
-    'sous-direction': { full: 'Sous-Direction', gender: 'f' },
-    
-    // === AVEC POINTS (FORMAT ADMINISTRATIF) ===
-    'd.g.i': { full: 'Direction Générale des Impôts', gender: 'f' },
-    'd.g.i.': { full: 'Direction Générale des Impôts', gender: 'f' },
-    'd.a.g': { full: 'Direction des Affaires Générales', gender: 'f' },
-    'd.a.g.': { full: 'Direction des Affaires Générales', gender: 'f' },
-    'c.r.i': { full: 'Centre Régional des Impôts', gender: 'm' },
-    'c.r.i.': { full: 'Centre Régional des Impôts', gender: 'm' },
-    'd.g.e': { full: 'Direction des Grandes Entreprises', gender: 'f' },
-    'd.g.e.': { full: 'Direction des Grandes Entreprises', gender: 'f' },
-    'd.r.h': { full: 'Direction des Ressources Humaines', gender: 'f' },
-    'd.r.h.': { full: 'Direction des Ressources Humaines', gender: 'f' },
-    's.r.h': { full: 'Service des Ressources Humaines', gender: 'm' },
-    's.r.h.': { full: 'Service des Ressources Humaines', gender: 'm' },
-    'c.i': { full: 'Centre des Impôts', gender: 'm' },
-    'c.i.': { full: 'Centre des Impôts', gender: 'm' },
-    'd.r.v.f.c': { full: 'Direction du Recouvrement, des Valeurs Fiscales et de la Curatelle', gender: 'f' },
-    'd.r.v.f.c.': { full: 'Direction du Recouvrement, des Valeurs Fiscales et de la Curatelle', gender: 'f' },
-    'i.s.i': { full: 'Inspection des Services des Impôts', gender: 'f' },
-    'i.s.i.': { full: 'Inspection des Services des Impôts', gender: 'f' },
-    'c.s.e': { full: 'Contrôle Supérieur de l\'État', gender: 'm' },
-    'c.s.e.': { full: 'Contrôle Supérieur de l\'État', gender: 'm' },
-    's.o': { full: 'Service d\'Ordre', gender: 'm' },
-    's.o.': { full: 'Service d\'Ordre', gender: 'm' },
-    'c.i.c': { full: 'Cellule de l\'Information et de la Communication', gender: 'f' },
-    'c.i.c.': { full: 'Cellule de l\'Information et de la Communication', gender: 'f' },
-    
-    // === VARIANTES AVEC CASSE DIFFÉRENTE ===
-    'CRI': { full: 'Centre Régional des Impôts', gender: 'm' },
-    'DGE': { full: 'Direction des Grandes Entreprises', gender: 'f' },
-    'DAG': { full: 'Direction des Affaires Générales', gender: 'f' },
-    'DGI': { full: 'Direction Générale des Impôts', gender: 'f' },
-    'MINFI': { full: 'Ministère des Finances', gender: 'm' },
-    'CAB': { full: 'Cabinet', gender: 'm' },
-    'ISI': { full: 'Inspection des Services des Impôts', gender: 'f' },
-    'CSE': { full: 'Contrôle Supérieur de l\'État', gender: 'm' },
-    'CIC': { full: 'Cellule de l\'Information et de la Communication', gender: 'f' },
-    'DRVFC': { full: 'Direction du Recouvrement, des Valeurs Fiscales et de la Curatelle', gender: 'f' },
-    'DEPSCF': { full: 'Division des Enquêtes, de la Programmation et du Suivi du Contrôle Fiscal', gender: 'f' },
-    'DEPRF': { full: 'Division des Études de la Planification et des Réformes Fiscales', gender: 'f' },
-    'DINF': { full: 'Division de l\'Informatique', gender: 'f' },
-    'DCONT': { full: 'Division du Contentieux', gender: 'f' },
-    'DLRFI': { full: 'Division de la Législation et des Relations Fiscales Internationales', gender: 'f' },
-    'DSSI': { full: 'Division des Statistiques, des Simulations et de l\'Immatriculation', gender: 'f' },
-    'PSRR': { full: 'Programme de Sécurisation des Recettes Routières', gender: 'm' },
-    'PSRF': { full: 'Programme de Sécurisation des Recettes Forestières', gender: 'm' },
-    'PSREP': { full: 'Programme de Sécurisation des Recettes de l\'Élevage et des Pêches', gender: 'm' },
-    'PSRMEE': { full: 'Programme de Sécurisation des Recettes Minières, de l\'Eau et de l\'Énergie', gender: 'm' },
-    'PSRDCF': { full: 'Programme de Sécurisation des Recettes Domaniales, Cadastrales et Foncières', gender: 'm' },
-    'SO': { full: 'Service d\'Ordre', gender: 'm' },
-    'SPM': { full: 'Services du Premier Ministre', gender: 'm' },
-    'DGSN': { full: 'Délégation Générale à la Sûreté Nationale', gender: 'f' },
-    'ELECAM': { full: 'Elections Cameroon', gender: 'f' },
-    'SONARA': { full: 'Société Nationale de Raffinage', gender: 'f' }
-};
-
-
-
+/**
+ * Helper pour déterminer automatiquement l'article approprié (à la/au/à l'/aux) 
+ * en fonction du genre grammatical du mot en français
+ * Supporte les abréviations et les élisions
+ */
 
 /**
  * Normalise une chaîne pour la recherche d'abréviation
@@ -225,6 +31,102 @@ function normalizeForAbbreviation(text) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Enlever les accents
         .replace(/\s+/g, '');
+}
+
+/**
+ * Vérifie si un mot commence par une voyelle ou un h muet
+ * @param {string} word - Le mot à vérifier
+ * @returns {boolean} True si le mot commence par une voyelle ou h muet
+ */
+function startsWithVowelSound(word) {
+    if (!word || word.length === 0) return false;
+    
+    const normalized = word.toLowerCase().trim();
+    const firstChar = normalized.charAt(0);
+    
+    // Voyelles
+    const vowels = ['a', 'e', 'i', 'o', 'u', 'y', 'à', 'â', 'é', 'è', 'ê', 'ë', 'î', 'ï', 'ô', 'ù', 'û', 'ü'];
+    if (vowels.includes(firstChar)) {
+        return true;
+    }
+    
+    // H muet (liste des mots communs avec h muet en français)
+    const hMuetWords = [
+        'heure', 'homme', 'honneur', 'hôpital', 'hôtel', 'histoire', 
+        'habitude', 'harmonie', 'herbe', 'hiver', 'huile', 'humain',
+        'humeur', 'humidité', 'humble', 'hommage', 'horloge', 'horizon'
+    ];
+    
+    if (firstChar === 'h') {
+        // Vérifier si c'est un h muet connu
+        for (const word of hMuetWords) {
+            if (normalized.startsWith(word)) {
+                return true;
+            }
+        }
+        // Par défaut, traiter h comme aspiré (pas d'élision)
+        return false;
+    }
+    
+    return false;
+}
+
+/**
+ * Vérifie si le texte est au pluriel
+ * @param {string} text - Le texte à vérifier
+ * @returns {boolean} True si le texte est au pluriel
+ */
+function isPlural(text) {
+    if (!text || text.length === 0) return false;
+    
+    const normalized = text.toLowerCase().trim();
+    
+    // Mots qui indiquent clairement un pluriel
+    const pluralIndicators = [
+        'autres administrations',
+        'services du premier ministre',
+        'autres',
+        'services',
+        'directions',
+        'centres',
+        'divisions',
+        'cellules',
+        'programmes',
+        'ministères'
+    ];
+    
+    for (const indicator of pluralIndicators) {
+        if (normalized.startsWith(indicator)) {
+            return true;
+        }
+    }
+    
+    // Vérifier si le premier mot se termine par 's' ou 'x' (indicateur de pluriel)
+    const firstWord = normalized.split(/[\s\/\-]/)[0];
+    
+    // Exceptions : mots qui se terminent par 's' mais sont singuliers
+    const singularSWords = [
+        'impôts', 'impots', 'bus', 'cas', 'bras', 'dos', 'fils', 
+        'corps', 'cours', 'temps', 'pays', 'poids', 'choix'
+    ];
+    
+    if (singularSWords.includes(firstWord)) {
+        return false;
+    }
+    
+    // Si le premier mot se termine par 's' et le deuxième est un article ou déterminant pluriel
+    if (firstWord.endsWith('s') || firstWord.endsWith('x')) {
+        const words = normalized.split(/\s+/);
+        if (words.length > 1) {
+            const secondWord = words[1];
+            const pluralArticles = ['des', 'les', 'ces', 'nos', 'vos', 'leurs', 'plusieurs'];
+            if (pluralArticles.includes(secondWord)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
 }
 
 /**
@@ -358,15 +260,18 @@ function getGender(word) {
 }
 
 /**
- * Formate un texte avec l'article contracté approprié (à la/au)
- * Gère les abréviations et structures administratives automatiquement
+ * Formate un texte avec l'article contracté approprié (à la/au/à l'/aux)
+ * Gère les abréviations, structures administratives et élisions automatiquement
  * @param {string} text - Le texte à formater
  * @returns {string} Le texte préfixé par l'article approprié
  * 
  * @example
- * formatWithArticle("Centre Régional des Impôts du Centre 1")  // "au Centre Régional des Impôts du Centre 1"
- * formatWithArticle("Direction des Grandes Entreprises")        // "à la Direction des Grandes Entreprises"
- * formatWithArticle("Division du Contentieux")                  // "à la Division du Contentieux"
+ * formatWithArticle("Centre Régional des Impôts du Centre 1")      // "au Centre Régional des Impôts du Centre 1"
+ * formatWithArticle("Direction des Grandes Entreprises")            // "à la Direction des Grandes Entreprises"
+ * formatWithArticle("Inspection des Services des Impôts")           // "à l'Inspection des Services des Impôts"
+ * formatWithArticle("Autres Administrations du MINFI")              // "aux Autres Administrations du MINFI"
+ * formatWithArticle("École Nationale d'Administration")             // "à l'École Nationale d'Administration"
+ * formatWithArticle("Université de Yaoundé")                        // "à l'Université de Yaoundé"
  */
 export function formatWithArticle(text) {
     if (!text || typeof text !== 'string') {
@@ -374,15 +279,29 @@ export function formatWithArticle(text) {
     }
     
     const trimmedText = text.trim();
+    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
+    
+    // Vérifier si c'est au pluriel d'abord
+    if (isPlural(trimmedText)) {
+        return `aux ${trimmedText}`;
+    }
     
     // Vérifier d'abord si c'est une abréviation
     const abbr = detectAbbreviation(trimmedText);
     if (abbr) {
+        // Vérifier l'élision même pour les abréviations
+        if (startsWithVowelSound(firstWord)) {
+            return `à l'${trimmedText}`;
+        }
         return abbr.gender === 'm' ? `au ${trimmedText}` : `à la ${trimmedText}`;
     }
     
+    // Vérifier l'élision (voyelle ou h muet)
+    if (startsWithVowelSound(firstWord)) {
+        return `à l'${trimmedText}`;
+    }
+    
     // Sinon, analyser le premier mot normalement
-    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
     const gender = getGender(firstWord);
     
     if (gender === 'm') {
@@ -397,7 +316,7 @@ export function formatWithArticle(text) {
 /**
  * Obtient uniquement l'article (sans le texte)
  * @param {string} text - Le texte à analyser
- * @returns {string} L'article approprié ('au', 'à la', ou 'à la/au')
+ * @returns {string} L'article approprié ('au', 'à la', 'à l'', 'aux', ou 'à la/au')
  */
 export function getArticle(text) {
     if (!text || typeof text !== 'string') {
@@ -405,15 +324,29 @@ export function getArticle(text) {
     }
     
     const trimmedText = text.trim();
+    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
+    
+    // Vérifier si c'est au pluriel
+    if (isPlural(trimmedText)) {
+        return 'aux';
+    }
     
     // Vérifier d'abord si c'est une abréviation
     const abbr = detectAbbreviation(trimmedText);
     if (abbr) {
+        // Vérifier l'élision même pour les abréviations
+        if (startsWithVowelSound(firstWord)) {
+            return "à l'";
+        }
         return abbr.gender === 'm' ? 'au' : 'à la';
     }
     
+    // Vérifier l'élision
+    if (startsWithVowelSound(firstWord)) {
+        return "à l'";
+    }
+    
     // Sinon, analyser le premier mot
-    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
     const gender = getGender(firstWord);
     
     if (gender === 'm') {
@@ -424,6 +357,9 @@ export function getArticle(text) {
         return 'à la/au';
     }
 }
+
+
+
 
 /**
  * Ajoute une nouvelle abréviation au dictionnaire

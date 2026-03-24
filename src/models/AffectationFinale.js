@@ -13,11 +13,11 @@ const affectationFinaleSchema = new mongoose.Schema({
   dateFin:{type:Date, required:true}
 }, { timestamps: true });
 
-affectationFinaleSchema.index({ stagiaire: 1, stage: 1 });
-affectationFinaleSchema.index(
-  { groupe: 1, stage: 1 },
-  { unique: true, partialFilterExpression: { groupe: { $ne: null } } }
-);
+// affectationFinaleSchema.index({ stagiaire: 1, stage: 1 });
+// affectationFinaleSchema.index(
+//   { groupe: 1, stage: 1 },
+//   { unique: true, partialFilterExpression: { groupe: { $ne: null } } }
+// );
 affectationFinaleSchema.index({ structure: 1 });
 
 export const AffectationFinale = mongoose.model('AffectationFinale', affectationFinaleSchema);

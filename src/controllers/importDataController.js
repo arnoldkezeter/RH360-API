@@ -1,6 +1,7 @@
 import fs from "fs";
 import csv from "csv-parser";
 import bcrypt from "bcrypt";
+import xlsx from "xlsx";
 import Region from "../models/Region.js";
 import Departement from "../models/Departement.js";
 import Commune from "../models/Commune.js";
@@ -16,8 +17,11 @@ import mongoose from 'mongoose';
 const passwordParDefaut = "Utilisateur@123";
 
 function nettoyerTexte(texte) {
-  if (!texte) return null;
-  return texte.trim().replace(/\s+/g, " ");
+  if (texte === null || texte === undefined || texte === "") return null;
+  // Excel peut renvoyer des nombres, booléens ou dates — on force la conversion en string
+  const str = String(texte).trim();
+  if (!str || str === "null" || str === "undefined") return null;
+  return str.replace(/\s+/g, " ");
 }
 
 function convertirDateNaissance(dateStr) {
@@ -692,6 +696,723 @@ export const importerDonnees = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Erreur lors de l'importation.",
+      error: err.message,
+    });
+  }
+};
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Correspondances colonnes Excel → champs internes
+//
+//  N°              → (ignoré)
+//  MATRICULE       → matricule
+//  NOM             → nom
+//  GRADE           → grade
+//  CATEGORIE       → categorieProfessionnelle
+//  FONCTION        → posteDeTravail
+//  STRUCTURE_H     → structure
+//  STRUCTURE       → service
+//  REGION          → region
+//  DEPARTEMENT     → departement
+//  COMMUNE         → commune
+//  DATE_E_ADM      → dateEntreeEnService
+//  DATE_NAISSANCE  → dateNaissance
+//  AGE             → (ignoré, calculable)
+//  LIEU_NAISSANCE  → lieuNaissance
+//  SEXE            → genre
+//  ETATCIVIL       → (ignoré ou à mapper selon modèle)
+//  REF_ACTE_NOMI2  → (ignoré ou à mapper selon modèle)
+//  TEL             → telephone
+//  email           → email
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+// ── Utilitaires ──────────────────────────────────────────────────────────────
+
+
+function convertirDate(valeur) {
+  if (!valeur) return null;
+
+  // Numéro de série Excel (ex: 44927)
+  if (typeof valeur === "number") {
+    const date = xlsx.SSF.parse_date_code(valeur);
+    if (date) return new Date(date.y, date.m - 1, date.d);
+    return null;
+  }
+
+  const str = String(valeur).trim();
+
+  // Format JJ/MM/AAAA
+  const matchSlash = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (matchSlash) {
+    return new Date(+matchSlash[3], +matchSlash[2] - 1, +matchSlash[1]);
+  }
+
+  // Format AAAA-MM-JJ
+  const matchISO = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (matchISO) {
+    return new Date(+matchISO[1], +matchISO[2] - 1, +matchISO[3]);
+  }
+
+  return null;
+}
+
+
+// ── Lecture du fichier Excel ──────────────────────────────────────────────────
+
+function lireExcel(cheminFichier) {
+  const workbook = xlsx.readFile(cheminFichier, {
+    cellDates: false, // On gère nous-mêmes les dates via convertirDate()
+    raw: false,
+  });
+
+  const nomFeuille = workbook.SheetNames[0];
+  const feuille = workbook.Sheets[nomFeuille];
+
+  // raw: false → xlsx convertit toutes les cellules en string formatée
+  // Cela évite que nettoyerTexte() reçoive des nombres ou objets Date bruts
+  return xlsx.utils.sheet_to_json(feuille, {
+    defval: null,
+    raw: false,
+  });
+}
+
+// ── Helpers "trouver ou créer" (upsert en mémoire + cache) ───────────────────
+
+async function obtenirOuCreerRegion(nom, caches, donneesAInserer) {
+  const key = nom.toUpperCase();
+  if (caches.regions.has(key)) return caches.regions.get(key);
+
+  // Chercher en BD (données pré-existantes)
+  let doc = await Region.findOne({ nomFr: key }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      code: `REG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      nomFr: key,
+      nomEn: key,
+    };
+    donneesAInserer.regions.push(doc);
+  }
+
+  caches.regions.set(key, doc._id);
+  return doc._id;
+}
+
+async function obtenirOuCreerDepartement(nom, regionId, caches, donneesAInserer) {
+  const key = `${nom.toUpperCase()}|${regionId}`;
+  if (caches.departements.has(key)) return caches.departements.get(key);
+
+  let doc = await Departement.findOne({ nomFr: nom.toUpperCase(), region: regionId }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      code: `DEP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      nomFr: nom.toUpperCase(),
+      nomEn: nom.toUpperCase(),
+      region: regionId,
+    };
+    donneesAInserer.departements.push(doc);
+  }
+
+  caches.departements.set(key, doc._id);
+  return doc._id;
+}
+
+async function obtenirOuCreerCommune(nom, departementId, caches, donneesAInserer) {
+  const key = `${nom.toUpperCase()}|${departementId}`;
+  if (caches.communes.has(key)) return caches.communes.get(key);
+
+  let doc = await Commune.findOne({ nomFr: nom.toUpperCase(), departement: departementId }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      code: `COM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      nomFr: nom.toUpperCase(),
+      nomEn: nom.toUpperCase(),
+      departement: departementId,
+    };
+    donneesAInserer.communes.push(doc);
+  }
+
+  caches.communes.set(key, doc._id);
+  return doc._id;
+}
+
+async function obtenirOuCreerGrade(nom, caches, donneesAInserer) {
+  const key = nom.toUpperCase();
+  if (caches.grades.has(key)) return caches.grades.get(key);
+
+  let doc = await Grade.findOne({ nomFr: key }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      nomFr: key,
+      nomEn: key,
+    };
+    donneesAInserer.grades.push(doc);
+  }
+
+  caches.grades.set(key, doc._id);
+  return doc._id;
+}
+
+async function obtenirOuCreerCategorie(nom, gradeId, caches, donneesAInserer) {
+  const key = nom.toUpperCase();
+
+  if (caches.categories.has(key)) {
+    const cached = caches.categories.get(key);
+    // S'assurer que le grade est bien rattaché
+    const gradeStr = gradeId.toString();
+    const exists = cached.grades.some((id) => id.toString() === gradeStr);
+    if (!exists) {
+      cached.grades.push(gradeId);
+      if (cached.isInDB) {
+        await CategorieProfessionnelle.findByIdAndUpdate(cached.id, {
+          $addToSet: { grades: gradeId },
+        });
+      } else {
+        cached.data.grades.push(gradeId);
+      }
+    }
+    return cached.id;
+  }
+
+  let doc = await CategorieProfessionnelle.findOne({ nomFr: key });
+  if (doc) {
+    if (!doc.grades.some((id) => id.equals(gradeId))) {
+      doc.grades.push(gradeId);
+      await doc.save();
+    }
+    caches.categories.set(key, {
+      id: doc._id,
+      grades: [...doc.grades],
+      isInDB: true,
+    });
+    return doc._id;
+  }
+
+  const newDoc = {
+    _id: new mongoose.Types.ObjectId(),
+    nomFr: key,
+    nomEn: key,
+    grades: [gradeId],
+  };
+  donneesAInserer.categories.push(newDoc);
+  caches.categories.set(key, {
+    id: newDoc._id,
+    grades: [gradeId],
+    isInDB: false,
+    data: newDoc,
+  });
+  return newDoc._id;
+}
+
+async function obtenirOuCreerStructure(nom, caches, donneesAInserer) {
+  const key = nom.toUpperCase();
+  if (caches.structures.has(key)) return caches.structures.get(key);
+
+  let doc = await Structure.findOne({ nomFr: key }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      nomFr: key,
+      nomEn: key,
+    };
+    donneesAInserer.structures.push(doc);
+  }
+
+  caches.structures.set(key, doc._id);
+  return doc._id;
+}
+
+async function obtenirOuCreerService(nom, structureId, caches, donneesAInserer) {
+  const key = `${nom.toUpperCase()}|${structureId}`;
+  if (caches.services.has(key)) return caches.services.get(key);
+
+  let doc = await Service.findOne({ nomFr: nom.toUpperCase(), structure: structureId }).lean();
+  if (!doc) {
+    doc = {
+      _id: new mongoose.Types.ObjectId(),
+      nomFr: nom.toUpperCase(),
+      nomEn: nom.toUpperCase(),
+      structure: structureId,
+    };
+    donneesAInserer.services.push(doc);
+  }
+
+  caches.services.set(key, doc._id);
+  return doc._id;
+}
+
+/**
+ * Pour le poste de travail : la FONCTION dans l'Excel.
+ * - Si le poste EXISTE déjà en BD → on le réutilise sans toucher à ses familles métier.
+ * - Si le poste est NOUVEAU → on crée automatiquement une FamilleMetier du même nom
+ *   et on les lie, afin que l'utilisateur puisse réaffecter plus tard depuis l'interface.
+ */
+async function obtenirOuCreerPoste(nom, serviceId, caches, donneesAInserer) {
+  const key = nom.toUpperCase();
+
+  if (caches.postes.has(key)) {
+    const cached = caches.postes.get(key);
+    // Associer le service si pas encore fait
+    if (serviceId) {
+      const serviceStr = serviceId.toString();
+      const exists = cached.services.some((id) => id.toString() === serviceStr);
+      if (!exists) {
+        cached.services.push(serviceId);
+        if (cached.isInDB) {
+          await PosteDeTravail.findByIdAndUpdate(cached.id, {
+            $addToSet: { services: serviceId },
+          });
+        } else {
+          cached.data.services.push(serviceId);
+        }
+      }
+    }
+    return cached.id;
+  }
+
+  // ── Poste déjà en BD → réutiliser tel quel ────────────────────────────────
+  let doc = await PosteDeTravail.findOne({ nomFr: key });
+  if (doc) {
+    if (serviceId && !doc.services.some((id) => id.equals(serviceId))) {
+      await PosteDeTravail.findByIdAndUpdate(doc._id, {
+        $addToSet: { services: serviceId },
+      });
+      doc.services.push(serviceId);
+    }
+    caches.postes.set(key, {
+      id: doc._id,
+      famillesMetier: [...(doc.famillesMetier || [])],
+      services: [...(doc.services || [])],
+      isInDB: true,
+    });
+    return doc._id;
+  }
+
+  // ── Nouveau poste → assigner à la famille "POSTE NON AFFECTÉ" ───────────
+  // Cette famille doit exister en BD avant l'import.
+  // Une seule requête BD grâce au cache (valable pour tous les nouveaux postes).
+
+  let familleNonAffecteeId = null;
+
+  if (caches.famillesMetier.has("__NON_AFFECTE__")) {
+    familleNonAffecteeId = caches.famillesMetier.get("__NON_AFFECTE__");
+  } else {
+    const familleDoc = await FamilleMetier.findOne({
+      nomFr: { $regex: /^poste non affect/i },
+    }).lean();
+
+    if (familleDoc) {
+      familleNonAffecteeId = familleDoc._id;
+    }
+    // On stocke même null pour ne pas refaire la requête à chaque nouveau poste
+    caches.famillesMetier.set("__NON_AFFECTE__", familleNonAffecteeId);
+  }
+
+  const newDoc = {
+    _id: new mongoose.Types.ObjectId(),
+    nomFr: key,
+    nomEn: key,
+    famillesMetier: familleNonAffecteeId ? [familleNonAffecteeId] : [],
+    services: serviceId ? [serviceId] : [],
+  };
+  donneesAInserer.postes.push(newDoc);
+  caches.postes.set(key, {
+    id: newDoc._id,
+    famillesMetier: familleNonAffecteeId ? [familleNonAffecteeId] : [],
+    services: serviceId ? [serviceId] : [],
+    isInDB: false,
+    data: newDoc,
+  });
+  return newDoc._id;
+}
+
+// ── Controller principal ──────────────────────────────────────────────────────
+
+export const importerPersonnelExcel = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: "Aucun fichier reçu. Veuillez envoyer un fichier Excel (.xlsx).",
+    });
+  }
+
+  const cheminFichier = req.file.path;
+
+  try {
+    // ── 1. Lecture du fichier Excel ─────────────────────────────────────────
+    let lignes;
+    try {
+      lignes = lireExcel(cheminFichier);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        message: "Impossible de lire le fichier Excel. Vérifiez le format.",
+        error: e.message,
+      });
+    }
+
+    console.log(`📊 ${lignes.length} lignes à traiter`);
+
+    // ── 2. Caches en mémoire (évite les requêtes BD répétées) ───────────────
+    const caches = {
+      regions: new Map(),
+      departements: new Map(),
+      communes: new Map(),
+      grades: new Map(),
+      categories: new Map(),    // { id, grades[], isInDB, data? }
+      famillesMetier: new Map(), // clé = nomFr → _id
+      postes: new Map(),        // { id, famillesMetier[], services[], isInDB, data? }
+      structures: new Map(),
+      services: new Map(),
+      emailsUtilises: new Set(), // Pour détecter les doublons dans ce fichier
+    };
+
+    // ── 3. Tampons d'insertion (entités nouvelles uniquement) ────────────────
+    const donneesAInserer = {
+      regions: [],
+      departements: [],
+      communes: [],
+      grades: [],
+      categories: [],
+      postes: [],
+      structures: [],
+      services: [],
+    };
+
+    // ── 4. Résultats ────────────────────────────────────────────────────────
+    const stats = {
+      crees: 0,
+      misAJour: 0,
+      ignores: 0,
+    };
+    const utilisateursNonTraites = [];
+
+    // ── 5. Traitement ligne par ligne ────────────────────────────────────────
+    for (let i = 0; i < lignes.length; i++) {
+      const ligne = lignes[i];
+
+      if (i % 500 === 0 && i > 0) {
+        console.log(`🔄 Traitement ligne ${i + 1}/${lignes.length}`);
+      }
+
+      const erreursBloquantes = [];
+      const avertissements = [];
+
+      // Infos de base pour le rapport d'erreur
+      const infoLigne = {
+        numeroLigne: i + 2, // +2 car ligne 1 = en-têtes
+        matricule: nettoyerTexte(ligne.MATRICULE),
+        nom: nettoyerTexte(ligne.NOM),
+        email: nettoyerTexte(ligne.email),
+      };
+
+      try {
+        // ── a. Validation du nom ──────────────────────────────────────────
+        const nomComplet = ligne.NOM ? nettoyerTexte(ligne.NOM).toUpperCase() : null;
+        if (!nomComplet) {
+          erreursBloquantes.push("NOM manquant ou invalide");
+        }
+
+        const matricule = ligne.MATRICULE ? nettoyerTexte(ligne.MATRICULE) : null;
+
+        // ── b. Email ─────────────────────────────────────────────────────
+        let email = null;
+        if (ligne.email && nettoyerTexte(ligne.email)) {
+          const candidat = nettoyerTexte(ligne.email).toLowerCase();
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidat)) {
+            email = candidat;
+          } else {
+            avertissements.push("Email invalide dans le fichier, génération automatique");
+          }
+        }
+
+        if (!email && nomComplet) {
+          email = genererEmail(nomComplet, matricule);
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            erreursBloquantes.push("Impossible de générer un email valide");
+            email = null;
+          }
+        }
+
+        // Gestion des doublons d'email dans le fichier courant
+        if (email && caches.emailsUtilises.has(email)) {
+          const [base, domaine] = email.split("@");
+          let emailUnique = email;
+          for (let t = 1; t <= 10; t++) {
+            emailUnique = `${base}${t}@${domaine}`;
+            if (!caches.emailsUtilises.has(emailUnique)) break;
+            if (t === 10) {
+              erreursBloquantes.push("Email en double, impossible de générer un email unique");
+              emailUnique = null;
+            }
+          }
+          if (emailUnique) {
+            avertissements.push(`Email modifié pour éviter un doublon : ${emailUnique}`);
+            email = emailUnique;
+          } else {
+            email = null;
+          }
+        }
+
+        // ── c. Si erreurs bloquantes, on passe ────────────────────────────
+        if (erreursBloquantes.length > 0) {
+          utilisateursNonTraites.push({
+            ...infoLigne,
+            raisons: erreursBloquantes,
+            avertissements: avertissements.length > 0 ? avertissements : undefined,
+          });
+          stats.ignores++;
+          continue;
+        }
+
+        // ── d. Entités géographiques ──────────────────────────────────────
+        let regionId = null;
+        let departementId = null;
+        let communeId = null;
+
+        if (nettoyerTexte(ligne.REGION)) {
+          regionId = await obtenirOuCreerRegion(
+            nettoyerTexte(ligne.REGION),
+            caches,
+            donneesAInserer
+          );
+        }
+
+        if (regionId && nettoyerTexte(ligne.DEPARTEMENT)) {
+          departementId = await obtenirOuCreerDepartement(
+            nettoyerTexte(ligne.DEPARTEMENT),
+            regionId,
+            caches,
+            donneesAInserer
+          );
+        }
+
+        if (departementId && nettoyerTexte(ligne.COMMUNE)) {
+          communeId = await obtenirOuCreerCommune(
+            nettoyerTexte(ligne.COMMUNE),
+            departementId,
+            caches,
+            donneesAInserer
+          );
+        } else if (ligne.COMMUNE && !departementId) {
+          avertissements.push("Commune ignorée : département manquant ou invalide");
+        }
+
+        // ── e. Grade ──────────────────────────────────────────────────────
+        let gradeId = null;
+        if (nettoyerTexte(ligne.GRADE)) {
+          gradeId = await obtenirOuCreerGrade(
+            nettoyerTexte(ligne.GRADE),
+            caches,
+            donneesAInserer
+          );
+        }
+
+        // ── f. Catégorie Professionnelle (CATEGORIE dans l'Excel) ─────────
+        let categorieId = null;
+        if (gradeId && nettoyerTexte(ligne.CATEGORIE)) {
+          categorieId = await obtenirOuCreerCategorie(
+            nettoyerTexte(ligne.CATEGORIE),
+            gradeId,
+            caches,
+            donneesAInserer
+          );
+        } else if (ligne.CATEGORIE && !gradeId) {
+          avertissements.push("Catégorie ignorée : grade manquant");
+        }
+
+        // ── g. Structure (STRUCTURE_H dans l'Excel) ───────────────────────
+        let structureId = null;
+        if (nettoyerTexte(ligne.STRUCTURE_H)) {
+          structureId = await obtenirOuCreerStructure(
+            nettoyerTexte(ligne.STRUCTURE_H),
+            caches,
+            donneesAInserer
+          );
+        }
+
+        // ── h. Service (STRUCTURE dans l'Excel) ───────────────────────────
+        let serviceId = null;
+        if (structureId && nettoyerTexte(ligne.STRUCTURE)) {
+          serviceId = await obtenirOuCreerService(
+            nettoyerTexte(ligne.STRUCTURE),
+            structureId,
+            caches,
+            donneesAInserer
+          );
+        } else if (ligne.STRUCTURE && !structureId) {
+          avertissements.push("Service ignoré : STRUCTURE_H manquant");
+        }
+
+        // ── i. Poste de Travail (FONCTION dans l'Excel) ───────────────────
+        let posteId = null;
+        if (nettoyerTexte(ligne.FONCTION)) {
+          posteId = await obtenirOuCreerPoste(
+            nettoyerTexte(ligne.FONCTION),
+            serviceId,
+            caches,
+            donneesAInserer
+          );
+        }
+
+        // ── j. Upsert Utilisateur ──────────────────────────────────────────
+        // Critère d'identification : matricule (si présent) ou email
+        const filtreRecherche = matricule
+          ? { matricule }
+          : { email };
+
+        const utilisateurExistant = await Utilisateur.findOne(filtreRecherche).lean();
+
+        if (utilisateurExistant) {
+          // ── MISE À JOUR : on met à jour uniquement les champs professionnels
+          //    sans toucher au mot de passe, rôles, etc.
+          const champsMaj = {};
+
+          // Champs professionnels toujours mis à jour depuis le fichier
+          if (gradeId) champsMaj.grade = gradeId;
+          if (categorieId) champsMaj.categorieProfessionnelle = categorieId;
+          if (structureId) champsMaj.structure = structureId;
+          if (serviceId) champsMaj.service = serviceId;
+          if (posteId) champsMaj.posteDeTravail = posteId;
+          if (communeId) champsMaj.commune = communeId;
+
+          // Champs d'identité : on met à jour seulement si la valeur est vide en BD
+          if (!utilisateurExistant.telephone && nettoyerTexte(ligne.TEL)) {
+            champsMaj.telephone = String(ligne.TEL).replace(/\s/g, "");
+          }
+          if (!utilisateurExistant.dateNaissance && ligne.DATE_NAISSANCE) {
+            champsMaj.dateNaissance = convertirDate(ligne.DATE_NAISSANCE);
+          }
+          if (!utilisateurExistant.dateEntreeEnService && ligne.DATE_E_ADM) {
+            champsMaj.dateEntreeEnService = convertirDate(ligne.DATE_E_ADM);
+          }
+          if (!utilisateurExistant.lieuNaissance && nettoyerTexte(ligne.LIEU_NAISSANCE)) {
+            champsMaj.lieuNaissance = nettoyerTexte(ligne.LIEU_NAISSANCE).toUpperCase();
+          }
+          if (!utilisateurExistant.genre && nettoyerTexte(ligne.SEXE)) {
+            champsMaj.genre = nettoyerTexte(ligne.SEXE).toUpperCase();
+          }
+
+          if (Object.keys(champsMaj).length > 0) {
+            await Utilisateur.findByIdAndUpdate(
+              utilisateurExistant._id,
+              { $set: champsMaj }
+            );
+            stats.misAJour++;
+          } else {
+            stats.ignores++;
+          }
+        } else {
+          // ── CRÉATION : nouvel utilisateur
+          caches.emailsUtilises.add(email);
+
+          const hashedPassword = await bcrypt.hash(PASSWORD_PAR_DEFAUT, 10);
+
+          const nouvelUtilisateur = {
+            matricule: matricule || `MAT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            nom: nomComplet,
+            prenom: "",
+            email,
+            motDePasse: hashedPassword,
+            genre: nettoyerTexte(ligne.SEXE) ? nettoyerTexte(ligne.SEXE).toUpperCase() : "AUTRE",
+            dateNaissance: convertirDate(ligne.DATE_NAISSANCE),
+            lieuNaissance: nettoyerTexte(ligne.LIEU_NAISSANCE)
+              ? nettoyerTexte(ligne.LIEU_NAISSANCE).toUpperCase()
+              : null,
+            telephone: ligne.TEL ? String(ligne.TEL).replace(/\s/g, "") : "",
+            dateEntreeEnService: convertirDate(ligne.DATE_E_ADM),
+            role: "UTILISATEUR",
+            roles: ["UTILISATEUR"],
+            actif: true,
+          };
+
+          if (structureId) nouvelUtilisateur.structure = structureId;
+          if (serviceId) nouvelUtilisateur.service = serviceId;
+          if (categorieId) nouvelUtilisateur.categorieProfessionnelle = categorieId;
+          if (posteId) nouvelUtilisateur.posteDeTravail = posteId;
+          if (gradeId) nouvelUtilisateur.grade = gradeId;
+          if (communeId) nouvelUtilisateur.commune = communeId;
+
+          await Utilisateur.create(nouvelUtilisateur);
+          stats.crees++;
+        }
+      } catch (err) {
+        console.error(`❌ Erreur ligne ${i + 2}:`, err.message);
+        utilisateursNonTraites.push({
+          ...infoLigne,
+          raisons: [`Erreur technique: ${err.message}`],
+        });
+        stats.ignores++;
+      }
+    }
+
+    // ── 6. Insertion en lot des nouvelles entités référentielles ─────────────
+    console.log("📝 Insertion des nouvelles entités référentielles...");
+
+    const insertions = [];
+    if (donneesAInserer.regions.length > 0)
+      insertions.push(Region.insertMany(donneesAInserer.regions, { ordered: false }));
+    if (donneesAInserer.departements.length > 0)
+      insertions.push(Departement.insertMany(donneesAInserer.departements, { ordered: false }));
+    if (donneesAInserer.communes.length > 0)
+      insertions.push(Commune.insertMany(donneesAInserer.communes, { ordered: false }));
+    if (donneesAInserer.grades.length > 0)
+      insertions.push(Grade.insertMany(donneesAInserer.grades, { ordered: false }));
+    if (donneesAInserer.categories.length > 0)
+      insertions.push(CategorieProfessionnelle.insertMany(donneesAInserer.categories, { ordered: false }));
+    if (donneesAInserer.structures.length > 0)
+      insertions.push(Structure.insertMany(donneesAInserer.structures, { ordered: false }));
+    if (donneesAInserer.services.length > 0)
+      insertions.push(Service.insertMany(donneesAInserer.services, { ordered: false }));
+
+    await Promise.all(insertions);
+
+    if (donneesAInserer.postes.length > 0)
+      await PosteDeTravail.insertMany(donneesAInserer.postes, { ordered: false });
+
+    // ── 7. Réponse ───────────────────────────────────────────────────────────
+    console.log(`✅ Importation terminée :
+  - Utilisateurs créés      : ${stats.crees}
+  - Utilisateurs mis à jour : ${stats.misAJour}
+  - Ignorés / erreurs       : ${stats.ignores}
+  - Nouvelles régions       : ${donneesAInserer.regions.length}
+  - Nouveaux départements   : ${donneesAInserer.departements.length}
+  - Nouvelles communes      : ${donneesAInserer.communes.length}
+  - Nouveaux grades         : ${donneesAInserer.grades.length}
+  - Nouvelles catégories    : ${donneesAInserer.categories.length}
+  - Nouvelles structures    : ${donneesAInserer.structures.length}
+  - Nouveaux services       : ${donneesAInserer.services.length}
+  - Nouveaux postes         : ${donneesAInserer.postes.length}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Importation Excel terminée avec succès.",
+      stats: {
+        utilisateursCrees: stats.crees,
+        utilisateursMisAJour: stats.misAJour,
+        utilisateursIgnores: stats.ignores,
+        nouvellesRegions: donneesAInserer.regions.length,
+        nouveauxDepartements: donneesAInserer.departements.length,
+        nouvellesCommunes: donneesAInserer.communes.length,
+        nouveauxGrades: donneesAInserer.grades.length,
+        nouvellesCategories: donneesAInserer.categories.length,
+        nouvellesStructures: donneesAInserer.structures.length,
+        nouveauxServices: donneesAInserer.services.length,
+        nouveauxPostes: donneesAInserer.postes.length,
+      },
+      utilisateursNonTraites,
+    });
+  } catch (err) {
+    console.error("❌ Erreur importation Excel :", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Erreur lors de l'importation Excel.",
       error: err.message,
     });
   }

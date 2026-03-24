@@ -164,7 +164,7 @@ export const createThemeFormation = async (req, res) => {
     }
 
     try {
-        const { titreFr, titreEn, dateDebut, dateFin, responsable, formation, publicCible } = req.body;
+        const { titreFr, titreEn, duree, dateDebut, dateFin, responsable, formation, publicCible } = req.body;
 
         // Validate formation & responsable (accepte soit objet {_id} soit string id)
         if (formation) {
@@ -200,6 +200,7 @@ export const createThemeFormation = async (req, res) => {
         const theme = await ThemeFormation.create({
             titreFr,
             titreEn,
+            duree,
             dateDebut,
             dateFin,
             responsable: responsable?._id || responsable || undefined,
@@ -223,13 +224,13 @@ export const createThemeFormation = async (req, res) => {
             .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
 
         // Calcul durée en jours (si fournie)
-        let duree = null;
+        let dureeJour = null;
         if (dateDebut && dateFin) {
             const debut = new Date(dateDebut);
             const fin = new Date(dateFin);
             const diffTime = Math.abs(fin - debut);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            duree = diffDays;
+            dureeJour = diffDays;
         }
 
         const themeAvecDuree = {
@@ -274,6 +275,7 @@ export const updateThemeFormation = async (req, res) => {
         const {
             titreFr,
             titreEn,
+            duree,
             dateDebut,
             dateFin,
             responsable,
@@ -330,6 +332,7 @@ export const updateThemeFormation = async (req, res) => {
         // Mise à jour des champs si fournis
         if (titreFr !== undefined) theme.titreFr = titreFr;
         if (titreEn !== undefined) theme.titreEn = titreEn;
+        if (duree !== undefined) theme.duree = duree;
         if (dateDebut !== undefined) theme.dateDebut = dateDebut;
         if (dateFin !== undefined) theme.dateFin = dateFin;
         if (responsable !== undefined) theme.responsable = responsable?._id || responsable || undefined;
@@ -358,13 +361,13 @@ export const updateThemeFormation = async (req, res) => {
             .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
 
         // Calcul durée
-        let duree = null;
+        let dureeJour = null;
         if (themePopule.dateDebut && themePopule.dateFin) {
             const debut = new Date(themePopule.dateDebut);
             const fin = new Date(themePopule.dateFin);
             const diffTime = Math.abs(fin - debut);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            duree = diffDays;
+            dureeJour = diffDays;
         }
 
         const themeAvecDuree = {
@@ -1035,7 +1038,7 @@ export const getFilteredThemes = async (req, res) => {
 
       const duree = (theme.dateDebut && theme.dateFin)
         ? Math.ceil((new Date(theme.dateFin) - new Date(theme.dateDebut)) / (1000 * 60 * 60 * 24))
-        : null;
+        : theme.duree??null;
 
       return {
         ...theme,
@@ -2111,6 +2114,223 @@ export const getThemesEnCoursParticipant = async (req, res) => {
 };
 
 // Controller: getFormationsUtilisateur
+// export const getFormationsUtilisateur = async (req, res) => {
+//     const lang = req.headers['accept-language'] || 'fr';
+//     const { userId } = req.params;
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+
+//     // Validation de l'ID utilisateur
+//     if (!mongoose.Types.ObjectId.isValid(userId)) {
+//         return res.status(400).json({
+//             success: false,
+//             message: t('identifiant_invalide', lang),
+//         });
+//     }
+
+//     try {
+//         const today = new Date();
+
+//         // Récupérer l'utilisateur
+//         const user = await Utilisateur.findById(userId)
+//             .select('posteDeTravail structure service familleMetier')
+//             .populate('posteDeTravail')
+//             .lean();
+
+//         if (!user) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: t('utilisateur_non_trouve', lang),
+//             });
+//         }
+
+//         // 1. Récupérer les thèmes où l'utilisateur est responsable (en cours ou à venir)
+//         const themesResponsable = await ThemeFormation.find({
+//             responsable: userId,
+//             // dateFin: { $gte: today } // Pas encore terminé
+//         })
+//         .select('_id formation titreFr titreEn dateDebut dateFin')
+//         .populate('formation', 'titreFr titreEn')
+//         .lean();
+
+//         // 2. Récupérer tous les thèmes en cours ou à venir
+//         const themesEnCoursOuAVenir = await ThemeFormation.find({
+//             // dateFin: { $gte: today }
+//         })
+//         .select('_id formation titreFr titreEn dateDebut dateFin publicCible')
+//         .populate('formation', 'titreFr titreEn')
+//         .lean();
+
+//         // 3. Filtrer les thèmes où l'utilisateur est participant
+//         const themesParticipant = [];
+//         for (const theme of themesEnCoursOuAVenir) {
+//             // Ne pas inclure les thèmes où l'utilisateur est déjà responsable
+//             const isResponsable = themesResponsable.some(t => t._id.toString() === theme._id.toString());
+//             if (!isResponsable) {
+//                 const isTargeted = await isUserInPublicCible(theme, user);
+//                 if (isTargeted) {
+//                     themesParticipant.push(theme);
+//                 }
+//             }
+//         }
+
+//         // 4. Combiner et organiser par formation
+//         const formationMap = new Map();
+
+//         // Ajouter les thèmes responsable
+//         for (const theme of themesResponsable) {
+//             const formationId = theme.formation._id.toString();
+//             if (!formationMap.has(formationId)) {
+//                 formationMap.set(formationId, {
+//                     _id: theme.formation._id,
+//                     titreFr: theme.formation.titreFr,
+//                     titreEn: theme.formation.titreEn,
+//                     themes: [],
+//                     role: 'responsable',
+//                     dateDebut: null,
+//                     dateFin: null
+//                 });
+//             }
+//             formationMap.get(formationId).themes.push(theme);
+//         }
+
+//         // Ajouter les thèmes participant
+//         for (const theme of themesParticipant) {
+//             const formationId = theme.formation._id.toString();
+//             if (!formationMap.has(formationId)) {
+//                 formationMap.set(formationId, {
+//                     _id: theme.formation._id,
+//                     titreFr: theme.formation.titreFr,
+//                     titreEn: theme.formation.titreEn,
+//                     themes: [],
+//                     role: 'participant',
+//                     dateDebut: null,
+//                     dateFin: null
+//                 });
+//             }
+//             formationMap.get(formationId).themes.push(theme);
+//         }
+
+//         // 5. Convertir en tableau et calculer dates et progression
+//         const formationsArray = Array.from(formationMap.values());
+
+//         // Récupérer le nombre total de tâches génériques
+//         const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+//         // Récupérer tous les IDs de thèmes
+//         const allThemeIds = [];
+//         formationsArray.forEach(formation => {
+//             formation.themes.forEach(theme => allThemeIds.push(theme._id));
+//         });
+
+//         // Récupérer les tâches exécutées
+//         const tachesExecutees = await TacheThemeFormation.aggregate([
+//             {
+//                 $match: {
+//                     theme: { $in: allThemeIds },
+//                     estExecutee: true
+//                 }
+//             },
+//             {
+//                 $group: {
+//                     _id: '$theme',
+//                     nombreTachesExecutees: { $sum: 1 }
+//                 }
+//             }
+//         ]);
+
+//         const tachesExecuteesParTheme = {};
+//         for (const item of tachesExecutees) {
+//             tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
+//         }
+
+//         // 6. Enrichir chaque formation
+//         const enrichedFormations = formationsArray.map(formation => {
+//             const themes = formation.themes;
+//             const nombreThemes = themes.length;
+
+//             // Calculer dateDebut (la plus ancienne) et dateFin (la plus récente)
+//             if (nombreThemes > 0) {
+//                 const datesDebut = themes.map(t => new Date(t.dateDebut).getTime()).filter(d => !isNaN(d));
+//                 const datesFin = themes.map(t => new Date(t.dateFin).getTime()).filter(d => !isNaN(d));
+
+//                 formation.dateDebut = datesDebut.length > 0 ? new Date(Math.min(...datesDebut)) : null;
+//                 formation.dateFin = datesFin.length > 0 ? new Date(Math.max(...datesFin)) : null;
+//             }
+
+//             // Calculer la progression
+//             const totalTachesAttendu = totalTachesGeneriques * nombreThemes;
+//             let totalTachesExecutees = 0;
+
+//             themes.forEach(theme => {
+//                 const tid = theme._id.toString();
+//                 totalTachesExecutees += (tachesExecuteesParTheme[tid] || 0);
+//             });
+
+//             const progression = totalTachesAttendu > 0
+//                 ? Math.round((totalTachesExecutees / totalTachesAttendu) * 100)
+//                 : 0;
+
+//             // Déterminer l'état
+//             let etat = t('etat_pas_commence', lang);
+//             if (formation.dateDebut) {
+//                 if (today < new Date(formation.dateDebut)) {
+//                     etat = t('etat_pas_commence', lang);
+//                 } else if (today > new Date(formation.dateFin)) {
+//                     etat = t('etat_termine', lang);
+//                 } else {
+//                     etat = t('etat_en_cours', lang);
+//                 }
+//             }
+
+//             return {
+//                 _id: formation._id,
+//                 titreFr: formation.titreFr,
+//                 titreEn: formation.titreEn,
+//                 dateDebut: formation.dateDebut,
+//                 dateFin: formation.dateFin,
+//                 progression,
+//                 role: formation.role,
+//                 etat
+//             };
+//         });
+
+//         // 7. Tri par date de début (plus récent d'abord)
+//         enrichedFormations.sort((a, b) => {
+//             if (!a.dateDebut) return 1;
+//             if (!b.dateDebut) return -1;
+//             return new Date(b.dateDebut) - new Date(a.dateDebut);
+//         });
+
+//         // 8. Pagination
+//         const total = enrichedFormations.length;
+//         const startIndex = (page - 1) * limit;
+//         const endIndex = startIndex + limit;
+//         const paginatedFormations = enrichedFormations.slice(startIndex, endIndex);
+
+//         return res.status(200).json({
+//             success: true,
+//             data: {
+//                 formations: paginatedFormations,
+//                 pagination: {
+//                     totalItems: total,
+//                     currentPage: page,
+//                     totalPages: Math.ceil(total / limit),
+//                     pageSize: limit
+//                 }
+//             }
+//         });
+
+//     } catch (err) {
+//         console.error('Erreur dans getFormationsUtilisateur:', err);
+//         return res.status(500).json({
+//             success: false,
+//             message: t('erreur_serveur', lang),
+//             error: process.env.NODE_ENV === 'development' ? err.message : undefined
+//         });
+//     }
+// };
+
 export const getFormationsUtilisateur = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { userId } = req.params;
@@ -2141,26 +2361,23 @@ export const getFormationsUtilisateur = async (req, res) => {
             });
         }
 
-        // 1. Récupérer les thèmes où l'utilisateur est responsable (en cours ou à venir)
+        // 1. Récupérer TOUS les thèmes où l'utilisateur est responsable (sans filtre de date)
         const themesResponsable = await ThemeFormation.find({
-            responsable: userId,
-            dateFin: { $gte: today } // Pas encore terminé
+            responsable: userId
         })
-        .select('_id formation titreFr titreEn dateDebut dateFin')
+        .select('_id formation titreFr titreEn dateDebut dateFin duree')
         .populate('formation', 'titreFr titreEn')
         .lean();
 
-        // 2. Récupérer tous les thèmes en cours ou à venir
-        const themesEnCoursOuAVenir = await ThemeFormation.find({
-            dateFin: { $gte: today }
-        })
-        .select('_id formation titreFr titreEn dateDebut dateFin publicCible')
+        // 2. Récupérer TOUS les thèmes (sans filtre de date)
+        const tousLesThemes = await ThemeFormation.find({})
+        .select('_id formation titreFr titreEn dateDebut dateFin duree publicCible')
         .populate('formation', 'titreFr titreEn')
         .lean();
 
-        // 3. Filtrer les thèmes où l'utilisateur est participant
+        // 3. Filtrer les thèmes où l'utilisateur est participant (sans filtre de date)
         const themesParticipant = [];
-        for (const theme of themesEnCoursOuAVenir) {
+        for (const theme of tousLesThemes) {
             // Ne pas inclure les thèmes où l'utilisateur est déjà responsable
             const isResponsable = themesResponsable.some(t => t._id.toString() === theme._id.toString());
             if (!isResponsable) {
@@ -2171,50 +2388,41 @@ export const getFormationsUtilisateur = async (req, res) => {
             }
         }
 
-        // 4. Combiner et organiser par formation
+        // 4. Combiner tous les thèmes (responsable + participant)
+        const tousLesThemesUtilisateur = [...themesResponsable, ...themesParticipant];
+
+        // 5. Grouper par formation
         const formationMap = new Map();
 
-        // Ajouter les thèmes responsable
-        for (const theme of themesResponsable) {
+        for (const theme of tousLesThemesUtilisateur) {
             const formationId = theme.formation._id.toString();
+            const role = themesResponsable.some(t => t._id.toString() === theme._id.toString()) 
+                ? 'responsable' 
+                : 'participant';
+
             if (!formationMap.has(formationId)) {
                 formationMap.set(formationId, {
                     _id: theme.formation._id,
-                    titreFr: theme.formation.titreFr,
-                    titreEn: theme.formation.titreEn,
+                    titreFr: theme.titreFr,
+                    titreEn: theme.titreEn,
                     themes: [],
-                    role: 'responsable',
-                    dateDebut: null,
-                    dateFin: null
+                    role: role // Le rôle peut être mixte, on gardera 'responsable' si au moins un thème est responsable
                 });
+            } else {
+                // Si un thème de cette formation est responsable, le rôle de la formation devient responsable
+                const existing = formationMap.get(formationId);
+                if (role === 'responsable') {
+                    existing.role = 'responsable';
+                }
             }
+            
             formationMap.get(formationId).themes.push(theme);
         }
 
-        // Ajouter les thèmes participant
-        for (const theme of themesParticipant) {
-            const formationId = theme.formation._id.toString();
-            if (!formationMap.has(formationId)) {
-                formationMap.set(formationId, {
-                    _id: theme.formation._id,
-                    titreFr: theme.formation.titreFr,
-                    titreEn: theme.formation.titreEn,
-                    themes: [],
-                    role: 'participant',
-                    dateDebut: null,
-                    dateFin: null
-                });
-            }
-            formationMap.get(formationId).themes.push(theme);
-        }
-
-        // 5. Convertir en tableau et calculer dates et progression
+        // 6. Convertir en tableau
         const formationsArray = Array.from(formationMap.values());
 
-        // Récupérer le nombre total de tâches génériques
-        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
-
-        // Récupérer tous les IDs de thèmes
+        // Récupérer tous les IDs de thèmes pour les tâches
         const allThemeIds = [];
         formationsArray.forEach(formation => {
             formation.themes.forEach(theme => allThemeIds.push(theme._id));
@@ -2241,18 +2449,33 @@ export const getFormationsUtilisateur = async (req, res) => {
             tachesExecuteesParTheme[item._id.toString()] = item.nombreTachesExecutees;
         }
 
-        // 6. Enrichir chaque formation
+        // Récupérer le nombre total de tâches génériques
+        const totalTachesGeneriques = await TacheGenerique.countDocuments({ actif: true });
+
+        // 7. Enrichir chaque formation
         const enrichedFormations = formationsArray.map(formation => {
             const themes = formation.themes;
             const nombreThemes = themes.length;
 
             // Calculer dateDebut (la plus ancienne) et dateFin (la plus récente)
-            if (nombreThemes > 0) {
-                const datesDebut = themes.map(t => new Date(t.dateDebut).getTime()).filter(d => !isNaN(d));
-                const datesFin = themes.map(t => new Date(t.dateFin).getTime()).filter(d => !isNaN(d));
+            let dateDebut = null;
+            let dateFin = null;
+            let dureeTotale = 0;
 
-                formation.dateDebut = datesDebut.length > 0 ? new Date(Math.min(...datesDebut)) : null;
-                formation.dateFin = datesFin.length > 0 ? new Date(Math.max(...datesFin)) : null;
+            if (nombreThemes > 0) {
+                const datesDebut = themes.map(t => t.dateDebut ? new Date(t.dateDebut).getTime() : null).filter(d => d !== null);
+                const datesFin = themes.map(t => t.dateFin ? new Date(t.dateFin).getTime() : null).filter(d => d !== null);
+
+                dateDebut = datesDebut.length > 0 ? new Date(Math.min(...datesDebut)) : null;
+                dateFin = datesFin.length > 0 ? new Date(Math.max(...datesFin)) : null;
+                
+                // Calculer la durée totale en jours si les dates sont disponibles
+                if (dateDebut && dateFin) {
+                    dureeTotale = Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24));
+                } else {
+                    // Sinon, additionner les durées des thèmes (en heures)
+                    dureeTotale = themes.reduce((total, theme) => total + (theme.duree || 0), 0);
+                }
             }
 
             // Calculer la progression
@@ -2268,38 +2491,63 @@ export const getFormationsUtilisateur = async (req, res) => {
                 ? Math.round((totalTachesExecutees / totalTachesAttendu) * 100)
                 : 0;
 
-            // Déterminer l'état
+            // Déterminer l'état en fonction des dates disponibles
             let etat = t('etat_pas_commence', lang);
-            if (formation.dateDebut) {
-                if (today < new Date(formation.dateDebut)) {
+            
+            if (dateDebut && dateFin) {
+                if (today < new Date(dateDebut)) {
                     etat = t('etat_pas_commence', lang);
-                } else if (today > new Date(formation.dateFin)) {
+                } else if (today > new Date(dateFin)) {
                     etat = t('etat_termine', lang);
                 } else {
                     etat = t('etat_en_cours', lang);
                 }
+            } else if (dateDebut && !dateFin) {
+                // Seulement une date de début
+                if (today >= new Date(dateDebut)) {
+                    etat = t('etat_en_cours', lang);
+                } else {
+                    etat = t('etat_pas_commence', lang);
+                }
+            } else if (!dateDebut && dateFin) {
+                // Seulement une date de fin
+                if (today <= new Date(dateFin)) {
+                    etat = t('etat_en_cours', lang);
+                } else {
+                    etat = t('etat_termine', lang);
+                }
+            } else {
+                // Pas de dates, considérer comme "non planifié"
+                etat = t('etat_non_planifie', lang);
+            }
+
+            // Si la formation a une progression de 100%, elle est terminée
+            if (progression === 100 && etat !== t('etat_termine', lang)) {
+                etat = t('etat_termine', lang);
             }
 
             return {
                 _id: formation._id,
                 titreFr: formation.titreFr,
                 titreEn: formation.titreEn,
-                dateDebut: formation.dateDebut,
-                dateFin: formation.dateFin,
+                dateDebut: dateDebut,
+                dateFin: dateFin,
+                duree: dureeTotale, // Durée en jours ou heures selon le contexte
                 progression,
                 role: formation.role,
-                etat
+                etat,
+                nombreThemes: nombreThemes // Optionnel: nombre de thèmes dans cette formation
             };
         });
 
-        // 7. Tri par date de début (plus récent d'abord)
+        // 8. Tri par date de début (plus récent d'abord)
         enrichedFormations.sort((a, b) => {
             if (!a.dateDebut) return 1;
             if (!b.dateDebut) return -1;
             return new Date(b.dateDebut) - new Date(a.dateDebut);
         });
 
-        // 8. Pagination
+        // 9. Pagination
         const total = enrichedFormations.length;
         const startIndex = (page - 1) * limit;
         const endIndex = startIndex + limit;

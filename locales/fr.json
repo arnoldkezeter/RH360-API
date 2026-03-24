@@ -262,6 +262,7 @@
 
     "etat_non_entame":"Non entamé",
     "etat_en_cours":"En progression",
+    "etat_non_planifie":"Non planifié",
     "etat_termine":"Terminé",
     "etat_cloture":"Cloturé",
 

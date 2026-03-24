@@ -25,7 +25,7 @@ const themeFormationSchema = new mongoose.Schema({
     titreEn: { type: String, required: true },
 
     publicCible: [familleMetierRestrictionSchema],
-
+    duree: { type: Number },
     dateDebut: { type: Date },
     dateFin: { type: Date },
 
@@ -37,7 +37,7 @@ const themeFormationSchema = new mongoose.Schema({
     responsable: { type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur' },
     supports: [{ type: String }],
     formation: { type: mongoose.Schema.Types.ObjectId, ref: 'Formation' },
-
+   
     nbTachesTotal: { type: Number },
     nbTachesExecutees: { type: Number }
 }, { timestamps: true });

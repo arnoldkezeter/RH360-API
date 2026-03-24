@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import { sendEmail } from '../utils/sendMailNotificationStatutStage.js';
 import NoteService from '../models/NoteService.js';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
+import logger from '../utils/logger.js';
 
 const isValidDateRange = (start, end) => new Date(start) <= new Date(end);
 
@@ -299,11 +300,12 @@ export const createStage = async (req, res) => {
 
   } catch (err) {
     console.log(err)
+    logger.error('Create stage exception:', err);
     await session.abortTransaction();
     session.endSession();
     return res.status(500).json({
         success: false,
-        message: t('erreur_serveur', lang),
+        message: `${t('erreur_serveur', lang)} : ${err.message}`,
         error: err.message,
     });
   }
@@ -736,6 +738,7 @@ export const updateStage = async (req, res) => {
     console.log(err)
     await session.abortTransaction();
     session.endSession();
+    logger.error('Updated stage exception:', err);
     return res.status(500).json({
         success: false,
         message: t('erreur_serveur', lang),
@@ -765,6 +768,7 @@ export const deleteStage = async (req, res) => {
             message: t('supprimer_succes', lang),
         });
     } catch (error) {
+        logger.error('Delete stage exception:', error);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -1122,7 +1126,7 @@ export const changerStatutStage = async (req, res) => {
     } catch (error) {
         // Nettoyage en cas d'erreur
         await cleanupUploadedFile();
-        
+        logger.error('Update statut stage exception:', error);
         if (session.inTransaction()) {
             await session.abortTransaction();
         }
@@ -1570,6 +1574,7 @@ export const calendrierRotations = async (req, res) => {
             calendrier,
         });
     } catch (error) {
+        logger.error('Calendar stage exception:', error);
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),

@@ -24,6 +24,10 @@ import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
 import { capitalizeTitle, formatWithArticle, getArticle } from '../utils/wordHelper.js';
+<<<<<<< HEAD
+=======
+import logger from '../utils/logger.js';
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -224,7 +228,7 @@ export const creerNoteService = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service:', error);
-
+        logger.error('Note exception:', error);
         // Annuler la transaction si erreur
         await session.abortTransaction();
         session.endSession();
@@ -247,9 +251,9 @@ export const creerNoteServiceStage = async (req, res) => {
 
     try {
         const {
-            stage,
             titreFr,
             titreEn,
+            stage,
             copieA,
             creePar,
             designationTuteur,
@@ -289,6 +293,82 @@ export const creerNoteServiceStage = async (req, res) => {
                 message: t('stage_type_invalide', lang)
             });
         }
+       
+        // Récupérer l'établissement correspondant à l'année du stage
+        let etablissementAnnee = null;
+        if (stageData.stagiaire?.parcours && stageData.anneeStage) {
+            // Rechercher d'abord le parcours exact de l'année du stage
+            let parcoursAnnee = stageData.stagiaire.parcours.find(
+                p => p.annee === stageData.anneeStage
+            );
+            
+            // Si pas de parcours pour l'année exacte, chercher le parcours le plus récent AVANT l'année du stage
+            if (!parcoursAnnee) {
+                // Filtrer les parcours dont l'année est inférieure à l'année du stage
+                const parcoursAnterieurs = stageData.stagiaire.parcours.filter(
+                    p => p.annee < stageData.anneeStage
+                );
+                
+                // Trier par année décroissante et prendre le premier (le plus récent)
+                if (parcoursAnterieurs.length > 0) {
+                    parcoursAnterieurs.sort((a, b) => b.annee - a.annee);
+                    parcoursAnnee = parcoursAnterieurs[0];
+                }
+            }
+            
+            if (parcoursAnnee?.etablissement) {
+                etablissementAnnee = {
+                    _id: parcoursAnnee.etablissement._id,
+                    nomFr: parcoursAnnee.etablissement.nomFr,
+                    nomEn: parcoursAnnee.etablissement.nomEn,
+                    filiere: parcoursAnnee.filiere,
+                    option: parcoursAnnee.option,
+                    niveau: parcoursAnnee.niveau,
+                    annee: parcoursAnnee.annee // Ajouter l'année du parcours utilisé
+                };
+            }
+        }
+
+        // Générer les titres automatiquement
+        let titreNoteFr = "Relative à la mise en stage d'un(e) étudiant(e)";
+        let titreNoteEn = "Relating to the internship of a student";
+
+        if (etablissementAnnee) {
+            // Déterminer le genre pour le français
+            const genre = stageData.stagiaire?.genre;
+            const etudiantFr = genre === 'M' ? "un étudiant" : genre === 'F' ? "une étudiante" : "un(e) étudiant(e)";
+            
+            // Obtenir l'article approprié pour l'établissement
+            const articleEtablissement = getArticle(etablissementAnnee.nomFr);
+            
+            // Construire les titres avec l'établissement
+            titreNoteFr = `Relative à la mise en stage d'${etudiantFr} ${articleEtablissement} ${etablissementAnnee.nomFr}`;
+            titreNoteEn = `Relating to the internship of a student from ${etablissementAnnee.nomEn}`;
+        }
+
+        // Générer copieA avec les termes obligatoires
+        const genre = stageData.stagiaire?.genre;
+        const interesse = genre === 'F' ? 'Intéressée' : 'Intéressé';
+        
+        // Ajouter automatiquement les termes obligatoires à copieA
+        let copieAComplete = copieA || '';
+        
+        // Nettoyer copieA des entrées vides et des doublons
+        const copieAArray = copieAComplete
+            .split(';')
+            .map(item => item.trim())
+            .filter(item => item !== '');
+        
+        // Ajouter les termes obligatoires s'ils ne sont pas déjà présents
+        if (!copieAArray.some(item => item.toLowerCase() === interesse.toLowerCase())) {
+            copieAArray.push(interesse);
+        }
+        if (!copieAArray.includes('Archives/Chrono')) {
+            copieAArray.push('Archives/Chrono');
+        }
+        
+        // Reconstruire la chaîne copieA
+        copieAComplete = copieAArray.join(';');
 
         // Récupérer l'affectation finale du stagiaire
         const affectations = await AffectationFinale.find({ 
@@ -309,7 +389,7 @@ export const creerNoteServiceStage = async (req, res) => {
         })
         .lean();
 
-        if (!affectations) {
+        if (!affectations || affectations.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: t('affectation_non_trouvee', lang)
@@ -326,12 +406,12 @@ export const creerNoteServiceStage = async (req, res) => {
 
         if (noteExistante) {
             // Mettre à jour la note existante (sans modifier la référence)
-            if(!noteExistante.reference){
+            if (!noteExistante.reference) {
                 noteExistante.reference = await genererReference();
             }
-            noteExistante.titreFr = titreFr || "ACCEPTATION DE STAGE";
-            noteExistante.titreEn = titreEn || "INTERNSHIP ACCEPTANCE";
-            noteExistante.copieA = copieA;
+            noteExistante.titreFr = titreFr || titreNoteFr;
+            noteExistante.titreEn = titreEn || titreNoteEn;
+            noteExistante.copieA = copieAComplete;
             noteExistante.creePar = creePar;
             noteExistante.designationTuteur = designationTuteur;
             noteExistante.miseEnOeuvre = miseEnOeuvre;
@@ -347,9 +427,9 @@ export const creerNoteServiceStage = async (req, res) => {
                 reference,
                 stage,
                 typeNote: 'acceptation_stage',
-                titreFr: titreFr || "ACCEPTATION DE STAGE",
-                titreEn: titreEn || "INTERNSHIP ACCEPTANCE",
-                copieA,
+                titreFr:titreNoteFr,
+                titreEn:titreNoteEn,
+                copieA: copieAComplete,
                 creePar,
                 designationTuteur,
                 miseEnOeuvre,
@@ -361,12 +441,18 @@ export const creerNoteServiceStage = async (req, res) => {
         
         const createur = await Utilisateur.findById(creePar).lean();
         
+        // Ajouter l'établissement aux données du stage
+        const stageDataAvecEtablissement = {
+            ...stageData,
+            etablissementAnnee
+        };
+        
         // Générer le PDF
         let pdfBuffer;
         if (affectations.length === 1) {
             pdfBuffer = await genererPDFStageIndividuel(
                 nouvelleNote, 
-                stageData, 
+                stageDataAvecEtablissement, 
                 affectations[0], 
                 lang,
                 createur
@@ -374,7 +460,7 @@ export const creerNoteServiceStage = async (req, res) => {
         } else {
             pdfBuffer = await genererPDFStageRotations(
                 nouvelleNote, 
-                stageData, 
+                stageDataAvecEtablissement, 
                 affectations, 
                 lang,
                 createur
@@ -382,7 +468,19 @@ export const creerNoteServiceStage = async (req, res) => {
         }
 
         // Définir le nom du fichier
-        const nomFichier = `note-service-stage-${nouvelleNote.reference.replace(/\//g, '-')}.pdf`;
+        // Générer un nom de fichier plus descriptif
+        const nomStagiaire = `${stageData.stagiaire.prenom}-${stageData.stagiaire.nom}`
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Enlever les accents
+            .replace(/\s+/g, '-'); // Remplacer espaces par tirets
+
+        const annee = stageData.anneeStage || new Date().getFullYear();
+        const reference = nouvelleNote.reference.replace(/\//g, '-');
+        
+        // Format: note-service-stage-[reference]-[nom-prenom]-[annee].pdf
+        // Exemple: note-service-stage-NS-001-2025-MINFI-jean-dupont-2025.pdf
+        const nomFichier = `note-service-stage-${reference}-${nomStagiaire}-${annee}.pdf`;
 
         // Valider la transaction
         await session.commitTransaction();
@@ -391,7 +489,7 @@ export const creerNoteServiceStage = async (req, res) => {
         // Envoyer le PDF
         res.set({
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${nomFichier}"`,
+            'content-disposition': `attachment; filename="${nomFichier}"`,
             'Content-Length': pdfBuffer.length
         });
         
@@ -399,7 +497,7 @@ export const creerNoteServiceStage = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service stage:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -585,7 +683,7 @@ export const creerNoteServiceStageGroupe = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service stage groupe:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -770,6 +868,7 @@ const genererPDFSelonType = async (note, lang, createur) => {
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF:', error);
         throw error;
     }
@@ -948,6 +1047,7 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage individuel:', error);
         throw error;
     }
@@ -1137,6 +1237,7 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage rotations:', error);
         throw error;
     }
@@ -1341,6 +1442,7 @@ const genererPDFStageGroupe = async (note, stageData, rotations, affectations, l
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage groupe:', error);
         throw error;
     }
@@ -1403,7 +1505,7 @@ export const genererPDFNote = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la génération du PDF:', error);
-        
+        logger.error('Note exception:', error);
         if (!res.headersSent) {
             res.status(500).json({
                 success: false,
@@ -1572,7 +1674,7 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de convocation:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -1703,6 +1805,7 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF de convocation:', error);
         throw error;
     }
@@ -1966,7 +2069,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la convocation participants:', error);
-
+        logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
 
@@ -2189,6 +2292,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF de convocation participants:', error);
         throw error;
     }
@@ -2418,7 +2522,7 @@ export const genererFichesPresenceParticipants = async (req, res) => {
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-        
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération des fiches de présence:', error);
 
         return res.status(500).json({
@@ -2578,6 +2682,7 @@ const genererPDFFichesPresence = async (themeData, lieuxAvecParticipants, lang, 
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('!!! ERREUR CRITIQUE lors de la génération du PDF des fiches de présence:', error.message, error.stack);
         throw error;
     }
@@ -2738,7 +2843,7 @@ export const genererFichesPresenceFormateurs = async (req, res) => {
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération des fiches de présence des formateurs:', error);
 
         return res.status(500).json({
@@ -2884,6 +2989,7 @@ const genererPDFFichesPresenceFormateurs = async (
         return pdfBuffer;
 
     } catch (error) {
+        logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF des fiches de présence des formateurs:', error);
         throw error;
     }
@@ -3301,7 +3407,7 @@ export const verifierNoteService = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la vérification de la note:', error);
-        
+        logger.error('Note exception:', error);
         return res.status(500).json({
             success: false,
             authentique: false,
@@ -3940,7 +4046,11 @@ export const creerNoteServiceBudget = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service budget:', error);
+<<<<<<< HEAD
 
+=======
+        logger.error('Note exception:', error);
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
         await session.abortTransaction();
         session.endSession();
 
@@ -4065,6 +4175,10 @@ const genererPDFBudget = async (note, theme, depenses, nomBudget, lang, createur
         return pdfBuffer;
 
     } catch (error) {
+<<<<<<< HEAD
+=======
+        logger.error('Note exception:', error);
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
         console.error('Erreur lors de la génération du PDF budget:', error);
         throw error;
     }
@@ -4344,7 +4458,7 @@ export const afficherVerificationNote = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de l\'affichage de la vérification:', error);
-        
+        logger.error('Note exception:', error);
         return res.status(500).send(`
             <!DOCTYPE html>
             <html lang="fr">
@@ -4391,6 +4505,7 @@ export const validerNoteService = async (req, res) => {
             try {
                 await unlinkAsync(req.file.path);
             } catch (error) {
+                logger.error('Note exception:', error);
                 console.error('Erreur lors de la suppression du fichier uploadé:', error);
             }
         }
@@ -4496,6 +4611,7 @@ export const validerNoteService = async (req, res) => {
 
     } catch (error) {
         await cleanupUploadedFile();
+        logger.error('Note exception:', error);
         console.error('Erreur validerNoteService:', error);
         return res.status(500).json({
             success: false,

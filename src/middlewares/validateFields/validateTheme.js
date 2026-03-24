@@ -5,9 +5,7 @@ export const validateFields = [
     
     body('titreEn').notEmpty().withMessage('Le titre en anglais est requis'),
     
-    body('dateDebut').notEmpty().withMessage('La date de début est requise'),
-    
-    body('dateFin').notEmpty().withMessage('La date de fin est requise'),
-        
+    body('duree').notEmpty().withMessage('La duree est requise'),
+            
     body('formation').notEmpty().withMessage('La formation est obligatoire'),
 ];

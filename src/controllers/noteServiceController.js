@@ -24,7 +24,10 @@ import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
 import { capitalizeTitle, formatWithArticle, getArticle } from '../utils/wordHelper.js';
+<<<<<<< HEAD
+=======
 import logger from '../utils/logger.js';
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -4043,7 +4046,11 @@ export const creerNoteServiceBudget = async (req, res) => {
 
     } catch (error) {
         console.error('Erreur lors de la création de la note de service budget:', error);
+<<<<<<< HEAD
+
+=======
         logger.error('Note exception:', error);
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
         await session.abortTransaction();
         session.endSession();
 
@@ -4168,7 +4175,10 @@ const genererPDFBudget = async (note, theme, depenses, nomBudget, lang, createur
         return pdfBuffer;
 
     } catch (error) {
+<<<<<<< HEAD
+=======
         logger.error('Note exception:', error);
+>>>>>>> 5fa4591ce13f461e82491f5a95429a141910d40a
         console.error('Erreur lors de la génération du PDF budget:', error);
         throw error;
     }

@@ -20,6 +20,7 @@ import { isUserInPublicCible } from '../services/formationService.js';
 import { checkUserTargeting } from './noteServiceController.js';
 import TacheGenerique from '../models/TacheGenerique.js';
 import TacheThemeFormation from '../models/TacheThemeFormation.js';
+import Formation from '../models/Formation.js';
 
 
 const isValidObjectId = (id) => {
@@ -863,11 +864,12 @@ export const getFilteredThemes = async (req, res) => {
   const {
     formation,
     familleMetier,
+    programmeFormation, // ✅ NOUVEAU paramètre
     titre,
     debut,
     fin,
     userId,
-    filterType = 'all', // 'all', 'responsable', 'publicCible'
+    filterType = 'all',
     page = 1,
     limit = 10,
   } = req.query;
@@ -876,7 +878,62 @@ export const getFilteredThemes = async (req, res) => {
   const filters = {};
 
   try {
-    if (formation) {
+    // ✅ CORRECTION : filtre programmeFormation avant filtre formation
+    // car on doit d'abord résoudre les formations du programme
+    if (programmeFormation) {
+      if (!mongoose.Types.ObjectId.isValid(programmeFormation)) {
+        return res.status(400).json({
+          success: false,
+          message: t('identifiant_invalide', lang),
+        });
+      }
+
+      // Récupérer toutes les formations appartenant à ce programme
+      const formations = await Formation.find({ programmeFormation }).select('_id').lean();
+      const formationIds = formations.map(f => f._id);
+
+      if (formationIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            themeFormations: [],
+            totalItems: 0,
+            currentPage: parseInt(page),
+            totalPages: 0,
+            pageSize: parseInt(limit),
+          },
+        });
+      }
+
+      // Si un filtre formation est aussi présent, on fait l'intersection
+      if (formation) {
+        if (!mongoose.Types.ObjectId.isValid(formation)) {
+          return res.status(400).json({
+            success: false,
+            message: t('identifiant_invalide', lang),
+          });
+        }
+        // Garder uniquement si la formation fait partie du programme
+        const formationInProgram = formationIds.some(id => id.toString() === formation);
+        if (!formationInProgram) {
+          return res.status(200).json({
+            success: true,
+            data: {
+              themeFormations: [],
+              totalItems: 0,
+              currentPage: parseInt(page),
+              totalPages: 0,
+              pageSize: parseInt(limit),
+            },
+          });
+        }
+        filters.formation = formation;
+      } else {
+        filters.formation = { $in: formationIds };
+      }
+
+    } else if (formation) {
+      // ✅ Filtre formation seul (sans programme)
       if (!mongoose.Types.ObjectId.isValid(formation)) {
         return res.status(400).json({
           success: false,
@@ -886,7 +943,6 @@ export const getFilteredThemes = async (req, res) => {
       filters.formation = formation;
     }
 
-    // Filtrer par familleMetier dans la structure publicCible
     if (familleMetier) {
       if (!mongoose.Types.ObjectId.isValid(familleMetier)) {
         return res.status(400).json({
@@ -907,7 +963,6 @@ export const getFilteredThemes = async (req, res) => {
       filters.dateFin = { $lte: new Date(fin) };
     }
 
-    // Gestion du filtrage par utilisateur
     if (userId) {
       if (!mongoose.Types.ObjectId.isValid(userId)) {
         return res.status(400).json({
@@ -923,67 +978,68 @@ export const getFilteredThemes = async (req, res) => {
 
       if (!user) {
         return res.status(404).json({
-        success: false,
-        message: t('utilisateur_non_trouve', lang),
+          success: false,
+          message: t('utilisateur_non_trouve', lang),
         });
       }
 
-      // Vérifier si l'utilisateur est admin
       const allRoles = [user.role, ...(user.roles || [])].map(r => r?.toUpperCase()).filter(Boolean);
       const isAdministrator = allRoles.includes('SUPER-ADMIN') || allRoles.includes('ADMIN');
 
-      // Si l'utilisateur n'est pas admin, appliquer les filtres
-      if (!isAdministrator || filterType) {
+      // ✅ CORRECTION : la condition originale `!isAdministrator || filterType` était toujours
+      // vraie car filterType avait la valeur par défaut 'all' (string non vide = truthy).
+      // Un admin avec filterType='all' ne devrait pas avoir de restrictions appliquées.
+      if (!isAdministrator || filterType !== 'all') {
         if (filterType === 'responsable') {
-        // Filtrer par responsabilité
-            filters.responsable = userId;
+          filters.responsable = userId;
 
         } else if (filterType === 'publicCible') {
-            // Filtrer par public cible
-            const allThemes = await ThemeFormation.find(filters).lean();
-            const targetedThemeIds = [];
+          const allThemes = await ThemeFormation.find(filters).lean();
+          const targetedThemeIds = [];
 
-            for (const theme of allThemes) {
-                const isTargeted = await isUserInPublicCible(theme, user);
-                if (isTargeted) {
-                    targetedThemeIds.push(theme._id);
-                }
+          for (const theme of allThemes) {
+            const isTargeted = await isUserInPublicCible(theme, user);
+            if (isTargeted) {
+              targetedThemeIds.push(theme._id);
             }
+          }
 
-            if (targetedThemeIds.length === 0) {
-                return res.status(200).json({
-                    success: true,
-                    data: {
-                        themeFormations: [],
-                        totalItems: 0,
-                        currentPage: parseInt(page),
-                        totalPages: 0,
-                        pageSize: parseInt(limit),
-                    },
-                });
-            }
+          if (targetedThemeIds.length === 0) {
+            return res.status(200).json({
+              success: true,
+              data: {
+                themeFormations: [],
+                totalItems: 0,
+                currentPage: parseInt(page),
+                totalPages: 0,
+                pageSize: parseInt(limit),
+              },
+            });
+          }
 
-            filters._id = { $in: targetedThemeIds };
+          filters._id = { $in: targetedThemeIds };
         }
+        // ✅ filterType === 'all' : aucun filtre utilisateur supplémentaire,
+        // même pour les non-admins (comportement explicite)
       }
     }
 
     const total = await ThemeFormation.countDocuments(filters);
 
     const themes = await ThemeFormation.find(filters)
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .sort({ [sortField]: 1 })
-        .populate({
-            path: 'formation',
-            populate: { path: 'programmeFormation' }
-        })
-        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
-        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
-        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
-        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
-        .populate({ path: 'responsable', options: { strictPopulate: false } })
-        .lean();
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .sort({ [sortField]: 1 })
+      .populate({
+        path: 'formation',
+        populate: { path: 'programmeFormation' }
+      })
+      .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+      .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+      .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+      .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+      .populate({ path: 'responsable', options: { strictPopulate: false } })
+      .lean();
 
     const themeIds = themes.map(t => t._id);
 
@@ -991,10 +1047,10 @@ export const getFilteredThemes = async (req, res) => {
     const budgetIds = budgets.map(b => b._id);
 
     const depenses = await Depense.find({ budget: { $in: budgetIds } })
-       .populate({
-          path: 'taxes',
-          select: 'taux',
-          options:{strictPopulate:false}
+      .populate({
+        path: 'taxes',
+        select: 'taux',
+        options: { strictPopulate: false }
       })
       .lean();
 
@@ -1038,7 +1094,7 @@ export const getFilteredThemes = async (req, res) => {
 
       const duree = (theme.dateDebut && theme.dateFin)
         ? Math.ceil((new Date(theme.dateFin) - new Date(theme.dateDebut)) / (1000 * 60 * 60 * 24))
-        : theme.duree??null;
+        : theme.duree ?? null;
 
       return {
         ...theme,
@@ -1058,6 +1114,7 @@ export const getFilteredThemes = async (req, res) => {
         pageSize: parseInt(limit),
       },
     });
+
   } catch (err) {
     console.error('Erreur dans getFilteredThemes:', err);
     return res.status(500).json({

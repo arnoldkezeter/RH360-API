@@ -51,6 +51,7 @@ import exportDocumentRoutes from './routes/exportRoutes.js';
 import generatePDFRoutes from './routes/generatePDFRoutes.js';
 import noteServiceRoutes from './routes/noteServiceRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+ import tdrRoutes from './routes/tdrRoutes.js';
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -135,7 +136,8 @@ app.use('/api/v1/import-export-data', importDataRoutes);
 app.use('/api/v1/export-document', exportDocumentRoutes);
 app.use('/api/v1/generate-document', generatePDFRoutes)
 app.use('/api/v1/notes-service', noteServiceRoutes);
-app.use('/api/v1/notifications', notificationRoutes)
+app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/tdr', tdrRoutes);
 
 // Route racine
 app.get('/', (req, res) => {

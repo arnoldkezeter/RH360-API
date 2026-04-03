@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="<%= lang || 'fr' %>">
+<head>
+    <meta charset="UTF-8">
+    <title><%= documentTitle %></title>
+    <style>
+        @page {
+            margin: 1.5cm 2cm 2cm 2cm;
+            size: A4;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #000;
+        }
+
+        /* ── EN-TÊTE ── */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .header-center {
+            width: 20%;
+            text-align: center;
+        }
+
+        .header-center img { max-width: 90px; }
+
+        /* ── TITRE PRINCIPAL ── */
+        .doc-title-block {
+            text-align: center;
+            margin: 16px 0 24px 0;
+        }
+
+        .doc-title-block .label-tdr {
+            font-size: 11pt;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            border: 0.5px solid #000;
+            display: inline-block;
+            border-radius: 1px;
+            padding: 4px 20px;
+            margin-bottom: 8px;
+        }
+
+        .doc-title-block .titre-formation {
+            font-size: 13pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 6px;
+        }
+
+        /* ── SECTIONS ── */
+        body { counter-reset: section; }
+
+        .section {
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 11pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            counter-increment: section;
+        }
+
+        .section-title::before {
+            content: counter(section) ". ";
+        }
+
+        /* ── SOUS-TITRES ── */
+        .subsection-title {
+            font-size: 11pt;
+            font-weight: bold;
+            margin: 8px 0 3px 0.5cm;
+        }
+
+        /* ── TEXTE COURANT ── */
+        .text-para {
+            font-size: 11pt;
+            line-height: 1.6;
+            text-align: justify;
+            text-indent: 1cm;
+            margin-bottom: 4px;
+        }
+
+        .text-intro {
+            font-size: 11pt;
+            line-height: 1.6;
+            text-indent: 1cm;
+            margin-bottom: 3px;
+        }
+
+        /* ── LISTES À TIRETS ── */
+        .liste-tirets {
+            margin: 3px 0 5px 0;
+            padding-left: 2cm;
+            font-size: 11pt;
+            line-height: 1.6;
+        }
+
+        .liste-tirets > li {
+            padding-left: 1.2em;
+            text-indent: -1.2em;
+            margin-bottom: 2px;
+        }
+
+        .liste-tirets > li > ul {
+            /* list-style: none; */
+            padding: 0;
+            margin: 2px 0 2px 1.5em;
+        }
+        .liste-tirets > li > ul > li {
+            padding-left: 1.2em;
+            text-indent: -1.2em;
+            margin-bottom: 2px;
+            font-size: 11pt;
+            line-height: 1.5;
+        }
+        /* .liste-tirets > li > ul > li::before { content: "- "; } */
+
+        .liste-tirets > li > ul > li > ul {
+            /* list-style: none; */
+            padding: 0;
+            margin: 2px 0 2px 1.5em;
+        }
+        .liste-tirets > li > ul > li > ul > li {
+            padding-left: 1.2em;
+            text-indent: -1.2em;
+            margin-bottom: 2px;
+            font-size: 11pt;
+            line-height: 1.5;
+        }
+        /* .liste-tirets > li > ul > li > ul > li::before { content: "- "; } */
+
+        /* ── LISTE NUMÉROTÉE (modules section 3) ── */
+        .liste-num {
+            list-style: none;
+            margin: 3px 0 5px 0;
+            padding: 0;
+            font-size: 11pt;
+            line-height: 1.6;
+            counter-reset: module-counter;
+        }
+        .liste-num > li {
+            counter-increment: module-counter;
+            padding-left: 2.2em;
+            text-indent: -2.2em;
+            margin-bottom: 2px;
+        }
+        .liste-num > li::before {
+            content: counter(module-counter) ") ";
+        }
+
+        /* ── BUDGET ── */
+        .budget-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-top: 8px;
+        }
+        .budget-table th {
+            color: black;
+            padding: 8px 4px;
+            text-align: center;
+            font-weight: bold;
+            border: 0.1px solid #000;
+            font-size: 10px;
+            vertical-align: middle;
+        }
+        .budget-table td {
+            padding: 6px 4px;
+            border: 0.1px solid #000;
+            text-align: left;
+            vertical-align: middle;
+            font-size: 10px;
+        }
+        .budget-table td.number  { text-align: right; }
+        .budget-table td.center  { text-align: center; }
+        .budget-table tbody tr:nth-child(even) { background-color: #f9f9f9; }
+
+        .type-header {
+            background-color: #c1c1c2 !important;
+            color: black !important;
+            font-weight: bold;
+            text-align: center !important;
+            padding: 8px 4px !important;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        .subtotal-row { background-color: #e8f4f8 !important; font-weight: bold; }
+        .subtotal-row td { padding: 6px 4px !important; }
+        .total-row { background-color: #d4e6f1 !important; font-weight: bold; }
+        .total-row td { padding: 8px 4px !important; }
+        .currency { white-space: nowrap; }
+
+        /* ── QR CODE ── */
+        .verification-block {
+            margin-top: 18px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .qr-container { text-align: center; width: 110px; flex-shrink: 0; }
+        .qr-container img { width: 80px; height: 80px; }
+        .qr-container .ref-sys { font-size: 5pt; font-weight: bold; margin-top: 4px; word-break: break-all; }
+        .qr-container .verif-text { font-size: 5.5pt; color: #555; margin-top: 2px; }
+
+        /* ── UTILITAIRES ── */
+        .bold  { font-weight: bold; }
+        .blank { color: #888; font-style: italic; }
+
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            table { page-break-inside: auto; }
+            tr    { page-break-inside: avoid; page-break-after: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════
+     EN-TÊTE OFFICIEL
+════════════════════════════════ -->
+<div class="header">
+    <div class="header-left">
+        REPUBLIQUE DU CAMEROUN<br>
+        Paix - Travail - Patrie<br>
+        ----------------------<br>
+        MINISTERE DES FINANCES<br>
+        ----------------------<br>
+        DIRECTION GENERALE DES IMPOTS<br>
+        ----------------------<br>
+        DIRECTION DES AFFAIRES GENERALES<br>
+        ----------------------<br>
+        CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+        ----------------------
+    </div>
+
+    <div class="header-center">
+        <% if (logoUrl) { %>
+            <img src="<%= logoUrl %>" alt="Armoiries">
+        <% } %>
+    </div>
+
+    <div class="header-right">
+        REPUBLIC OF CAMEROON<br>
+        Peace - Work - Fatherland<br>
+        ----------------------<br>
+        MINISTRY OF FINANCE<br>
+        ----------------------<br>
+        DIRECTORATE GENERAL OF TAXATION<br>
+        ----------------------<br>
+        DEPARTMENT OF GENERAL AFFAIRS<br>
+        ----------------------<br>
+        TRAINING AND SKILLS PERFECTION UNIT<br>
+        ----------------------
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     TITRE PRINCIPAL
+════════════════════════════════ -->
+<div class="doc-title-block">
+    <div class="label-tdr">Termes de Référence</div>
+    <div class="titre-formation"><%= lang === 'en' ? titreEn : titreFr %></div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 1 — CONTEXTE ET JUSTIFICATION
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Contexte et justification institutionnelle</div>
+    <div class="section-body">
+        <% if (contexte && contexte.trim()) { %>
+            <% contexte.split('\n').forEach(function(para) { %>
+                <% if (para.trim()) { %><p class="text-para"><%= para.trim() %></p><% } %>
+            <% }); %>
+        <% } else { %>
+            <p class="text-para blank">[ Contexte et justification à compléter ]</p>
+        <% } %>
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 2 — OBJECTIFS
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Objectifs de la formation</div>
+    <div class="section-body">
+
+        <div class="subsection-title">2.1 Objectif général</div>
+        <% if (objectifGeneral && objectifGeneral.trim()) { %>
+            <p class="text-para"><%= objectifGeneral %></p>
+        <% } else { %>
+            <p class="text-para blank">[ Objectif général à compléter ]</p>
+        <% } %>
+
+        <div class="subsection-title">2.2 Objectifs spécifiques</div>
+        <% if (objectifsSpecifiques && objectifsSpecifiques.length > 0) { %>
+            <p class="text-intro">De manière spécifique, la formation vise à permettre aux participants de :</p>
+            <ul class="liste-tirets">
+                <% objectifsSpecifiques.forEach(function(obj) { %>
+                    <li><%= lang === 'en' ? obj.nomEn : obj.nomFr %> ;</li>
+                <% }); %>
+            </ul>
+        <% } else { %>
+            <p class="text-para blank">[ Objectifs spécifiques à compléter ]</p>
+        <% } %>
+
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 3 — CONTENU DÉTAILLÉ
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Contenu détaillé de la formation</div>
+    <div class="section-body">
+        <% if (modules && modules.length > 0) { %>
+            <p class="text-intro">La formation portera sur les modules suivants :</p>
+            <ul class="liste-num">
+                <% modules.forEach(function(module) { %>
+                    <li><%= module %> ;</li>
+                <% }); %>
+            </ul>
+        <% } else { %>
+            <p class="text-para blank">[ Modules et contenu à compléter ]</p>
+        <% } %>
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 4 — ORGANISATION PRATIQUE
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Organisation pratique de la formation</div>
+    <div class="section-body">
+
+        <!-- 4.1 Période(s) et lieu(x) -->
+        <div class="subsection-title">4.1 Période(s) et lieu(x)</div>
+        <%
+            var lieuxAvecDates = (lieux || []).filter(function(l){ return l.dateDebut && l.dateFin; });
+            var afficherParLieu = lieuxAvecDates.length > 1;
+        %>
+        <ul class="liste-tirets">
+            <% if (afficherParLieu) { %>
+                <%
+                    lieux.forEach(function(l) {
+                        var deb = new Date(l.dateDebut).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'});
+                        var fin = new Date(l.dateFin).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'});
+                %>
+                    <li><strong><%= l.lieu %></strong> : du <strong><%= deb %></strong> au <strong><%= fin %></strong></li>
+                <% }); %>
+                <% if (duree) { %>
+                    <li><strong>Durée totale :</strong> <%= duree %> heures</li>
+                <% } %>
+            <% } else { %>
+                <%
+                    /* Cas simple : une seule période/lieu */
+                %>
+                <li><strong>Période :</strong> du <strong><%= dateDebut %></strong> au <strong><%= dateFin %></strong></li>
+                <li><strong>Lieu :</strong> <%= lieu %></li>
+                <% if (duree) { %>
+                    <li><strong>Durée totale :</strong> <%= duree %> heures</li>
+                <% } %>
+            <% } %>
+        </ul>
+
+        <!-- 4.2 Effectifs et groupes -->
+        <div class="subsection-title">4.2 Effectifs et groupes</div>
+        <% if (organisationGroupes && organisationGroupes.trim()) { %>
+            <ul class="liste-tirets">
+                <% organisationGroupes.split('\n').filter(function(l){ return l.trim(); }).forEach(function(ligne) { %>
+                    <li><%= ligne.trim().replace(/^[-•]\s*/, '') %></li>
+                <% }); %>
+            </ul>
+        <% } else { %>
+            <ul class="liste-tirets">
+                <li>Nombre total de participants estimé : <strong><%= nombreParticipants %></strong></li>
+            </ul>
+        <% } %>
+
+        <!-- 4.3 Méthodologie -->
+        <div class="subsection-title">4.3 Méthodologie pédagogique</div>
+        <% if (methodologie && methodologie.trim()) { %>
+            <% methodologie.split('\n').forEach(function(para) { %>
+                <% if (para.trim()) { %><p class="text-para"><%= para.trim() %></p><% } %>
+            <% }); %>
+        <% } else { %>
+            <p class="text-para blank">[ Méthodologie pédagogique à compléter ]</p>
+        <% } %>
+
+        <!-- 4.4 Découpage horaire -->
+        <%
+            function parseLignesDecoupage(lignes) {
+                var blocs = [];
+                var currentHoraire = null;
+                var currentPeriode = null;
+
+                lignes.forEach(function(ligne) {
+                    ligne = ligne.trim();
+                    if (!ligne) return;
+                    var upper = ligne.toUpperCase();
+
+                    if (upper.startsWith('HORAIRE:')) {
+                        currentHoraire = {
+                            type: 'horaire',
+                            texte: ligne.replace(/^horaire:/i, '').trim(),
+                            periodes: []
+                        };
+                        currentPeriode = null;
+                        blocs.push(currentHoraire);
+
+                    } else if (upper.startsWith('PERIODE:') || upper.startsWith('PÉRIODE:')) {
+                        var texte = ligne.replace(/^p[eé]riode:/i, '').trim();
+                        currentPeriode = { type: 'periode', texte: texte, items: [] };
+                        if (currentHoraire) currentHoraire.periodes.push(currentPeriode);
+                        else blocs.push(currentPeriode);
+
+                    } else if (upper.startsWith('MODULE:')) {
+                        var texteModule = ligne.replace(/^module:/i, '').trim();
+                        var item = { type: 'module', texte: texteModule };
+                        if (currentPeriode) currentPeriode.items.push(item);
+                        else if (currentHoraire) currentHoraire.periodes.push({ type: 'module_orphelin', texte: texteModule, items: [] });
+                        else blocs.push({ type: 'module_orphelin', texte: texteModule, items: [] });
+
+                    } else if (upper.startsWith('ACTIVITE:')) {
+                        var texteActivite = ligne.replace(/^activite:/i, '').trim();
+                        var itemActivite = { type: 'activite', texte: texteActivite };
+                        if (currentPeriode) currentPeriode.items.push(itemActivite);
+                        else if (currentHoraire) currentHoraire.periodes.push({ type: 'activite_orpheline', texte: texteActivite, items: [] });
+                        else blocs.push({ type: 'activite_orpheline', texte: texteActivite, items: [] });
+
+                    } else if (upper.startsWith('PAUSE:')) {
+                        var textePause = ligne.replace(/^pause:/i, '').trim();
+                        var pauseBloc = { type: 'pause', texte: textePause, items: [] };
+                        currentPeriode = null;
+                        if (currentHoraire) currentHoraire.periodes.push(pauseBloc);
+                        else blocs.push(pauseBloc);
+
+                    } else {
+                        blocs.push({ type: 'libre', texte: ligne.replace(/^[-•]\s*/, '') });
+                    }
+                });
+
+                return blocs;
+            }
+
+            var texteNormalise = decoupageHoraire
+                ? decoupageHoraire
+                    .replace(/\\n/g, '\n')   // transforme "\n" texte en vrai retour ligne
+                    .replace(/\r\n/g, '\n')  // compat Windows
+                : '';
+
+            var lignesDecoupage = texteNormalise ? texteNormalise.split('\n') : [];
+            var blocsDecoupage  = parseLignesDecoupage(lignesDecoupage);
+            var aDecoupage      = blocsDecoupage.length > 0;
+        %>
+
+        <% if (aDecoupage) { %>
+        <div class="subsection-title">4.4 Découpage pédagogique journalier proposé</div>
+        <ul class="liste-tirets">
+            <% for (var i = 0; i < blocsDecoupage.length; i++) { 
+                var bloc = blocsDecoupage[i];
+            %>
+                <% if (bloc.type === 'horaire') { %>
+                    <li style="list-style: none">
+                        <strong>Horaires : <%= bloc.texte %></strong>
+                        <% if (bloc.periodes && bloc.periodes.length > 0) { %>
+                        <ul>
+                            <% for (var j = 0; j < bloc.periodes.length; j++) { 
+                                var periode = bloc.periodes[j];
+                            %>
+                                <% if (periode.type === 'pause') { %>
+                                    <li>☕ <strong><%= periode.texte %></strong></li>
+
+                                <% } else if (periode.type === 'periode') { %>
+                                    <li>
+                                        <strong><%= periode.texte %></strong>
+                                        <% if (periode.items && periode.items.length > 0) { %>
+                                        <ul style="padding:0; margin:2px 0 2px 1.5em;">
+                                            <% for (var k = 0; k < periode.items.length; k++) { 
+                                                var item = periode.items[k];
+                                            %>
+                                                <% if (item.type === 'activite') { %>
+                                                    <li style="padding-left:1.4em; text-indent:-1.4em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                                        <span style="font-weight:bold; margin-right:4px;"></span><%= item.texte %>
+                                                    </li>
+                                                <% } else { %>
+                                                    <li style="padding-left:1.2em; text-indent:-1.2em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                                        <%= item.texte %>
+                                                    </li>
+                                                <% } %>
+                                            <% } %>
+                                        </ul>
+                                        <% } %>
+                                    </li>
+
+                                <% } else if (periode.type === 'module_orphelin') { %>
+                                    <li>– <%= periode.texte %></li>
+
+                                <% } else if (periode.type === 'activite_orpheline') { %>
+                                    <li><span style="font-weight:bold;">→/span> <%= periode.texte %></li>
+
+                                <% } else { %>
+                                    <li><%= periode.texte %></li>
+                                <% } %>
+                            <% } %>
+                        </ul>
+                        <% } %>
+                    </li>
+
+                <% } else if (bloc.type === 'periode') { %>
+                    <li>
+                        <strong><%= bloc.texte %></strong>
+                        <% if (bloc.items && bloc.items.length > 0) { %>
+                        <ul style="padding:0; margin:2px 0 2px 1.5em;">
+                            <% for (var k = 0; k < bloc.items.length; k++) { 
+                                var item = bloc.items[k];
+                            %>
+                                <% if (item.type === 'activite') { %>
+                                    <li style="padding-left:1.4em; text-indent:-1.4em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                        <span style="font-weight:bold; margin-right:4px;"></span><%= item.texte %>
+                                    </li>
+                                <% } else { %>
+                                    <li style="padding-left:1.2em; text-indent:-1.2em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                        <%= item.texte %>
+                                    </li>
+                                <% } %>
+                            <% } %>
+                        </ul>
+                        <% } %>
+                    </li>
+
+                <% } else if (bloc.type === 'pause') { %>
+                    <li>☕ <strong><%= bloc.texte %></strong></li>
+
+                <% } else if (bloc.type === 'libre') { %>
+                    <li><%= bloc.texte %></li>
+
+                <% } else if (bloc.type === 'module_orphelin') { %>
+                    <li><%= bloc.texte %></li>
+
+                <% } else if (bloc.type === 'activite_orpheline') { %>
+                    <li><span style="font-weight:bold;"></span> <%= bloc.texte %></li>
+
+                <% } %>
+            <% } %>
+        </ul>
+        <% } %>
+
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 5 — RESPONSABILITÉS
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Responsabilités des parties</div>
+    <div class="section-body">
+
+        <div class="subsection-title">5.1 Responsabilités de la Direction Générale des Impôts</div>
+        <% if (responsabilitesDGI && responsabilitesDGI.trim()) { %>
+            <p class="text-intro">La DGI est chargée de :</p>
+            <ul class="liste-tirets">
+                <% var lignesRespDGI = responsabilitesDGI.split('\n').filter(function(l){ return l.trim(); }); %>
+                <% for (var i = 0; i < lignesRespDGI.length; i++) { %>
+                    <li><%= lignesRespDGI[i].trim().replace(/^[-•]\s*/, '') %> ;</li>
+                <% } %>
+            </ul>
+        <% } else { %>
+            <p class="text-para blank">[ Responsabilités DGI à compléter ]</p>
+        <% } %>
+
+        <div class="subsection-title">5.2 Responsabilités de <%= nomPartieExterne %></div>
+        <% if (responsabilitesPartieExterne && responsabilitesPartieExterne.trim()) { %>
+            <p class="text-intro"><%= nomPartieExterne %> est chargé(e) de :</p>
+            <ul class="liste-tirets">
+                <% var lignesRespExterne = responsabilitesPartieExterne.split('\n').filter(function(l){ return l.trim(); }); %>
+                <% for (var i = 0; i < lignesRespExterne.length; i++) { %>
+                    <li><%= lignesRespExterne[i].trim().replace(/^[-•]\s*/, '') %> ;</li>
+                <% } %>
+            </ul>
+        <% } else { %>
+            <p class="text-para blank">[ Responsabilités de la partie externe à compléter ]</p>
+        <% } %>
+
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 6 — RÉSULTATS ATTENDUS
+════════════════════════════════ -->
+<div class="section">
+    <div class="section-title">Résultats attendus</div>
+    <div class="section-body">
+        <% if (resultatsAttendus && resultatsAttendus.trim()) { %>
+            <p class="text-intro">À l'issue de la formation, il est attendu que :</p>
+            <ul class="liste-tirets">
+                <% var lignesResultats = resultatsAttendus.split('\n').filter(function(l){ return l.trim(); }); %>
+                <% for (var i = 0; i < lignesResultats.length; i++) { %>
+                    <li><%= lignesResultats[i].trim().replace(/^[-•]\s*/, '') %> ;</li>
+                <% } %>
+            </ul>
+        <% } else { %>
+            <p class="text-para blank">[ Résultats attendus à compléter ]</p>
+        <% } %>
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     SECTION 7 — BUDGET PRÉVISIONNEL
+════════════════════════════════ -->
+<div class="section" style="page-break-before: always;">
+    <div class="section-title">Budget prévisionnel</div>
+    <div class="section-body">
+
+    <% if (budget && budget.lignes && budget.lignes.length > 0) { %>
+
+        <%
+            var depensesParType = {
+                'ACQUISITION_BIENS_SERVICES': [],
+                'FRAIS_ADMINISTRATIF': []
+            };
+
+            for (var i = 0; i < budget.lignes.length; i++) {
+                var ligne = budget.lignes[i];
+                var cle = (ligne.type || '').trim().toUpperCase().replace(/[\s-]+/g,'_');
+                if (depensesParType[cle] !== undefined) {
+                    depensesParType[cle].push(ligne);
+                } else {
+                    depensesParType['ACQUISITION_BIENS_SERVICES'].push(ligne);
+                }
+            }
+
+            var totalGeneralHT    = 0;
+            var totalGeneralTaxes = 0;
+            var totalGeneralTTC   = 0;
+        %>
+
+        <table class="budget-table">
+            <thead>
+                <tr>
+                    <th style="width:24%;">NATURE DE LA DÉPENSE</th>
+                    <th style="width:6%;">QTÉ</th>
+                    <th style="width:11%;">MONTANT UNIT. HT</th>
+                    <th style="width:11%;">MONTANT TOTAL HT</th>
+                    <th style="width:10%;">NATURE DE LA TAXE</th>
+                    <th style="width:6%;">TAUX</th>
+                    <th style="width:10%;">MONTANT TAXE</th>
+                    <th style="width:11%;">MONTANT TTC</th>
+                    <th style="width:11%;">NAP</th>
+                </tr>
+            </thead>
+            <tbody>
+
+            <%
+                function afficherGroupe(groupe, labelGroupe) {
+                    if (!groupe || groupe.length === 0) return;
+                    var sHT   = 0;
+                    var sTaxe = 0;
+                    var sTTC  = 0;
+            %>
+                <tr><td colspan="9" class="type-header"><%= labelGroupe %></td></tr>
+            <%
+                    for (var i = 0; i < groupe.length; i++) {
+                        var dep = groupe[i];
+                        var qte       = dep.quantite       || 1;
+                        var puHT      = dep.prixUnitaireHT || 0;
+                        var montantHT = puHT * qte;
+
+                        var taxes = dep.taxes || [];
+
+                        if (taxes.length === 0) {
+                            var taux       = dep.tauxTaxes || 0;
+                            var montantTaxe = montantHT * taux / 100;
+                            var montantTTC  = montantHT + montantTaxe;
+                            var nap         = montantTTC;
+
+                            sHT   += montantHT;
+                            sTaxe += montantTaxe;
+                            sTTC  += montantTTC;
+            %>
+                    <tr>
+                        <td><%= dep.nature %></td>
+                        <td class="center"><%= qte %></td>
+                        <td class="number currency"><%= puHT.toLocaleString('fr-FR') %></td>
+                        <td class="number currency"><%= montantHT.toLocaleString('fr-FR') %></td>
+                        <td class="center">-</td>
+                        <td class="center"><%= taux > 0 ? taux + '%' : '-' %></td>
+                        <td class="number currency"><%= montantTaxe > 0 ? montantTaxe.toLocaleString('fr-FR') : '0' %></td>
+                        <td class="number currency"><%= montantTTC.toLocaleString('fr-FR') %></td>
+                        <td class="number currency"><%= nap.toLocaleString('fr-FR') %></td>
+                    </tr>
+            <%
+                        } else {
+                            var nbTaxes          = taxes.length;
+                            var totalMontantTaxes = 0;
+
+                            for (var j = 0; j < taxes.length; j++) {
+                                var taxe = taxes[j];
+                                var tauxDecimal  = (taxe.taux || 0) / 100;
+                                var montantTaxe  = montantHT * tauxDecimal;
+                                totalMontantTaxes += montantTaxe;
+
+                                if (j === 0) {
+                                    var montantTTC = montantHT + totalMontantTaxes;
+                                    var nap        = montantTTC;
+
+                                    sHT   += montantHT;
+                                    sTaxe += montantTaxe;
+                                    sTTC  += montantTTC;
+            %>
+                    <tr>
+                        <td rowspan="<%= nbTaxes %>"><%= dep.nature %></td>
+                        <td rowspan="<%= nbTaxes %>" class="center"><%= qte %></td>
+                        <td rowspan="<%= nbTaxes %>" class="number currency"><%= puHT.toLocaleString('fr-FR') %></td>
+                        <td rowspan="<%= nbTaxes %>" class="number currency"><%= montantHT.toLocaleString('fr-FR') %></td>
+                        <td class="center"><%= taxe.natureFr || taxe.natureEn || '-' %></td>
+                        <td class="center"><%= taxe.taux %>%</td>
+                        <td class="number currency"><%= montantTaxe.toLocaleString('fr-FR') %></td>
+                        <td rowspan="<%= nbTaxes %>" class="number currency"><%= montantTTC.toLocaleString('fr-FR') %></td>
+                        <td rowspan="<%= nbTaxes %>" class="number currency"><%= nap.toLocaleString('fr-FR') %></td>
+                    </tr>
+            <%
+                                } else {
+                                    sTaxe += montantTaxe;
+            %>
+                    <tr>
+                        <td class="center"><%= taxe.natureFr || taxe.natureEn || '-' %></td>
+                        <td class="center"><%= taxe.taux %>%</td>
+                        <td class="number currency"><%= montantTaxe.toLocaleString('fr-FR') %></td>
+                    </tr>
+            <%
+                                }
+                            }
+                        }
+                    }
+
+                    totalGeneralHT    += sHT;
+                    totalGeneralTaxes += sTaxe;
+                    totalGeneralTTC   += sTTC;
+            %>
+                <tr class="subtotal-row">
+                    <td colspan="3">Sous-total</td>
+                    <td class="number currency"><%= sHT.toLocaleString('fr-FR') %></td>
+                    <td colspan="2"></td>
+                    <td class="number currency"><%= sTaxe.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= sTTC.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= sTTC.toLocaleString('fr-FR') %></td>
+                </tr>
+            <%
+                }
+
+                afficherGroupe(depensesParType['ACQUISITION_BIENS_SERVICES'], 'ACQUISITION DE BIENS ET SERVICES');
+                afficherGroupe(depensesParType['FRAIS_ADMINISTRATIF'], 'FRAIS ADMINISTRATIFS');
+            %>
+                <tr class="total-row">
+                    <td colspan="3">Total général</td>
+                    <td class="number currency"><%= totalGeneralHT.toLocaleString('fr-FR') %></td>
+                    <td colspan="2"></td>
+                    <td class="number currency"><%= totalGeneralTaxes.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= totalGeneralTTC.toLocaleString('fr-FR') %></td>
+                    <td class="number currency"><%= totalGeneralTTC.toLocaleString('fr-FR') %></td>
+                </tr>
+
+            </tbody>
+        </table>
+        <p style="font-size:9pt; margin-top:5px; font-style:italic; color:#444;">
+            * Montants exprimés en Francs CFA (FCFA). Budget prévisionnel — les montants réels peuvent varier.
+        </p>
+
+    <% } else { %>
+        <p class="text-para blank">
+            [ Budget non encore défini — aucune dépense enregistrée pour cette formation ]
+        </p>
+    <% } %>
+
+    </div>
+</div>
+
+<!-- ════════════════════════════════
+     QR CODE
+════════════════════════════════ -->
+<div class="verification-block">
+    <div class="qr-container">
+        <img src="<%= qrCodeUrl %>" alt="QR Code vérification">
+        <div class="ref-sys">Réf. : <%= referenceSysteme %></div>
+        <div class="verif-text">Scanner pour vérifier l'authenticité</div>
+    </div>
+</div>
+
+</body>
+</html>

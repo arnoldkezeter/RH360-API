@@ -1312,7 +1312,7 @@ export const importerPersonnelExcel = async (req, res) => {
           // ── CRÉATION : nouvel utilisateur
           caches.emailsUtilises.add(email);
 
-          const hashedPassword = await bcrypt.hash(PASSWORD_PAR_DEFAUT, 10);
+          const hashedPassword = await bcrypt.hash(passwordParDefaut, 10);
 
           const nouvelUtilisateur = {
             matricule: matricule || `MAT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,

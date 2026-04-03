@@ -6,7 +6,7 @@ const noteServiceSchema = new mongoose.Schema({
     theme: {type: mongoose.Schema.Types.ObjectId, ref: 'ThemeFormation'},
     stage: {type: mongoose.Schema.Types.ObjectId, ref: 'Stage'},
     mandat: {type: mongoose.Schema.Types.ObjectId, ref: 'StageRecherche'},
-    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat", "fiche_presence", "budget_formation"]},
+    typeNote: {type:String, enum:["convocation", "acceptation_stage", "mandat", "fiche_presence", "budget_formation", "tdr_formation"]},
     sousTypeNote: {type: String},
     titreFr:{type:String},
     titreEn:{type:String},
@@ -20,8 +20,20 @@ const noteServiceSchema = new mongoose.Schema({
     fichierJoint :  {type:String},// note signée scannée
     creePar:{type: mongoose.Schema.Types.ObjectId, ref: 'Utilisateur'},
     valideParDG: {type:Boolean},
-    filePath:{type:String}
-}, { timestamps: true });
+    filePath:{type:String},
 
+    // Champs TDR
+    objectifGeneral:            { type: String },
+    contexte:                   { type: String },
+    modules:                    [{ type: String }],
+    responsabilitesDGI:         { type: String },
+    responsabilitesPartieExterne:{ type: String },
+    nomPartieExterne:           { type: String },
+    resultatsAttendus:          { type: String },
+    methodologie:               { type: String },
+    decoupageHoraire:           { type: String },
+    organisationGroupes:        { type: String },
+
+}, { timestamps: true });
 const NoteService = mongoose.model('NoteService', noteServiceSchema);
 export default NoteService;

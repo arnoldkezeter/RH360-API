@@ -170,6 +170,18 @@ export const deleteProgrammeFormation = async (req, res) => {
             });
         }
 
+        // 🔹 Vérifier s'il est utilisé dans une formation
+        const formationLiee = await Formation.findOne({
+            axeStrategique: id, // ⚠️ adapte si c'est un tableau : { $in: [id] }
+        });
+
+        if (formationLiee) {
+            return res.status(400).json({
+                success: false,
+                message: t('programme_lie_formation', lang),
+            });
+        }
+
         await ProgrammeFormation.deleteOne({ _id: id });
 
         return res.status(200).json({

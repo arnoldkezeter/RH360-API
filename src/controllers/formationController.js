@@ -250,6 +250,18 @@ export const deleteFormation = async (req, res) => {
             });
         }
 
+        // 🔹 Vérifier s'il est utilisé dans un thème de formation
+        const themeLiee = await ThemeFormation.findOne({
+            formation: id, // ⚠️ adapte si c'est un tableau : { $in: [id] }
+        });
+
+        if (themeLiee) {
+            return res.status(400).json({
+                success: false,
+                message: t('formation_liee_theme_formation', lang),
+            });
+        }
+
         await Formation.deleteOne({ _id: id });
 
         return res.status(200).json({

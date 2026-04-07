@@ -180,13 +180,13 @@
             padding: 8px 4px;
             text-align: center;
             font-weight: bold;
-            border: 0.1px solid #000;
+            border: 0.5px solid #000;
             font-size: 10px;
             vertical-align: middle;
         }
         .budget-table td {
             padding: 6px 4px;
-            border: 0.1px solid #000;
+            border: 0.5px solid #000;
             text-align: left;
             vertical-align: middle;
             font-size: 10px;
@@ -336,9 +336,9 @@
         <% if (modules && modules.length > 0) { %>
             <p class="text-intro">La formation portera sur les modules suivants :</p>
             <ul class="liste-num">
-                <% modules.forEach(function(module) { %>
-                    <li><%= module %> ;</li>
-                <% }); %>
+                <% for (var i = 0; i < modules.length; i++) { %>
+                    <li>Module <%= i+1 %> : <%= modules[i] %> ;</li>
+                <% } %>
             </ul>
         <% } else { %>
             <p class="text-para blank">[ Modules et contenu à compléter ]</p>
@@ -410,161 +410,109 @@
         <!-- 4.4 Découpage horaire -->
         <%
             function parseLignesDecoupage(lignes) {
-                var blocs = [];
-                var currentHoraire = null;
-                var currentPeriode = null;
+                var jours  = [];
+                var curJour  = null;
+                var curPlage = null;
 
                 lignes.forEach(function(ligne) {
                     ligne = ligne.trim();
                     if (!ligne) return;
                     var upper = ligne.toUpperCase();
 
-                    if (upper.startsWith('HORAIRE:')) {
-                        currentHoraire = {
-                            type: 'horaire',
-                            texte: ligne.replace(/^horaire:/i, '').trim(),
-                            periodes: []
-                        };
-                        currentPeriode = null;
-                        blocs.push(currentHoraire);
+                    if (upper.startsWith('JOUR:')) {
+                        curJour  = { label: ligne.replace(/^jour:/i,'').trim(), plages: [] };
+                        curPlage = null;
+                        jours.push(curJour);
 
                     } else if (upper.startsWith('PERIODE:') || upper.startsWith('PÉRIODE:')) {
-                        var texte = ligne.replace(/^p[eé]riode:/i, '').trim();
-                        currentPeriode = { type: 'periode', texte: texte, items: [] };
-                        if (currentHoraire) currentHoraire.periodes.push(currentPeriode);
-                        else blocs.push(currentPeriode);
+                        curPlage = { horaire: ligne.replace(/^p[eé]riode:/i,'').trim(), items: [], pauseApres: null };
+                        if (curJour) curJour.plages.push(curPlage);
 
                     } else if (upper.startsWith('MODULE:')) {
-                        var texteModule = ligne.replace(/^module:/i, '').trim();
-                        var item = { type: 'module', texte: texteModule };
-                        if (currentPeriode) currentPeriode.items.push(item);
-                        else if (currentHoraire) currentHoraire.periodes.push({ type: 'module_orphelin', texte: texteModule, items: [] });
-                        else blocs.push({ type: 'module_orphelin', texte: texteModule, items: [] });
+                        var texte = ligne.replace(/^module:/i,'').trim();
+                        if (curPlage) curPlage.items.push({ type:'module', texte: texte });
 
                     } else if (upper.startsWith('ACTIVITE:')) {
-                        var texteActivite = ligne.replace(/^activite:/i, '').trim();
-                        var itemActivite = { type: 'activite', texte: texteActivite };
-                        if (currentPeriode) currentPeriode.items.push(itemActivite);
-                        else if (currentHoraire) currentHoraire.periodes.push({ type: 'activite_orpheline', texte: texteActivite, items: [] });
-                        else blocs.push({ type: 'activite_orpheline', texte: texteActivite, items: [] });
+                        var texte = ligne.replace(/^activite:/i,'').trim();
+                        if (curPlage) curPlage.items.push({ type:'activite', texte: texte });
 
                     } else if (upper.startsWith('PAUSE:')) {
-                        var textePause = ligne.replace(/^pause:/i, '').trim();
-                        var pauseBloc = { type: 'pause', texte: textePause, items: [] };
-                        currentPeriode = null;
-                        if (currentHoraire) currentHoraire.periodes.push(pauseBloc);
-                        else blocs.push(pauseBloc);
-
-                    } else {
-                        blocs.push({ type: 'libre', texte: ligne.replace(/^[-•]\s*/, '') });
+                        var texte = ligne.replace(/^pause:/i,'').trim();
+                        if (curPlage) curPlage.pauseApres = texte;
                     }
                 });
 
-                return blocs;
+                return jours;
             }
 
             var texteNormalise = decoupageHoraire
-                ? decoupageHoraire
-                    .replace(/\\n/g, '\n')   // transforme "\n" texte en vrai retour ligne
-                    .replace(/\r\n/g, '\n')  // compat Windows
+                ? decoupageHoraire.replace(/\\\\n/g, '\n').replace(/\\r\\n/g, '\n')
                 : '';
 
-            var lignesDecoupage = texteNormalise ? texteNormalise.split('\n') : [];
-            var blocsDecoupage  = parseLignesDecoupage(lignesDecoupage);
-            var aDecoupage      = blocsDecoupage.length > 0;
+            var joursDecoupage = parseLignesDecoupage(texteNormalise ? texteNormalise.split('\n') : []);
+            var aDecoupage     = joursDecoupage.length > 0;
         %>
 
         <% if (aDecoupage) { %>
-        <div class="subsection-title">4.4 Découpage pédagogique journalier proposé</div>
-        <ul class="liste-tirets">
-            <% for (var i = 0; i < blocsDecoupage.length; i++) { 
-                var bloc = blocsDecoupage[i];
+            <div class="subsection-title">4.4 Découpage pédagogique journalier proposé</div>
+            <ul class="liste-tirets">
+            <% for (var d = 0; d < joursDecoupage.length; d++) {
+                var jour = joursDecoupage[d];
+                var moduleCounterParPlage = {};
+                var activiteCounterParPlage = {};
             %>
-                <% if (bloc.type === 'horaire') { %>
-                    <li style="list-style: none">
-                        <strong>Horaires : <%= bloc.texte %></strong>
-                        <% if (bloc.periodes && bloc.periodes.length > 0) { %>
-                        <ul>
-                            <% for (var j = 0; j < bloc.periodes.length; j++) { 
-                                var periode = bloc.periodes[j];
-                            %>
-                                <% if (periode.type === 'pause') { %>
-                                    <li>☕ <strong><%= periode.texte %></strong></li>
-
-                                <% } else if (periode.type === 'periode') { %>
-                                    <li>
-                                        <strong><%= periode.texte %></strong>
-                                        <% if (periode.items && periode.items.length > 0) { %>
-                                        <ul style="padding:0; margin:2px 0 2px 1.5em;">
-                                            <% for (var k = 0; k < periode.items.length; k++) { 
-                                                var item = periode.items[k];
+                <li>
+                    <strong><%= jour.label %></strong>
+                    <% if (jour.plages && jour.plages.length > 0) { %>
+                    <ul style="list-style:none; padding:0; margin:2px 0 2px 1.2em;">
+                        <%
+                            /* Compteurs globaux de module et activité pour ce jour */
+                            var modCount = 0;
+                            var actCount = 0;
+                        %>
+                        <% for (var p = 0; p < jour.plages.length; p++) {
+                            var plage = jour.plages[p];
+                        %>
+                            <li style="list-style:none; padding-left:1.2em; text-indent:-1.2em; margin-bottom:3px;">
+                                ▸ <strong><%= plage.horaire %></strong>
+                                <% if (plage.items && plage.items.length > 0) { %>
+                                <ul style="list-style:none; padding:0; margin:2px 0 2px 1.4em;">
+                                    <% for (var m = 0; m < plage.items.length; m++) {
+                                        var item = plage.items[m];
+                                    %>
+                                        <% if (item.type === 'module') { %>
+                                            <%
+                                                modCount++;
+                                                var numModule = modCount;
                                             %>
-                                                <% if (item.type === 'activite') { %>
-                                                    <li style="padding-left:1.4em; text-indent:-1.4em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
-                                                        <span style="font-weight:bold; margin-right:4px;"></span><%= item.texte %>
-                                                    </li>
-                                                <% } else { %>
-                                                    <li style="padding-left:1.2em; text-indent:-1.2em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
-                                                        <%= item.texte %>
-                                                    </li>
-                                                <% } %>
-                                            <% } %>
-                                        </ul>
+                                            <li style="padding-left:1.2em; text-indent:-1.2em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                                – Module <%= numModule %> : <%= item.texte %>
+                                            </li>
+                                        <% } else { %>
+                                            <%
+                                                actCount++;
+                                                var numActivite = actCount;
+                                            %>
+                                            <li style="padding-left:1.4em; text-indent:-1.4em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
+                                                → Activité <%= numActivite %> : <%= item.texte %>
+                                            </li>
                                         <% } %>
-                                    </li>
-
-                                <% } else if (periode.type === 'module_orphelin') { %>
-                                    <li>– <%= periode.texte %></li>
-
-                                <% } else if (periode.type === 'activite_orpheline') { %>
-                                    <li><span style="font-weight:bold;">→/span> <%= periode.texte %></li>
-
-                                <% } else { %>
-                                    <li><%= periode.texte %></li>
+                                    <% } %>
+                                </ul>
                                 <% } %>
+                            </li>
+                            <% if (plage.pauseApres && p < jour.plages.length - 1) { %>
+                            <li style="list-style:none; padding-left:1.2em; text-indent:-1.2em; font-style:italic; color:#555; margin-bottom:3px;">
+                                ☕ <em><%= plage.pauseApres %></em>
+                            </li>
                             <% } %>
-                        </ul>
                         <% } %>
-                    </li>
-
-                <% } else if (bloc.type === 'periode') { %>
-                    <li>
-                        <strong><%= bloc.texte %></strong>
-                        <% if (bloc.items && bloc.items.length > 0) { %>
-                        <ul style="padding:0; margin:2px 0 2px 1.5em;">
-                            <% for (var k = 0; k < bloc.items.length; k++) { 
-                                var item = bloc.items[k];
-                            %>
-                                <% if (item.type === 'activite') { %>
-                                    <li style="padding-left:1.4em; text-indent:-1.4em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
-                                        <span style="font-weight:bold; margin-right:4px;"></span><%= item.texte %>
-                                    </li>
-                                <% } else { %>
-                                    <li style="padding-left:1.2em; text-indent:-1.2em; margin-bottom:2px; font-size:11pt; line-height:1.5;">
-                                        <%= item.texte %>
-                                    </li>
-                                <% } %>
-                            <% } %>
-                        </ul>
-                        <% } %>
-                    </li>
-
-                <% } else if (bloc.type === 'pause') { %>
-                    <li>☕ <strong><%= bloc.texte %></strong></li>
-
-                <% } else if (bloc.type === 'libre') { %>
-                    <li><%= bloc.texte %></li>
-
-                <% } else if (bloc.type === 'module_orphelin') { %>
-                    <li><%= bloc.texte %></li>
-
-                <% } else if (bloc.type === 'activite_orpheline') { %>
-                    <li><span style="font-weight:bold;"></span> <%= bloc.texte %></li>
-
-                <% } %>
+                    </ul>
+                    <% } %>
+                </li>
             <% } %>
-        </ul>
-        <% } %>
+            </ul>
+            <% } %>
 
     </div>
 </div>

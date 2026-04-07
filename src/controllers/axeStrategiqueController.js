@@ -2,6 +2,7 @@ import AxeStrategique from '../models/AxeStrategique.js';
 import { validationResult} from 'express-validator';
 import { t } from '../utils/i18n.js';
 import mongoose from 'mongoose';
+import Formation from '../models/Formation.js';
 
 
 
@@ -140,39 +141,54 @@ export const updateAxeStrategique = async (req, res) => {
 };
 
 
-// Supprimer
+
 export const deleteAxeStrategique = async (req, res) => {
     const { id } = req.params;
     const lang = req.headers['accept-language'] || 'fr';
 
-    // Vérification de la validité de l'identifiant
+    // 🔹 Vérification de l'ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
-        success: false,
-        message: t('identifiant_invalide', lang),
+            success: false,
+            message: t('identifiant_invalide', lang),
         });
     }
 
     try {
-        const axestrategique = await AxeStrategique.findById(id);
-        if (!axestrategique) {
-        return res.status(404).json({
-            success: false,
-            message: t('axe_strategique_non_trouve', lang),
-        });
+        // 🔹 Vérifier si l'axe existe
+        const axeStrategique = await AxeStrategique.findById(id);
+        if (!axeStrategique) {
+            return res.status(404).json({
+                success: false,
+                message: t('axe_strategique_non_trouve', lang),
+            });
         }
 
+        // 🔹 Vérifier s'il est utilisé dans une formation
+        const formationLiee = await Formation.findOne({
+            axeStrategique: id, // ⚠️ adapte si c'est un tableau : { $in: [id] }
+        });
+
+        if (formationLiee) {
+            return res.status(400).json({
+                success: false,
+                message: t('axe_strategique_lie_formation', lang),
+            });
+        }
+
+        // 🔹 Suppression
         await AxeStrategique.deleteOne({ _id: id });
 
         return res.status(200).json({
-        success: true,
-        message: t('supprimer_succes'),
+            success: true,
+            message: t('supprimer_succes', lang), // 🔹 correction ici
         });
+
     } catch (err) {
         return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: err.message,
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
         });
     }
 };

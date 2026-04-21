@@ -712,8 +712,8 @@ export const importerDonnees = async (req, res) => {
 //  GRADE           → grade
 //  CATEGORIE       → categorieProfessionnelle
 //  FONCTION        → posteDeTravail
-//  STRUCTURE_H     → structure
-//  STRUCTURE       → service
+//  SERVICEH        → structure
+//  SERVICE         → service
 //  REGION          → region
 //  DEPARTEMENT     → departement
 //  COMMUNE         → commune
@@ -1227,27 +1227,27 @@ export const importerPersonnelExcel = async (req, res) => {
           avertissements.push("Catégorie ignorée : grade manquant");
         }
 
-        // ── g. Structure (STRUCTURE_H dans l'Excel) ───────────────────────
+        // ── g. Structure (SERVICEH dans l'Excel) ───────────────────────
         let structureId = null;
-        if (nettoyerTexte(ligne.STRUCTURE_H)) {
+        if (nettoyerTexte(ligne.SERVICEH)) {
           structureId = await obtenirOuCreerStructure(
-            nettoyerTexte(ligne.STRUCTURE_H),
+            nettoyerTexte(ligne.SERVICEH),
             caches,
             donneesAInserer
           );
         }
 
-        // ── h. Service (STRUCTURE dans l'Excel) ───────────────────────────
+        // ── h. Service (SERVICE dans l'Excel) ───────────────────────────
         let serviceId = null;
-        if (structureId && nettoyerTexte(ligne.STRUCTURE)) {
+        if (structureId && nettoyerTexte(ligne.SERVICE)) {
           serviceId = await obtenirOuCreerService(
-            nettoyerTexte(ligne.STRUCTURE),
+            nettoyerTexte(ligne.SERVICE),
             structureId,
             caches,
             donneesAInserer
           );
-        } else if (ligne.STRUCTURE && !structureId) {
-          avertissements.push("Service ignoré : STRUCTURE_H manquant");
+        } else if (ligne.SERVICE && !structureId) {
+          avertissements.push("Service ignoré : SERVICEH manquant");
         }
 
         // ── i. Poste de Travail (FONCTION dans l'Excel) ───────────────────

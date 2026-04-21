@@ -313,7 +313,14 @@
     "note_service_deja_validee_DG":"Impossible de supprimer cette note car elle a déjà été validée.",
     "programme_lie_formation":"Impossible de supprimer ce programme car il est lié à une formation",
     "formation_liee_theme_formation":"Impossible de supprimer cette formation car elle est liée à un thème de formation",
-    "axe_strategique_lie_formation":"Impossible de supprimer cet axe stratégique car il est lié à une formation"
+    "axe_strategique_lie_formation":"Impossible de supprimer cet axe stratégique car il est lié à une formation",
+    "config_mise_a_jour": "Configuration mise à jour",
+    "rubriques_regenerées": "Rubriques régénérées avec succès",
+    "libelle_requis": "Le libellé est requis",
+    "objectif_ajoute": "Objectif ajouté avec succès",
+    "objectif_supprime": "Objectif supprimé avec succès",
+    "config_non_trouvee": "Configuration non trouvée",
+    "objectif_non_trouve": "Objectif non trouvé"
     
     
 }

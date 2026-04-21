@@ -1,27 +1,11 @@
+// routes/evaluationAChaudReponse.js
 import express from 'express';
-import { check } from 'express-validator';
 import {
+    saveDraftEvaluationAChaudReponse,
     submitEvaluationAChaudReponse,
+    getReponseUtilisateur,
     getReponsesParUtilisateur,
-    getReponsesParSession,
-    getStatsParRubrique,
-    getStatsParQuestion,
-    getStatsParSousQuestion,
-    getTauxReponseFormation,
-    getReponsesUtilisateur,
-    getStatsByField,
-    getStatsParParticipant,
-    getDashboardEvaluations,
-    getEvaluationStats,
-    getResultatsByRubrique,
-    getQuestionDetails,
-    getComparaisonEvaluations,
-    exportEvaluationData,
-    // saveDraftEvaluationAChaudReponse,
-    // getDraftEvaluationAChaudReponse,
-    // getUserDrafts,
-    getEvaluationsChaudByUtilisateurAvecEchelles,
-    getCommentairesByQuestion
+    getReponsesParEvaluation,
 } from '../controllers/evaluationAChaudReponseController.js';
 
 import { authentificate } from '../middlewares/auth.js';
@@ -29,33 +13,18 @@ import { validateFieldsReponseEvaluation } from '../middlewares/validateFields/v
 
 const router = express.Router();
 
-router.post('/', authentificate, validateFieldsReponseEvaluation, submitEvaluationAChaudReponse);
-// router.post('/draft', authentificate, saveDraftEvaluationAChaudReponse);
-// router.get('/brouillon/:utilisateur/:modele', authentificate, getDraftEvaluationAChaudReponse);
-router.get('/utilisateur/:utilisateurId', getEvaluationsChaudByUtilisateurAvecEchelles);
+// ── Soumission ────────────────────────────────────────────────────────────────
+router.post('/brouillon',  authentificate, saveDraftEvaluationAChaudReponse);
+router.post('/soumettre',  authentificate, validateFieldsReponseEvaluation, submitEvaluationAChaudReponse);
 
+// ── Lecture ───────────────────────────────────────────────────────────────────
+// Réponse d'un utilisateur pour une évaluation précise
+router.get('/:utilisateurId/:modeleId', authentificate, getReponseUtilisateur);
 
-// router.get('/drafts/:utilisateur', authentificate, getUserDrafts);
+// Toutes les réponses d'un utilisateur (liste paginée)
+router.get('/utilisateur/:utilisateurId', authentificate, getReponsesParUtilisateur);
 
-// router.get('/utilisateur/:utilisateurId', authentificate, getReponsesParUtilisateur);
-router.get('/session/:formationId', authentificate, getReponsesParSession);
-
-router.get('/stats/rubrique/:formationId', authentificate, getStatsParRubrique);
-router.get('/stats/question/:formationId', authentificate, getStatsParQuestion);
-router.get('/stats/sous-question/:formationId', authentificate, getStatsParSousQuestion);
-router.get('/stats/taux/:formationId', authentificate, getTauxReponseFormation);
-
-router.get('/stats/field/:formationId', authentificate, getStatsByField);
-router.get('/stats/utilisateur/:utilisateurId', authentificate, getReponsesUtilisateur);
-router.get('/stats/participant/:formationId/:utilisateurId', authentificate, getStatsParParticipant);
-
-
-router.get('/:evaluationId/stats', getEvaluationStats);
-router.get('/:evaluationId/rubriques', getResultatsByRubrique);
-router.get('/:evaluationId/questions/:questionId', getQuestionDetails);
-router.get('/:evaluationId/commentaires', getCommentairesByQuestion);
-router.get('/:evaluationId/comparaison', getComparaisonEvaluations);
-router.get('/:evaluationId/export', exportEvaluationData);
-router.get('/dashboard', getDashboardEvaluations);
+// Toutes les réponses pour une évaluation (vue admin)
+router.get('/evaluation/:evaluationId', authentificate, getReponsesParEvaluation);
 
 export default router;

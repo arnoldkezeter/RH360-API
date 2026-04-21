@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="<%= lang %>">
+<head>
+    <meta charset="UTF-8">
+    <title><%= lang === 'fr' ? evaluation.titreFr : evaluation.titreEn %></title>
+    <style>
+        @page {
+            margin: 1.5cm 2.5cm 1.5cm 2.5cm;
+            size: A4;
+        }
+        
+        body { 
+            font-family: 'Times New Roman', Times, serif; 
+            margin: 0; 
+            padding: 0;
+            font-size: 12pt;
+            line-height: 1.4;
+            color: #000;
+        }
+        
+        /* ==================== HEADER OFFICIEL ==================== */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+        
+        .header-left, .header-right {
+            width: 40%;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .header-center {
+            width: 20%;
+            text-align: center;
+        }
+        
+        .header-center img {
+            max-width: 90px;
+        }
+        
+        .separator {
+            margin: 3px 0;
+        }
+        
+        /* ==================== TITRE PRINCIPAL ==================== */
+        .document-title {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-decoration: underline;
+            color: #000;
+            margin: 20px 0 5px 0;
+            line-height: 1.4;
+        }
+
+        .document-subtitle {
+            text-align: center;
+            font-size: 12pt;
+            font-weight: bold;
+            text-decoration: underline;
+            margin: 0 0 20px 0;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 8pt;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-left: 8px;
+        }
+
+        .badge-vierge {
+            background: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
+        }
+
+        .badge-soumis {
+            background: #D1FAE5;
+            color: #065F46;
+            border: 1px solid #6EE7B7;
+        }
+
+        /* ==================== INTRODUCTION ==================== */
+        .intro-text p {
+            text-align: justify;
+            font-size: 12pt;
+            line-height: 1.4;
+            text-indent: 1.2cm;
+            margin: 0 0 10px 0;
+        }
+
+        .intro-text {
+            margin: 15px 0;
+        }
+
+        /* ==================== RUBRIQUES ==================== */
+        .rubrique {
+            margin: 15px 0;
+        }
+
+        .rubrique-title {
+            font-weight: bold;
+            font-size: 12pt;
+            background-color: #00FFFF;
+            padding: 4px 8px;
+            border: none;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .rubrique-content {
+            padding: 5px 0;
+        }
+
+        /* ==================== QUESTIONS ==================== */
+        .question {
+            margin-bottom: 12px;
+        }
+
+        .question:last-child {
+            margin-bottom: 0;
+        }
+
+        .question-text {
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 5px;
+        }
+
+        /* ==================== PROFIL : champs sur une ligne ==================== */
+        .profil-field {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .profil-field .field-label {
+            white-space: nowrap;
+        }
+
+        .profil-field .field-dots {
+            flex: 1;
+            border-bottom: 1px dotted #999;
+            min-height: 16px;
+        }
+
+        .profil-field .field-value {
+            flex: 1;
+        }
+
+        /* ==================== GENRE : cases à cocher ==================== */
+        .genre-options {
+            margin-left: 20px;
+            margin-top: 4px;
+        }
+
+        .genre-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .checkbox-circle {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid #000;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .checkbox-circle.selected {
+            background: #000;
+        }
+
+        /* ==================== ÉCHELLES : cercles avec retour à la ligne ==================== */
+        .echelle-list {
+            margin-left: 20px;
+            margin-top: 5px;
+        }
+
+        .echelle-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12pt;
+            margin-bottom: 4px;
+        }
+
+        .radio-circle {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid #000;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .radio-circle.selected {
+            background: #000;
+        }
+
+        /* ==================== TABLEAUX (grilles) ==================== */
+        .grille-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 10pt;
+        }
+
+        .grille-table th,
+        .grille-table td {
+            border: 1px solid #000;
+            padding: 5px 4px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .grille-table th:first-child,
+        .grille-table td:first-child {
+            text-align: left;
+            width: 40%;
+        }
+
+        .grille-table thead {
+            background-color: #BDD6EE;
+            font-weight: bold;
+        }
+
+        .radio-cell {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid #000;
+            margin: 0 auto;
+        }
+
+        .radio-cell.selected {
+            background: #000;
+        }
+
+        /* ==================== TEXTE LIBRE ==================== */
+        .text-libre {
+            margin-top: 5px;
+        }
+
+        .text-dots {
+            font-size: 12pt;
+            color: #000;
+            word-break: break-all;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .comment-text-filled {
+            font-size: 12pt;
+            margin-bottom: 4px;
+        }
+
+        /* ==================== COMMENTAIRES ==================== */
+        .comment-section {
+            margin-top: 8px;
+        }
+
+        .comment-label {
+            font-style: italic;
+            text-decoration: underline;
+            font-size: 12pt;
+            color: #000;
+            font-weight: normal;
+            display: block;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+
+        .comment-text {
+            background: #FFF8EC;
+            padding: 4px 8px;
+            border-left: 3px solid #F5A623;
+            font-size: 12pt;
+        }
+
+        /* ==================== COMMENTAIRE GÉNÉRAL ==================== */
+        .general-comment {
+            margin: 20px 0;
+            border: 1px solid #F5A623;
+            padding: 10px 12px;
+            background: #FFFBF0;
+        }
+
+        .general-comment-title {
+            font-weight: bold;
+            font-size: 12pt;
+            margin-bottom: 5px;
+        }
+
+        /* ==================== PIED DE PAGE ==================== */
+        .footer {
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #000;
+            font-size: 8pt;
+            text-align: center;
+        }
+
+        /* ==================== QR CODE ==================== */
+        .qr-code-section {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .qr-code {
+            text-align: center;
+            width: 90px;
+        }
+        
+        .qr-code img {
+            width: 60px;
+            height: 60px;
+        }
+        
+        .qr-code-text {
+            font-size: 6pt;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* ==================== PRINT ==================== */
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ==================== EN-TÊTE OFFICIEL ==================== -->
+    <div class="header">
+        <div class="header-left">
+            REPUBLIQUE DU CAMEROUN<br>
+            Paix - Travail - Patrie<br>
+            <div class="separator">----------------------</div>
+            MINISTERE DES FINANCES<br>
+            <div class="separator">----------------------</div>
+            DIRECTION GENERALE DES IMPOTS<br>
+            <div class="separator">----------------------</div>
+            DIRECTION DES AFFAIRES GENERALES<br>
+            <div class="separator">----------------------</div>
+            CELLULE DU PERFECTIONNEMENT ET DE<br>
+            LA FORMATION CONTINUE
+        </div>
+
+        <div class="header-center">
+            <% if (logoUrl) { %>
+                <img src="<%= logoUrl %>" alt="Armoiries du Cameroun">
+            <% } %>
+        </div>
+
+        <div class="header-right">
+            REPUBLIC OF CAMEROON<br>
+            Peace - Work - Fatherland<br>
+            <div class="separator">----------------------</div>
+            MINISTRY OF FINANCE<br>
+            <div class="separator">----------------------</div>
+            DIRECTORATE GENERAL OF TAXATION<br>
+            <div class="separator">----------------------</div>
+            DEPARTMENT OF GENERAL AFFAIRS<br>
+            <div class="separator">----------------------</div>
+            TRAINING AND SKILLS PERFECTION UNIT
+        </div>
+    </div>
+
+    <!-- ==================== TITRE ==================== -->
+    <div class="document-title">
+        <%= lang === 'fr' ? evaluation.titreFr : (evaluation.titreEn || evaluation.titreFr) %>
+        <!-- <% if (estVierge) { %>
+            <span class="badge badge-vierge">FICHE VIERGE</span>
+        <% } else { %>
+            <span class="badge badge-soumis">SOUMISE</span>
+        <% } %> -->
+    </div>
+    <div class="document-subtitle">
+        <%= evaluation.dateFormation 
+            ? new Date(evaluation.dateFormation).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()
+            : '' %>
+    </div>
+
+    <!-- ==================== INTRODUCTION ==================== -->
+    <div class="intro-text">
+        <p><%= description %></p>
+        <p>Nous vous remercions de prendre quelques instants pour répondre aux questions ci-dessous.</p>
+    </div>
+
+    <!-- ==================== RUBRIQUES ==================== -->
+    <%
+        // On calcule l'index d'apparition réel (1-based) pour chaque rubrique
+        const rubriques = evaluation.rubriques || [];
+    %>
+    <% for (let rubIdx = 0; rubIdx < rubriques.length; rubIdx++) {
+        const rubrique = rubriques[rubIdx];
+        const rubNumero = rubIdx + 1; // numéro d'ordre d'apparition (pas rubrique.ordre)
+        const rubTitre = lang === 'fr' ? rubrique.titreFr : (rubrique.titreEn || rubrique.titreFr);
+        const rubriqueId = rubrique._id ? rubrique._id.toString() : rubrique.code;
+        const rubRepMap = reponseMap[rubriqueId] || {};
+        const estProfil = rubrique.code === 'PROFIL';
+        const questions = rubrique.questions || [];
+    %>
+        <div class="rubrique">
+            <div class="rubrique-title">Rubrique <%= rubNumero %> : <%= rubTitre %></div>
+            <div class="rubrique-content">
+
+                <% if (estProfil) { %>
+                    <!-- ===== RUBRIQUE PROFIL : rendu spécial ===== -->
+                    <% for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+                        const question = questions[qIdx];
+                        const qNumero = qIdx + 1;
+                        const qLibelle = lang === 'fr' ? question.libelleFr : (question.libelleEn || question.libelleFr);
+                        const questionId = question._id ? question._id.toString() : question.code;
+                        const qReponse = rubRepMap[questionId] || null;
+                        const isGenre = question.code && (question.code.includes('genre') || question.libelleFr.toLowerCase().includes('genre'));
+                    %>
+                        <% if (isGenre) { %>
+                            <!-- Genre : label + cases à cocher -->
+                            <div class="profil-field">
+                                <span class="field-label"><%= rubNumero %>.<%= qNumero %>. <%= qLibelle %> :</span>
+                            </div>
+                            <div class="genre-options">
+                                <% for (const sq of (question.sousQuestions || [])) {
+                                    const sqLib = lang === 'fr' ? sq.libelleFr : (sq.libelleEn || sq.libelleFr);
+                                    const sqRep = qReponse ? (qReponse.sousQuestions || []).find(sr =>
+                                        sr.sousQuestionId && sr.sousQuestionId.toString() === sq._id.toString()
+                                    ) : null;
+                                    const estSelGenre = !!sqRep;
+                                %>
+                                    <div class="genre-option">
+                                        <div class="checkbox-circle <%= estSelGenre ? 'selected' : '' %>"></div>
+                                        <span><%= sqLib %></span>
+                                    </div>
+                                <% } %>
+                            </div>
+                        <% } else { %>
+                            <!-- Autres champs du profil : sur une seule ligne avec pointillés -->
+                            <div class="profil-field">
+                                <span class="field-label"><%= rubNumero %>.<%= qNumero %>. <%= qLibelle %> :</span>
+                                <% if (qReponse && qReponse.commentaireGlobal) { %>
+                                    <span class="field-value"><%= qReponse.commentaireGlobal %></span>
+                                <% } else { %>
+                                    <span class="field-dots"></span>
+                                <% } %>
+                            </div>
+                        <% } %>
+                    <% } %>
+
+                <% } else { %>
+                    <!-- ===== AUTRES RUBRIQUES ===== -->
+                    <% for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+                        const question = questions[qIdx];
+                        const qNumero = qIdx + 1;
+                        const qLibelle = lang === 'fr' ? question.libelleFr : (question.libelleEn || question.libelleFr);
+                        const echelles = [...(question.echelles || [])].sort((a, b) => a.ordre - b.ordre);
+                        const questionId = question._id ? question._id.toString() : question.code;
+                        const qReponse = rubRepMap[questionId] || null;
+                        const hasSousQ = question.sousQuestions && question.sousQuestions.length > 0;
+                        const hasEch = echelles.length > 0;
+                    %>
+                        <div class="question">
+                            <div class="question-text">
+                                <%= rubNumero %>.<%= qNumero %>. <%= qLibelle %>
+                            </div>
+
+                            <% if (hasSousQ && hasEch) { %>
+                                <!-- TABLEAU GRILLE -->
+                                <table class="grille-table">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <% for (const e of echelles) { %>
+                                                <th><%= lang === 'fr' ? e.nomFr : (e.nomEn || e.nomFr) %></th>
+                                            <% } %>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% for (const sq of question.sousQuestions) { 
+                                            const sqLib = lang === 'fr' ? sq.libelleFr : (sq.libelleEn || sq.libelleFr);
+                                            const sqRep = qReponse ? (qReponse.sousQuestions || []).find(sr => 
+                                                sr.sousQuestionId && sr.sousQuestionId.toString() === sq._id.toString()
+                                            ) : null;
+                                            const sqRepId = sqRep ? sqRep.reponseEchelleId.toString() : null;
+                                        %>
+                                            <tr>
+                                                <td><%= sqLib %></td>
+                                                <% for (const e of echelles) { %>
+                                                    <td>
+                                                        <div class="radio-cell <%= (sqRepId && sqRepId === e._id.toString()) ? 'selected' : '' %>"></div>
+                                                    </td>
+                                                <% } %>
+                                            </tr>
+                                        <% } %>
+                                    </tbody>
+                                </table>
+
+                            <% } else if (!hasSousQ && hasEch) { %>
+                                <!-- CHOIX SIMPLES : cercles avec retour à la ligne -->
+                                <div class="echelle-list">
+                                    <% for (const e of echelles) { 
+                                        const eLib = lang === 'fr' ? e.nomFr : (e.nomEn || e.nomFr);
+                                        const estSel = qReponse && qReponse.reponseEchelleId && qReponse.reponseEchelleId.toString() === e._id.toString();
+                                    %>
+                                        <div class="echelle-item">
+                                            <div class="radio-circle <%= estSel ? 'selected' : '' %>"></div>
+                                            <span><% if (estSel) { %><strong><% } %><%= eLib %><% if (estSel) { %></strong><% } %></span>
+                                        </div>
+                                    <% } %>
+                                </div>
+
+                            <% } else { %>
+                                <!-- TEXTE LIBRE -->
+                                <div class="text-libre">
+                                    <% if (qReponse && qReponse.commentaireGlobal) { %>
+                                        <div class="comment-text-filled"><%= qReponse.commentaireGlobal %></div>
+                                    <% } else { %>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                    <% } %>
+                                </div>
+                            <% } %>
+
+                            <!-- COMMENTAIRE GLOBAL -->
+                            <% if (question.commentaireGlobal && hasEch) { %>
+                                <div class="comment-section">
+                                    <span class="comment-label">Commentaires :</span>
+                                    <% if (qReponse && qReponse.commentaireGlobal) { %>
+                                        <div class="comment-text"><%= qReponse.commentaireGlobal %></div>
+                                    <% } else { %>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                        <span class="text-dots">................................................................................................................................................................................</span>
+                                    <% } %>
+                                </div>
+                            <% } %>
+
+                        </div>
+                    <% } %>
+                <% } %>
+
+            </div>
+        </div>
+    <% } %>
+
+    <!-- ==================== COMMENTAIRE GÉNÉRAL ==================== -->
+    <% if (reponse && reponse.commentaireGeneral) { %>
+        <div class="general-comment">
+            <div class="general-comment-title">Commentaire général :</div>
+            <div><%= reponse.commentaireGeneral %></div>
+        </div>
+    <% } %>
+
+    <!-- ==================== QR CODE ==================== -->
+    <!-- <% if (qrCodeUrl) { %>
+        <div class="qr-code-section">
+            <div class="qr-code">
+                <img src="<%= qrCodeUrl %>" alt="QR Code">
+                <div class="qr-code-text">Scanner pour vérifier l'authenticité</div>
+            </div>
+        </div>
+    <% } %> -->
+
+</body>
+</html>

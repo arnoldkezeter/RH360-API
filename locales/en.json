@@ -278,7 +278,14 @@
     "note_service_deja_validee_DG":"It is not possible to delete this note because it has already been validated.",
     "programme_lie_formation":"Unable to delete this program because it is linked to a skill areas",
     "formation_liee_theme_formation":"Unable to delete this skill areas because it is linked to a training",
-    "axe_strategique_lie_formation":"Unable to delete this strategic axis because it is linked to a skill areas"
+    "axe_strategique_lie_formation":"Unable to delete this strategic axis because it is linked to a skill areas",
+    "config_mise_a_jour": "Configuration updated",
+    "rubriques_regenerées": "Sections successfully regenerated",
+    "libelle_requis": "Label is required",
+    "objectif_ajoute": "Objective successfully added",
+    "objectif_supprime": "Objective successfully deleted",
+    "config_non_trouvee": "Configuration not found",
+    "objectif_non_trouve": "Objective not found"
 
 }
   

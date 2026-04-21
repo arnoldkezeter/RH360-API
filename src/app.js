@@ -52,6 +52,8 @@ import generatePDFRoutes from './routes/generatePDFRoutes.js';
 import noteServiceRoutes from './routes/noteServiceRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
  import tdrRoutes from './routes/tdrRoutes.js';
+ import rubriqueStatiqueRoutes from './routes/rubriqueStatiqueRoutes.js';
+
 import { authentificate } from './middlewares/auth.js';
 import { authorize } from './middlewares/role.js';
 import connectDB from './config/db.js';
@@ -61,6 +63,7 @@ import { dirname } from 'path';
 import { Server } from 'socket.io';
 import http from 'http';
 import { initSocket } from './utils/socket.js';
+// import { migrateEchellesSnapshot } from './scripts/migrateEchelles.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -85,7 +88,7 @@ app.use('/files/fichiers_tache_executee', express.static(path.join(process.cwd()
 connectDB();
 // Créer le serveur HTTP
 const server = http.createServer(app);
-
+// await migrateEchellesSnapshot();
 // Initialiser Socket.IO
 initSocket(server);
 //Route d'autentification
@@ -138,6 +141,8 @@ app.use('/api/v1/generate-document', generatePDFRoutes)
 app.use('/api/v1/notes-service', noteServiceRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/tdr', tdrRoutes);
+app.use('/api/v1/rubriques-statiques', rubriqueStatiqueRoutes);
+
 
 // Route racine
 app.get('/', (req, res) => {

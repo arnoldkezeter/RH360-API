@@ -23,7 +23,7 @@ import QRCode from 'qrcode';
 import { promisify } from 'util';
 import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
-import { capitalizeTitle, formatWithArticle, getArticle } from '../utils/wordHelper.js';
+import { capitalizeTitle, formatWithArticle, getArticle, getArticleDe } from '../utils/wordHelper.js';
 import logger from '../utils/logger.js';
 // import { getDocument } from 'pdfjs-dist';
 
@@ -336,7 +336,7 @@ export const creerNoteServiceStage = async (req, res) => {
             const etudiantFr = genre === 'M' ? "un étudiant" : genre === 'F' ? "une étudiante" : "un(e) étudiant(e)";
             
             // Obtenir l'article approprié pour l'établissement
-            const articleEtablissement = getArticle(etablissementAnnee.nomFr);
+            const articleEtablissement = getArticleDe(etablissementAnnee.nomFr);
             
             // Construire les titres avec l'établissement
             titreNoteFr = `Relative à la mise en stage d'${etudiantFr} ${articleEtablissement} ${etablissementAnnee.nomFr}`;

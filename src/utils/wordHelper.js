@@ -358,6 +358,51 @@ export function getArticle(text) {
     }
 }
 
+/**
+ * Obtient l'article de possession/partitif (du, de la, de l', des, du/de la)
+ * @param {string} text - Le texte à analyser
+ * @returns {string} L'article approprié ('du', 'de la', "de l'", 'des', ou 'du/de la')
+ */
+export function getArticleDe(text) {
+    if (!text || typeof text !== 'string') {
+        return 'du/de la';
+    }
+
+    const trimmedText = text.trim();
+    const firstWord = trimmedText.split(/[\s\/\-]/)[0];
+
+    // Vérifier si c'est au pluriel
+    if (isPlural(trimmedText)) {
+        return 'des';
+    }
+
+    // Vérifier d'abord si c'est une abréviation
+    const abbr = detectAbbreviation(trimmedText);
+    if (abbr) {
+        // Vérifier l'élision même pour les abréviations
+        if (startsWithVowelSound(firstWord)) {
+            return "de l'";
+        }
+        return abbr.gender === 'm' ? 'du' : 'de la';
+    }
+
+    // Vérifier l'élision
+    if (startsWithVowelSound(firstWord)) {
+        return "de l'";
+    }
+
+    // Sinon, analyser le premier mot
+    const gender = getGender(firstWord);
+
+    if (gender === 'm') {
+        return 'du';
+    } else if (gender === 'f') {
+        return 'de la';
+    } else {
+        return 'du/de la';
+    }
+}
+
 
 
 

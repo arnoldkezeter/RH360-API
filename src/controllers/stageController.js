@@ -37,278 +37,311 @@ const checkOverlaps = (items, idKey) => {
 };
 
 export const createStage = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    const lang = req.headers['accept-language'] || 'fr';
 
-  try {
-    const {
-        nomFr,
-        nomEn,
-        type,
-        stagiaire,
-        groupes,
-        rotations,
-        affectationsFinales,
-        dateDebut,
-        dateFin,
-        anneeStage,
-        statut
-    } = req.body;
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-            errors: errors.array().map(err => err.msg),
-        });
-    }
-    
-    if (!isValidDateRange(dateDebut, dateFin)) {
-        return res.status(400).json({
-            success: false,
-            message: t('date_debut_anterieur_date_fin', lang),
-        });
-    }
-
-    if (type === 'INDIVIDUEL') {
-        if (!stagiaire){
+    try {
+        const {
+            nomFr, nomEn, type,
+            stagiaire,               // INDIVIDUEL
+            groupes, rotations,      // GROUPE
+            stagiaires, etablissement, // BATCH
+            affectationsFinales,
+            dateDebut, dateFin, anneeStage, statut
+        } = req.body;
+        
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
             return res.status(400).json({
                 success: false,
-                message: t('stagiaire_obligatoire', lang),
+                message: t('champs_obligatoires', lang),
+                errors: errors.array().map(err => err.msg),
             });
         }
-        if (groupes && groupes.length > 0){
+
+        if (!isValidDateRange(dateDebut, dateFin)) {
             return res.status(400).json({
                 success: false,
-                message: t('groupe_non_autorise', lang),
-            });
-        } 
-    } else if (type === 'GROUPE') {
-        if (!groupes || !Array.isArray(groupes) || groupes.length === 0){
-            return res.status(400).json({
-                success: false,
-                message: t('groupe_obligatoire', lang),
+                message: t('date_debut_anterieur_date_fin', lang),
             });
         }
-        if (stagiaire){
-            return res.status(400).json({
-                success: false,
-                message: t('stagiaire_non_autorise', lang),
-            });
-        } 
-    } else {
-        return res.status(400).json({
-            success: false,
-            message: t('invalide_type_stage', lang),
-        });
-    }
 
-    if (groupes) {
-        const stagiaireIds = new Set();
-        for (const grp of groupes) {
-            if (!grp.numero){
+        // ── Validations par type ────────────────────────────────────────────
+        if (type === 'INDIVIDUEL') {
+            if (!stagiaire) {
                 return res.status(400).json({
                     success: false,
-                    message: t('numero_groupe', lang),
-                });
-            } 
-            if (!grp.stagiaires || !Array.isArray(grp.stagiaires)){
-                return res.status(400).json({
-                    success: false,
-                    message: t('groupe_tableau_stagiaire', lang),
+                    message: t('stagiaire_obligatoire', lang),
                 });
             }
-            
-            grp.stagiaires.forEach(id => {
-                if (stagiaireIds.has(id)) {
+            if (groupes?.length > 0 || stagiaires?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('groupe_non_autorise', lang),
+                });
+            }
+        } else if (type === 'GROUPE') {
+            if (!groupes || !Array.isArray(groupes) || groupes.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('groupe_obligatoire', lang),
+                });
+            }
+            if (stagiaire || stagiaires?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('stagiaire_non_autorise', lang),
+                });
+            }
+        } else if (type === 'BATCH') {
+            if (!stagiaires || !Array.isArray(stagiaires) || stagiaires.length < 2) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('min_2_stagiaires', lang),
+                });
+            }
+            if (!etablissement) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('etablissement_obligatoire', lang),
+                });
+            }
+            // Pas de groupes ni de stagiaire unique
+            if (stagiaire || groupes?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('no_individual_or_group_trainees', lang),
+                });
+            }
+            // Pas de doublons
+            const uniques = new Set(stagiaires.map(String));
+            if (uniques.size !== stagiaires.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('no_duplicate_trainee_in_batch', lang),
+                });
+            }
+            // Pas de rotations pour un BATCH
+            if (rotations?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('batch_no_rotations_supported', lang),
+                });
+            }
+        }
+
+        // ── Validation des groupes (GROUPE uniquement) ──────────────────────
+        if (type === 'GROUPE' && groupes) {
+            const stagiaireIds = new Set();
+            for (const grp of groupes) {
+                if (!grp.numero) {
                     return res.status(400).json({
                         success: false,
-                        message: t('stagiaire_plusieurs_groupes', lang),
+                        message: t('numero_groupe', lang),
                     });
                 }
-                stagiaireIds.add(id);
-            });
+                if (!grp.stagiaires || !Array.isArray(grp.stagiaires)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: t('groupe_tableau_stagiaire', lang),
+                    });
+                }
+                grp.stagiaires.forEach(id => {
+                    if (stagiaireIds.has(id)) {
+                        return res.status(400).json({
+                            success: false,
+                            message: t('stagiaire_plusieurs_groupes', lang),
+                        });
+                    }
+                    stagiaireIds.add(id);
+                });
+            }
         }
-    }
 
-    if (rotations) {
-        if (!Array.isArray(rotations)){
-            return res.status(400).json({
-                success: false,
-                message: t('rotation_tableau', lang),
+        // ── Validation des rotations (GROUPE uniquement) ────────────────────
+        if (rotations) {
+            if (!Array.isArray(rotations)) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('rotation_tableau', lang),
+                });
+            }
+            rotations.forEach((rot, idx) => {
+                if (!rot.structure || !rot.dateDebut || !rot.dateFin)
+                    throw new Error(`Rotation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
+                if (!isValidDateRange(rot.dateDebut, rot.dateFin))
+                    throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+                if (rot.stagiaire && rot.groupe)
+                    throw new Error(`Rotation #${idx + 1}: stagiaire OU groupe, pas les deux`);
+                if (!rot.stagiaire && !rot.groupe)
+                    throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
             });
-        } 
-        rotations.forEach((rot, idx) => {
-            if (!rot.structure || !rot.dateDebut || !rot.dateFin)
-                throw new Error(`Rotation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
-            if (!isValidDateRange(rot.dateDebut, rot.dateFin))
-                throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
-            if (rot.stagiaire && rot.groupe)
-                throw new Error(`Rotation #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
-            if (!rot.stagiaire && !rot.groupe)
-             throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
+            if (checkOverlaps(rotations, 'stagiaire')) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('conflit_chevauchement_rotation_stagiaire', lang),
+                });
+            }
+            if (checkOverlaps(rotations, 'groupe')) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('conflit_chevauchement_rotation_groupe', lang),
+                });
+            }
+        }
+
+        // ── Validation des affectations finales ─────────────────────────────
+        if (affectationsFinales) {
+            if (!Array.isArray(affectationsFinales))
+                throw new Error('affectationsFinales doit être un tableau');
+
+            affectationsFinales.forEach((aff, idx) => {
+                if (!aff.structure || !aff.dateDebut || !aff.dateFin)
+                    throw new Error(`Affectation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
+                if (!isValidDateRange(aff.dateDebut, aff.dateFin))
+                    throw new Error(`Affectation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+
+                // Pour BATCH : chaque affectation doit référencer un stagiaire
+                if (type === 'BATCH') {
+                    if (!aff.stagiaire) {
+                        throw new Error(`Affectation #${idx + 1}: le stagiaire est obligatoire pour un stage BATCH`);
+                    }
+                    if (!stagiaires.map(String).includes(String(aff.stagiaire))) {
+                        throw new Error(`Affectation #${idx + 1}: ce stagiaire ne fait pas partie du stage BATCH`);
+                    }
+                } else {
+                    if (aff.stagiaire && aff.groupe)
+                        throw new Error(`Affectation #${idx + 1}: stagiaire OU groupe, pas les deux`);
+                    if (!aff.stagiaire && !aff.groupe)
+                        throw new Error(`Affectation #${idx + 1}: stagiaire ou groupe doit être défini`);
+                }
+            });
+
+            if (type !== 'BATCH') {
+                if (checkOverlaps(affectationsFinales, 'stagiaire'))
+                    throw new Error('Conflit de chevauchement dans les affectations (même stagiaire)');
+                if (checkOverlaps(affectationsFinales, 'groupe'))
+                    throw new Error('Conflit de chevauchement dans les affectations (même groupe)');
+            }
+        }
+
+        // ── Création du stage ───────────────────────────────────────────────
+        const stagePayload = {
+            nomFr, nomEn, type,
+            dateDebut, dateFin, anneeStage, statut
+        };
+
+        if (type === 'INDIVIDUEL') stagePayload.stagiaire = stagiaire;
+        if (type === 'BATCH') {
+            stagePayload.stagiaires    = stagiaires;
+            stagePayload.etablissement = etablissement;
+        }
+
+        const stage = new Stage(stagePayload);
+        await stage.save({ session });
+
+        // ── Groupes (GROUPE) ────────────────────────────────────────────────
+        const groupeMapping = new Map();
+
+        if (type === 'GROUPE') {
+            const groupesIds = [];
+            for (const grp of groupes) {
+                const groupeDoc = new Groupe({
+                    stage: stage._id,
+                    numero: grp.numero,
+                    stagiaires: grp.stagiaires || []
+                });
+                await groupeDoc.save({ session });
+                groupesIds.push(groupeDoc._id);
+                groupeMapping.set(grp.numero, groupeDoc._id);
+            }
+            stage.groupes = groupesIds;
+            await stage.save({ session });
+        }
+
+        // ── Rotations ───────────────────────────────────────────────────────
+        if (rotations) {
+            for (const rot of rotations) {
+                let groupeObjectId = null;
+                if (rot.groupe) {
+                    groupeObjectId = groupeMapping.get(rot.groupe);
+                    if (!groupeObjectId)
+                        throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
+                }
+                await new Rotation({
+                    stage: stage._id,
+                    structure: rot.structure,
+                    superviseur: rot.superviseur || null,
+                    dateDebut: rot.dateDebut,
+                    dateFin: rot.dateFin,
+                    stagiaire: rot.stagiaire || null,
+                    groupe: groupeObjectId
+                }).save({ session });
+            }
+        }
+
+        // ── Affectations finales ─────────────────────────────────────────────
+        if (affectationsFinales) {
+            for (const aff of affectationsFinales) {
+                let groupeObjectId = null;
+                if (aff.groupe) {
+                    groupeObjectId = groupeMapping.get(aff.groupe);
+                    if (!groupeObjectId)
+                        throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation`);
+                }
+                await new AffectationFinale({
+                    stage: stage._id,
+                    structure: aff.structure,
+                    superviseur: aff.superviseur || null,
+                    stagiaire: aff.stagiaire || null,   // défini pour INDIVIDUEL et BATCH
+                    groupe: groupeObjectId,              // défini pour GROUPE
+                    dateDebut: aff.dateDebut,
+                    dateFin: aff.dateFin
+                }).save({ session });
+            }
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        // ── Emails de notification ───────────────────────────────────────────
+        if (type === 'INDIVIDUEL') {
+            const stagiaireDoc = await Stagiaire.findById(stagiaire);
+            if (stagiaireDoc?.email) {
+                sendStageNotificationEmail(stagiaireDoc.email, lang, stagiaireDoc.nom, stagiaireDoc.prenom);
+            }
+        } else if (type === 'GROUPE') {
+            const groupesDocs = await Groupe.find({ stage: stage._id }).populate('stagiaires');
+            for (const groupe of groupesDocs) {
+                for (const s of groupe.stagiaires) {
+                    if (s.email) sendStageNotificationEmail(s.email, lang, s.nom, s.prenom);
+                }
+            }
+        } else if (type === 'BATCH') {
+            const stagiaireDocs = await Stagiaire.find({ _id: { $in: stagiaires } });
+            for (const s of stagiaireDocs) {
+                if (s.email) sendStageNotificationEmail(s.email, lang, s.nom, s.prenom);
+            }
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: t('ajouter_succes', lang),
+            data: stage,
         });
 
-        if (checkOverlaps(rotations, 'stagiaire')){
-            return res.status(400).json({
-                success: false,
-                message: t('conflit_chevauchement_rotation_stagiaire', lang),
-            });
-        }
-        if (checkOverlaps(rotations, 'groupe')){
-            return res.status(400).json({
-                success: false,
-                message: t('conflit_chevauchement_rotation_groupe', lang),
-            });
-        }
-    }
-
-    if (affectationsFinales) {
-      if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
-      affectationsFinales.forEach((aff, idx) => {
-        if (!aff.structure || !aff.dateDebut || !aff.dateFin)
-          throw new Error(`Affectation finale #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
-        if (!isValidDateRange(aff.dateDebut, aff.dateFin))
-          throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
-        if (aff.stagiaire && aff.groupe)
-          throw new Error(`Affectation finale #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
-        if (!aff.stagiaire && !aff.groupe)
-          throw new Error(`Affectation finale #${idx + 1}: stagiaire ou groupe doit être défini`);
-      });
-
-      if (checkOverlaps(affectationsFinales, 'stagiaire'))
-        throw new Error('Conflit de chevauchement détecté dans affectations finales (même stagiaire)');
-      if (checkOverlaps(affectationsFinales, 'groupe'))
-        throw new Error('Conflit de chevauchement détecté dans affectations finales (même groupe)');
-    }
-
-    // Création du stage
-    const stage = new Stage({ nomFr, nomEn, type, stagiaire, dateDebut, dateFin, anneeStage, statut });
-    await stage.save({ session });
-
-    // Map pour associer numéro de groupe -> ObjectId
-    const groupeMapping = new Map();
-
-    if (type === 'GROUPE') {
-      const groupesIds = [];
-      for (const grp of groupes) {
-        const groupeDoc = new Groupe({
-          stage: stage._id,
-          numero: grp.numero,
-          stagiaires: grp.stagiaires || []
+    } catch (err) {
+        console.error(err);
+        logger.error('Create stage exception:', err);
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(500).json({
+            success: false,
+            message: `${t('erreur_serveur', lang)} : ${err.message}`,
+            error: err.message,
         });
-        await groupeDoc.save({ session });
-        groupesIds.push(groupeDoc._id);
-        
-        // Créer le mapping : numéro -> ObjectId
-        groupeMapping.set(grp.numero, groupeDoc._id);
-      }
-      stage.groupes = groupesIds;
-      await stage.save({ session });
     }
-
-    // Création des rotations avec les bons ObjectIds
-    if (rotations) {
-      for (const rot of rotations) {
-        let groupeObjectId = null;
-        
-        // Si la rotation concerne un groupe, récupérer son ObjectId
-        if (rot.groupe) {
-          groupeObjectId = groupeMapping.get(rot.groupe);
-          if (!groupeObjectId) {
-            throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
-          }
-        }
-
-        const rotationDoc = new Rotation({
-          stage: stage._id,
-          structure: rot.structure,
-          superviseur: rot.superviseur||null,
-          dateDebut: rot.dateDebut,
-          dateFin: rot.dateFin,
-          stagiaire: rot.stagiaire || null,
-          groupe: groupeObjectId // Utiliser l'ObjectId au lieu du numéro
-        });
-        await rotationDoc.save({ session });
-      }
-    }
-
-    // Création des affectations finales avec les bons ObjectIds
-    if (affectationsFinales) {
-      for (const aff of affectationsFinales) {
-        let groupeObjectId = null;
-        
-        // Si l'affectation concerne un groupe, récupérer son ObjectId
-        if (aff.groupe) {
-          groupeObjectId = groupeMapping.get(aff.groupe);
-          if (!groupeObjectId) {
-            throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation finale`);
-          }
-        }
-
-        const affDoc = new AffectationFinale({
-          stage: stage._id,
-          structure: aff.structure,
-          superviseur: aff.superviseur || null,
-          stagiaire: aff.stagiaire || null,
-          groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
-          dateDebut: aff.dateDebut,
-          dateFin: aff.dateFin
-        });
-        await affDoc.save({ session });
-      }
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    // Envoi mail notification
-    if (type === 'INDIVIDUEL') {
-      const stagiaireDoc = await Stagiaire.findById(stagiaire);
-      if (stagiaireDoc && stagiaireDoc.email) {
-        sendStageNotificationEmail(
-          stagiaireDoc.email,
-          lang,
-          stagiaireDoc.nom,
-          stagiaireDoc.prenom
-        );
-      }
-    } else if (type === 'GROUPE') {
-      // Charge tous les stagiaires des groupes et envoie mail à chacun
-      const groupesDocs = await Groupe.find({ stage: stage._id }).populate('stagiaires');
-      for (const groupe of groupesDocs) {
-        for (const stagiaireDoc of groupe.stagiaires) {
-          if (stagiaireDoc.email) {
-            sendStageNotificationEmail(
-              stagiaireDoc.email,
-              lang,
-              stagiaireDoc.nom,
-              stagiaireDoc.prenom
-            );
-          }
-        }
-      }
-    }
-
-    return res.status(201).json({
-        success: true,
-        message: t('ajouter_succes', lang),
-        data: stage,
-    });
-
-  } catch (err) {
-    console.log(err)
-    logger.error('Create stage exception:', err);
-    await session.abortTransaction();
-    session.endSession();
-    return res.status(500).json({
-        success: false,
-        message: `${t('erreur_serveur', lang)} : ${err.message}`,
-        error: err.message,
-    });
-  }
 };
 
 export const getStageByIdAndType = async (req, res) => {
@@ -432,319 +465,265 @@ export const getStageByIdAndType = async (req, res) => {
 };
 
 export const updateStage = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  const lang = req.headers['accept-language'] || 'fr';
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    const lang = req.headers['accept-language'] || 'fr';
 
-  try {
-    const stageId = req.params.stageId;
-    const {
-        nomFr,
-        nomEn,
-        type,
-        stagiaire,
-        groupes,
-        rotations,
-        affectationsFinales,
-        dateDebut,
-        dateFin,
-        anneeStage,
-        statut
-    } = req.body;
+    try {
+        const stageId = req.params.stageId;
+        const {
+            nomFr, nomEn, type,
+            stagiaire,
+            groupes, rotations,
+            stagiaires, etablissement,
+            affectationsFinales,
+            dateDebut, dateFin, anneeStage, statut
+        } = req.body;
 
-    // Vérifier que le stage existe
-    const existingStage = await Stage.findById(stageId);
-    if (!existingStage) {
-        return res.status(404).json({
-            success: false,
-            message: t('stage_introuvable', lang),
-        });
-    }
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-            errors: errors.array().map(err => err.msg),
-        });
-    }
-    
-    if (!isValidDateRange(dateDebut, dateFin)) {
-        return res.status(400).json({
-            success: false,
-            message: t('date_debut_anterieur_date_fin', lang),
-        });
-    }
-
-    if (type === 'INDIVIDUEL') {
-        if (!stagiaire){
-            return res.status(400).json({
+        const existingStage = await Stage.findById(stageId);
+        if (!existingStage) {
+            return res.status(404).json({
                 success: false,
-                message: t('stagiaire_obligatoire', lang),
+                message: t('stage_introuvable', lang),
             });
         }
-        if (groupes && groupes.length > 0){
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
             return res.status(400).json({
                 success: false,
-                message: t('groupe_non_autorise', lang),
-            });
-        } 
-    } else if (type === 'GROUPE') {
-        if (!groupes || !Array.isArray(groupes) || groupes.length === 0){
-            return res.status(400).json({
-                success: false,
-                message: t('groupe_obligatoire', lang),
+                message: t('champs_obligatoires', lang),
+                errors: errors.array().map(err => err.msg),
             });
         }
-        if (stagiaire){
+
+        if (!isValidDateRange(dateDebut, dateFin)) {
             return res.status(400).json({
                 success: false,
-                message: t('stagiaire_non_autorise', lang),
+                message: t('date_debut_anterieur_date_fin', lang),
             });
-        } 
-    } else {
-        return res.status(400).json({
-            success: false,
-            message: t('invalide_type_stage', lang),
-        });
-    }
+        }
 
-    if (groupes) {
-        const stagiaireIds = new Set();
-        for (const grp of groupes) {
-            if (!grp.numero){
+        // ── Validations par type (identiques à createStage) ─────────────────
+        if (type === 'INDIVIDUEL') {
+            if (!stagiaire) {
+                return res.status(400).json({ success: false, message: t('stagiaire_obligatoire', lang) });
+            }
+            if (groupes?.length > 0 || stagiaires?.length > 0) {
+                return res.status(400).json({ success: false, message: t('groupe_non_autorise', lang) });
+            }
+        } else if (type === 'GROUPE') {
+            if (!groupes || !Array.isArray(groupes) || groupes.length === 0) {
+                return res.status(400).json({ success: false, message: t('groupe_obligatoire', lang) });
+            }
+            if (stagiaire || stagiaires?.length > 0) {
+                return res.status(400).json({ success: false, message: t('stagiaire_non_autorise', lang) });
+            }
+        } else if (type === 'BATCH') {
+            if (!stagiaires || !Array.isArray(stagiaires) || stagiaires.length < 2) {
                 return res.status(400).json({
                     success: false,
-                    message: t('numero_groupe', lang),
-                });
-            } 
-            if (!grp.stagiaires || !Array.isArray(grp.stagiaires)){
-                return res.status(400).json({
-                    success: false,
-                    message: t('groupe_tableau_stagiaire', lang),
+                    message: t('min_2_stagiaires', lang),
                 });
             }
-            
-            grp.stagiaires.forEach(id => {
-                if (stagiaireIds.has(id)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: t('stagiaire_plusieurs_groupes', lang),
-                    });
+            if (!etablissement) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('etablissement_obligatoire', lang),
+                });
+            }
+            if (stagiaire || groupes?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('no_individual_or_group_trainees', lang),
+                });
+            }
+            const uniques = new Set(stagiaires.map(String));
+            if (uniques.size !== stagiaires.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('duplicate_trainees_detected', lang),
+                });
+            }
+            if (rotations?.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: t('batch_no_rotations_supported',lang),
+                });
+            }
+        }
+
+        // ── Validation groupes ───────────────────────────────────────────────
+        if (type === 'GROUPE' && groupes) {
+            const stagiaireIds = new Set();
+            for (const grp of groupes) {
+                if (!grp.numero) {
+                    return res.status(400).json({ success: false, message: t('numero_groupe', lang) });
                 }
-                stagiaireIds.add(id);
-            });
+                if (!grp.stagiaires || !Array.isArray(grp.stagiaires)) {
+                    return res.status(400).json({ success: false, message: t('groupe_tableau_stagiaire', lang) });
+                }
+                grp.stagiaires.forEach(id => {
+                    if (stagiaireIds.has(id)) {
+                        return res.status(400).json({ success: false, message: t('stagiaire_plusieurs_groupes', lang) });
+                    }
+                    stagiaireIds.add(id);
+                });
+            }
         }
-    }
 
-    if (rotations) {
-        if (!Array.isArray(rotations)){
-            return res.status(400).json({
-                success: false,
-                message: t('rotation_tableau', lang),
+        // ── Validation rotations ─────────────────────────────────────────────
+        if (rotations) {
+            if (!Array.isArray(rotations)) {
+                return res.status(400).json({ success: false, message: t('rotation_tableau', lang) });
+            }
+            rotations.forEach((rot, idx) => {
+                if (!rot.structure || !rot.dateDebut || !rot.dateFin)
+                    throw new Error(`Rotation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
+                if (!isValidDateRange(rot.dateDebut, rot.dateFin))
+                    throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+                if (rot.stagiaire && rot.groupe)
+                    throw new Error(`Rotation #${idx + 1}: stagiaire OU groupe, pas les deux`);
+                if (!rot.stagiaire && !rot.groupe)
+                    throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
             });
-        } 
-        rotations.forEach((rot, idx) => {
-            if (!rot.structure || !rot.dateDebut || !rot.dateFin)
-                throw new Error(`Rotation #${idx + 1}: structure, superviseur, dateDebut et dateFin obligatoires`);
-            if (!isValidDateRange(rot.dateDebut, rot.dateFin))
-                throw new Error(`Rotation #${idx + 1}: dateDebut doit être ≤ dateFin`);
-            if (rot.stagiaire && rot.groupe)
-                throw new Error(`Rotation #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
-            if (!rot.stagiaire && !rot.groupe)
-             throw new Error(`Rotation #${idx + 1}: stagiaire ou groupe doit être défini`);
+            if (checkOverlaps(rotations, 'stagiaire')) {
+                return res.status(400).json({ success: false, message: t('conflit_chevauchement_rotation_stagiaire', lang) });
+            }
+            if (checkOverlaps(rotations, 'groupe')) {
+                return res.status(400).json({ success: false, message: t('conflit_chevauchement_rotation_groupe', lang) });
+            }
+        }
+
+        // ── Validation affectations ──────────────────────────────────────────
+        if (affectationsFinales) {
+            if (!Array.isArray(affectationsFinales))
+                throw new Error('affectationsFinales doit être un tableau');
+            affectationsFinales.forEach((aff, idx) => {
+                if (!aff.structure || !aff.dateDebut || !aff.dateFin)
+                    throw new Error(`Affectation #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
+                if (!isValidDateRange(aff.dateDebut, aff.dateFin))
+                    throw new Error(`Affectation #${idx + 1}: dateDebut doit être ≤ dateFin`);
+                if (type === 'BATCH') {
+                    if (!aff.stagiaire)
+                        throw new Error(`Affectation #${idx + 1}: stagiaire obligatoire pour BATCH`);
+                    if (!stagiaires.map(String).includes(String(aff.stagiaire)))
+                        throw new Error(`Affectation #${idx + 1}: stagiaire absent du stage BATCH`);
+                } else {
+                    if (aff.stagiaire && aff.groupe)
+                        throw new Error(`Affectation #${idx + 1}: stagiaire OU groupe, pas les deux`);
+                    if (!aff.stagiaire && !aff.groupe)
+                        throw new Error(`Affectation #${idx + 1}: stagiaire ou groupe doit être défini`);
+                }
+            });
+            if (type !== 'BATCH') {
+                if (checkOverlaps(affectationsFinales, 'stagiaire'))
+                    throw new Error('Conflit de chevauchement (même stagiaire)');
+                if (checkOverlaps(affectationsFinales, 'groupe'))
+                    throw new Error('Conflit de chevauchement (même groupe)');
+            }
+        }
+
+        // ── Supprimer les données liées existantes ───────────────────────────
+        await Groupe.deleteMany({ stage: stageId }, { session });
+        await Rotation.deleteMany({ stage: stageId }, { session });
+        await AffectationFinale.deleteMany({ stage: stageId }, { session });
+
+        // ── Mettre à jour le stage ───────────────────────────────────────────
+        const updatePayload = {
+            nomFr, nomEn, type,
+            stagiaire:     type === 'INDIVIDUEL' ? stagiaire : null,
+            stagiaires:    type === 'BATCH'      ? stagiaires : [],
+            etablissement: type === 'BATCH'      ? etablissement : null,
+            groupes: [],
+            dateDebut, dateFin, anneeStage, statut
+        };
+
+        const updatedStage = await Stage.findByIdAndUpdate(stageId, updatePayload, {
+            new: true, session
         });
 
-        if (checkOverlaps(rotations, 'stagiaire')){
-            return res.status(400).json({
-                success: false,
-                message: t('conflit_chevauchement_rotation_stagiaire', lang),
-            });
+        // ── Recréer les groupes ──────────────────────────────────────────────
+        const groupeMapping = new Map();
+
+        if (type === 'GROUPE') {
+            const groupesIds = [];
+            for (const grp of groupes) {
+                const groupeDoc = new Groupe({
+                    stage: stageId,
+                    numero: grp.numero,
+                    stagiaires: grp.stagiaires || []
+                });
+                await groupeDoc.save({ session });
+                groupesIds.push(groupeDoc._id);
+                groupeMapping.set(grp.numero, groupeDoc._id);
+            }
+            updatedStage.groupes = groupesIds;
+            await updatedStage.save({ session });
         }
-        if (checkOverlaps(rotations, 'groupe')){
-            return res.status(400).json({
-                success: false,
-                message: t('conflit_chevauchement_rotation_groupe', lang),
-            });
+
+        // ── Recréer les rotations ────────────────────────────────────────────
+        if (rotations) {
+            for (const rot of rotations) {
+                let groupeObjectId = null;
+                if (rot.groupe) {
+                    groupeObjectId = groupeMapping.get(rot.groupe);
+                    if (!groupeObjectId)
+                        throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
+                }
+                await new Rotation({
+                    stage: stageId,
+                    structure: rot.structure,
+                    superviseur: rot.superviseur || null,
+                    dateDebut: rot.dateDebut,
+                    dateFin: rot.dateFin,
+                    stagiaire: rot.stagiaire || null,
+                    groupe: groupeObjectId
+                }).save({ session });
+            }
         }
-    }
 
-    if (affectationsFinales) {
-      if (!Array.isArray(affectationsFinales)) throw new Error('affectationsFinales doit être un tableau');
-      affectationsFinales.forEach((aff, idx) => {
-        if (!aff.structure || !aff.dateDebut || !aff.dateFin)
-          throw new Error(`Affectation finale #${idx + 1}: structure, dateDebut et dateFin obligatoires`);
-        if (!isValidDateRange(aff.dateDebut, aff.dateFin))
-          throw new Error(`Affectation finale #${idx + 1}: dateDebut doit être ≤ dateFin`);
-        if (aff.stagiaire && aff.groupe)
-          throw new Error(`Affectation finale #${idx + 1}: Uniquement stagiaire ou groupe doit être défini`);
-        if (!aff.stagiaire && !aff.groupe)
-          throw new Error(`Affectation finale #${idx + 1}: stagiaire ou groupe doit être défini`);
-      });
+        // ── Recréer les affectations ─────────────────────────────────────────
+        if (affectationsFinales) {
+            for (const aff of affectationsFinales) {
+                let groupeObjectId = null;
+                if (aff.groupe) {
+                    groupeObjectId = groupeMapping.get(aff.groupe);
+                    if (!groupeObjectId)
+                        throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation`);
+                }
+                await new AffectationFinale({
+                    stage: stageId,
+                    structure: aff.structure,
+                    superviseur: aff.superviseur || null,
+                    stagiaire: aff.stagiaire || null,
+                    groupe: groupeObjectId,
+                    dateDebut: aff.dateDebut,
+                    dateFin: aff.dateFin
+                }).save({ session });
+            }
+        }
 
-      if (checkOverlaps(affectationsFinales, 'stagiaire'))
-        throw new Error('Conflit de chevauchement détecté dans affectations finales (même stagiaire)');
-      if (checkOverlaps(affectationsFinales, 'groupe'))
-        throw new Error('Conflit de chevauchement détecté dans affectations finales (même groupe)');
-    }
+        await session.commitTransaction();
+        session.endSession();
 
-    // SUPPRESSION DES DONNÉES EXISTANTES
-    
-    // Supprimer les anciens groupes
-    await Groupe.deleteMany({ stage: stageId }, { session });
-    
-    // Supprimer les anciennes rotations
-    await Rotation.deleteMany({ stage: stageId }, { session });
-    
-    // Supprimer les anciennes affectations finales
-    await AffectationFinale.deleteMany({ stage: stageId }, { session });
-
-    // MISE À JOUR DU STAGE
-    const updatedStage = await Stage.findByIdAndUpdate(
-      stageId,
-      { 
-        nomFr, 
-        nomEn, 
-        type, 
-        stagiaire: type === 'INDIVIDUEL' ? stagiaire : null,
-        dateDebut, 
-        dateFin, 
-        anneeStage, 
-        statut,
-        groupes: [] // Sera mis à jour plus bas si nécessaire
-      },
-      { new: true, session }
-    );
-
-    // RECRÉATION DES NOUVELLES DONNÉES
-    
-    // Map pour associer numéro de groupe -> ObjectId
-    const groupeMapping = new Map();
-
-    if (type === 'GROUPE') {
-      const groupesIds = [];
-      for (const grp of groupes) {
-        const groupeDoc = new Groupe({
-          stage: stageId,
-          numero: grp.numero,
-          stagiaires: grp.stagiaires || []
+        return res.status(200).json({
+            success: true,
+            message: t('modifier_succes', lang),
+            data: updatedStage,
         });
-        await groupeDoc.save({ session });
-        groupesIds.push(groupeDoc._id);
-        
-        // Créer le mapping : numéro -> ObjectId
-        groupeMapping.set(grp.numero, groupeDoc._id);
-      }
-      
-      // Mettre à jour le stage avec les nouveaux groupes
-      updatedStage.groupes = groupesIds;
-      await updatedStage.save({ session });
-    }
 
-    // Création des nouvelles rotations avec les bons ObjectIds
-    if (rotations) {
-      for (const rot of rotations) {
-        let groupeObjectId = null;
-        
-        // Si la rotation concerne un groupe, récupérer son ObjectId
-        if (rot.groupe) {
-          groupeObjectId = groupeMapping.get(rot.groupe);
-          if (!groupeObjectId) {
-            throw new Error(`Groupe ${rot.groupe} introuvable pour la rotation`);
-          }
-        }
-
-        const rotationDoc = new Rotation({
-          stage: stageId,
-          structure: rot.structure,
-          superviseur: rot.superviseur || null,
-          dateDebut: rot.dateDebut,
-          dateFin: rot.dateFin,
-          stagiaire: rot.stagiaire || null,
-          groupe: groupeObjectId // Utiliser l'ObjectId au lieu du numéro
+    } catch (err) {
+        console.error(err);
+        await session.abortTransaction();
+        session.endSession();
+        logger.error('Updated stage exception:', err);
+        return res.status(500).json({
+            success: false,
+            message: t('erreur_serveur', lang),
+            error: err.message,
         });
-        await rotationDoc.save({ session });
-      }
     }
-
-    // Création des nouvelles affectations finales avec les bons ObjectIds
-    if (affectationsFinales) {
-      for (const aff of affectationsFinales) {
-        let groupeObjectId = null;
-        
-        // Si l'affectation concerne un groupe, récupérer son ObjectId
-        if (aff.groupe) {
-          groupeObjectId = groupeMapping.get(aff.groupe);
-          if (!groupeObjectId) {
-            throw new Error(`Groupe ${aff.groupe} introuvable pour l'affectation finale`);
-          }
-        }
-
-        const affDoc = new AffectationFinale({
-          stage: stageId,
-          structure: aff.structure,
-          superviseur: aff.superviseur || null,
-          stagiaire: aff.stagiaire || null,
-          groupe: groupeObjectId, // Utiliser l'ObjectId au lieu du numéro
-          dateDebut: aff.dateDebut,
-          dateFin: aff.dateFin
-        });
-        await affDoc.save({ session });
-      }
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    // Envoi mail notification (optionnel pour les modifications)
-    // Vous pouvez commenter cette section si vous ne voulez pas d'emails lors des modifications
-    /*
-    if (type === 'INDIVIDUEL') {
-      const stagiaireDoc = await Stagiaire.findById(stagiaire);
-      if (stagiaireDoc && stagiaireDoc.email) {
-        sendStageUpdateNotificationEmail(
-          stagiaireDoc.email,
-          lang,
-          stagiaireDoc.nom,
-          stagiaireDoc.prenom
-        );
-      }
-    } else if (type === 'GROUPE') {
-      // Charge tous les stagiaires des groupes et envoie mail à chacun
-      const groupesDocs = await Groupe.find({ stage: stageId }).populate('stagiaires');
-      for (const groupe of groupesDocs) {
-        for (const stagiaireDoc of groupe.stagiaires) {
-          if (stagiaireDoc.email) {
-            sendStageUpdateNotificationEmail(
-              stagiaireDoc.email,
-              lang,
-              stagiaireDoc.nom,
-              stagiaireDoc.prenom
-            );
-          }
-        }
-      }
-    }
-    */
-
-    return res.status(200).json({
-        success: true,
-        message: t('modifier_succes', lang),
-        data: updatedStage,
-    });
-
-  } catch (err) {
-    console.log(err)
-    await session.abortTransaction();
-    session.endSession();
-    logger.error('Updated stage exception:', err);
-    return res.status(500).json({
-        success: false,
-        message: t('erreur_serveur', lang),
-        error: err.message,
-    });
-  }
 };
 
 export const deleteStage = async (req, res) => {

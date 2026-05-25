@@ -75,7 +75,7 @@ export const creerNoteService = async (req, res) => {
             designationTuteur,
             miseEnOeuvre
         } = req.body;
-
+        console.log(typeNote)
         // Validation des données requises
         if (!typeNote || !['convocation', 'acceptation_stage', 'mandat'].includes(typeNote)) {
             return res.status(400).json({
@@ -247,257 +247,152 @@ export const creerNoteServiceStage = async (req, res) => {
     session.startTransaction();
 
     try {
-        const {
-            titreFr,
-            titreEn,
-            stage,
-            copieA,
-            creePar,
-            designationTuteur,
-            miseEnOeuvre
-        } = req.body;
+        const { titreFr, titreEn, stage, copieA, creePar, designationTuteur, miseEnOeuvre } = req.body;
 
-        // Validation
         if (!stage) {
-            return res.status(400).json({
-                success: false,
-                message: t('ref_stage_requis', lang)
-            });
+            return res.status(400).json({ success: false, message: t('ref_stage_requis', lang) });
         }
 
-        // Vérifier que le stage existe et est de type INDIVIDUEL
         const stageData = await Stage.findById(stage)
             .populate({
                 path: 'stagiaire',
                 select: 'nom prenom genre parcours',
-                populate: {
-                    path: 'parcours.etablissement',
-                    select: 'nomFr nomEn'
-                }
+                populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
             })
+            .populate({
+                path: 'stagiaires',   // BATCH
+                select: 'nom prenom genre parcours',
+                populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
+            })
+            .populate('etablissement', 'nomFr nomEn')  // BATCH
             .lean();
 
         if (!stageData) {
-            return res.status(404).json({
-                success: false,
-                message: t('stage_non_trouve', lang)
+            return res.status(404).json({ success: false, message: t('stage_non_trouve', lang) });
+        }
+
+        if (!['INDIVIDUEL', 'BATCH'].includes(stageData.type)) {
+            return res.status(400).json({ success: false, message: t('stage_type_invalide', lang) });
+        }
+
+        // ── Branche BATCH ────────────────────────────────────────────────────
+        if (stageData.type === 'BATCH') {
+            return await _creerNoteServiceStageBatch({
+                stageData, titreFr, titreEn, copieA, creePar,
+                designationTuteur, miseEnOeuvre, session, lang, res
             });
         }
-        
-        if (stageData.type !== 'INDIVIDUEL') {
-            return res.status(400).json({
-                success: false,
-                message: t('stage_type_invalide', lang)
-            });
-        }
-       
-        // Récupérer l'établissement correspondant à l'année du stage
+
+        // ── Branche INDIVIDUEL (code existant inchangé) ──────────────────────
         let etablissementAnnee = null;
         if (stageData.stagiaire?.parcours && stageData.anneeStage) {
-            // Rechercher d'abord le parcours exact de l'année du stage
-            let parcoursAnnee = stageData.stagiaire.parcours.find(
-                p => p.annee === stageData.anneeStage
-            );
-            
-            // Si pas de parcours pour l'année exacte, chercher le parcours le plus récent AVANT l'année du stage
+            let parcoursAnnee = stageData.stagiaire.parcours.find(p => p.annee === stageData.anneeStage);
             if (!parcoursAnnee) {
-                // Filtrer les parcours dont l'année est inférieure à l'année du stage
-                const parcoursAnterieurs = stageData.stagiaire.parcours.filter(
-                    p => p.annee < stageData.anneeStage
-                );
-                
-                // Trier par année décroissante et prendre le premier (le plus récent)
-                if (parcoursAnterieurs.length > 0) {
-                    parcoursAnterieurs.sort((a, b) => b.annee - a.annee);
-                    parcoursAnnee = parcoursAnterieurs[0];
-                }
+                const anterieurs = stageData.stagiaire.parcours
+                    .filter(p => p.annee < stageData.anneeStage)
+                    .sort((a, b) => b.annee - a.annee);
+                parcoursAnnee = anterieurs[0] || null;
             }
-            
             if (parcoursAnnee?.etablissement) {
                 etablissementAnnee = {
-                    _id: parcoursAnnee.etablissement._id,
-                    nomFr: parcoursAnnee.etablissement.nomFr,
-                    nomEn: parcoursAnnee.etablissement.nomEn,
+                    _id:    parcoursAnnee.etablissement._id,
+                    nomFr:  parcoursAnnee.etablissement.nomFr,
+                    nomEn:  parcoursAnnee.etablissement.nomEn,
                     filiere: parcoursAnnee.filiere,
-                    option: parcoursAnnee.option,
-                    niveau: parcoursAnnee.niveau,
-                    annee: parcoursAnnee.annee // Ajouter l'année du parcours utilisé
+                    option:  parcoursAnnee.option,
+                    niveau:  parcoursAnnee.niveau,
+                    annee:   parcoursAnnee.annee
                 };
             }
         }
 
-        // Générer les titres automatiquement
         let titreNoteFr = "Relative à la mise en stage d'un(e) étudiant(e)";
         let titreNoteEn = "Relating to the internship of a student";
 
         if (etablissementAnnee) {
-            // Déterminer le genre pour le français
             const genre = stageData.stagiaire?.genre;
             const etudiantFr = genre === 'M' ? "un étudiant" : genre === 'F' ? "une étudiante" : "un(e) étudiant(e)";
-            
-            // Obtenir l'article approprié pour l'établissement
             const articleEtablissement = getArticleDe(etablissementAnnee.nomFr);
-            
-            // Construire les titres avec l'établissement
             titreNoteFr = `Relative à la mise en stage d'${etudiantFr} ${articleEtablissement} ${etablissementAnnee.nomFr}`;
             titreNoteEn = `Relating to the internship of a student from ${etablissementAnnee.nomEn}`;
         }
 
-        // Générer copieA avec les termes obligatoires
         const genre = stageData.stagiaire?.genre;
         const interesse = genre === 'F' ? 'Intéressée' : 'Intéressé';
-        
-        // Ajouter automatiquement les termes obligatoires à copieA
-        let copieAComplete = copieA || '';
-        
-        // Nettoyer copieA des entrées vides et des doublons
-        const copieAArray = copieAComplete
-            .split(';')
-            .map(item => item.trim())
-            .filter(item => item !== '');
-        
-        // Ajouter les termes obligatoires s'ils ne sont pas déjà présents
-        if (!copieAArray.some(item => item.toLowerCase() === interesse.toLowerCase())) {
-            copieAArray.push(interesse);
-        }
-        if (!copieAArray.includes('Archives/Chrono')) {
-            copieAArray.push('Archives/Chrono');
-        }
-        
-        // Reconstruire la chaîne copieA
-        copieAComplete = copieAArray.join(';');
+        const copieAArray = (copieA || '').split(';').map(e => e.trim()).filter(e => e !== '');
+        if (!copieAArray.some(e => e.toLowerCase() === interesse.toLowerCase())) copieAArray.push(interesse);
+        if (!copieAArray.includes('Archives/Chrono')) copieAArray.push('Archives/Chrono');
+        const copieAComplete = copieAArray.join(';');
 
-        // Récupérer l'affectation finale du stagiaire
-        const affectations = await AffectationFinale.find({ 
+        const affectations = await AffectationFinale.find({
             stage: stage,
             stagiaire: stageData.stagiaire._id
         })
+        .populate({ path: 'structure', select: 'nomFr nomEn' })
         .populate({
-            path: 'structure',
-            select: 'nomFr nomEn'
-        })
-        .populate({
-            path: 'superviseur',
-            select: 'nom prenom titre posteDeTravail',
-            populate: {
-                path: 'posteDeTravail',
-                select: 'nomFr nomEn'
-            }
+            path: 'superviseur', select: 'nom prenom titre posteDeTravail',
+            populate: { path: 'posteDeTravail', select: 'nomFr nomEn' }
         })
         .lean();
 
         if (!affectations || affectations.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: t('affectation_non_trouvee', lang)
-            });
+            return res.status(404).json({ success: false, message: t('affectation_non_trouvee', lang) });
         }
 
-        // Vérifier si une note existe déjà pour ce stage
-        let noteExistante = await NoteService.findOne({ 
-            stage: stage, 
-            typeNote: 'acceptation_stage' 
-        });
-        
+        let noteExistante = await NoteService.findOne({ stage, typeNote: 'acceptation_stage' });
         let nouvelleNote;
 
         if (noteExistante) {
-            // Mettre à jour la note existante (sans modifier la référence)
-            if (!noteExistante.reference) {
-                noteExistante.reference = await genererReference();
-            }
-            noteExistante.titreFr = titreFr || titreNoteFr;
-            noteExistante.titreEn = titreEn || titreNoteEn;
-            noteExistante.copieA = copieAComplete;
-            noteExistante.creePar = creePar;
+            if (!noteExistante.reference) noteExistante.reference = await genererReference();
+            noteExistante.titreFr           = titreFr || titreNoteFr;
+            noteExistante.titreEn           = titreEn || titreNoteEn;
+            noteExistante.copieA            = copieAComplete;
+            noteExistante.creePar           = creePar;
             noteExistante.designationTuteur = designationTuteur;
-            noteExistante.miseEnOeuvre = miseEnOeuvre;
-            noteExistante.valideParDG = false;
-            
+            noteExistante.miseEnOeuvre      = miseEnOeuvre;
+            noteExistante.valideParDG       = false;
             nouvelleNote = await noteExistante.save({ session });
         } else {
-            // Générer la référence uniquement pour une nouvelle note
             const reference = await genererReference();
-
-            // Créer la nouvelle note de service
             nouvelleNote = new NoteService({
-                reference,
-                stage,
+                reference, stage,
                 typeNote: 'acceptation_stage',
-                titreFr:titreNoteFr,
-                titreEn:titreNoteEn,
-                copieA: copieAComplete,
-                creePar,
-                designationTuteur,
-                miseEnOeuvre,
+                titreFr: titreNoteFr, titreEn: titreNoteEn,
+                copieA: copieAComplete, creePar,
+                designationTuteur, miseEnOeuvre,
                 valideParDG: false
             });
-            
             nouvelleNote = await nouvelleNote.save({ session });
         }
-        
+
         const createur = await Utilisateur.findById(creePar).lean();
-        
-        // Ajouter l'établissement aux données du stage
-        const stageDataAvecEtablissement = {
-            ...stageData,
-            etablissementAnnee
-        };
-        
-        // Générer le PDF
-        let pdfBuffer;
-        if (affectations.length === 1) {
-            pdfBuffer = await genererPDFStageIndividuel(
-                nouvelleNote, 
-                stageDataAvecEtablissement, 
-                affectations[0], 
-                lang,
-                createur
-            );
-        } else {
-            pdfBuffer = await genererPDFStageRotations(
-                nouvelleNote, 
-                stageDataAvecEtablissement, 
-                affectations, 
-                lang,
-                createur
-            );
-        }
+        const stageDataAvecEtablissement = { ...stageData, etablissementAnnee };
 
-        // Définir le nom du fichier
-        // Générer un nom de fichier plus descriptif
+        const pdfBuffer = affectations.length === 1
+            ? await genererPDFStageIndividuel(nouvelleNote, stageDataAvecEtablissement, affectations[0], lang, createur)
+            : await genererPDFStageRotations(nouvelleNote, stageDataAvecEtablissement, affectations, lang, createur);
+
         const nomStagiaire = `${stageData.stagiaire.prenom}-${stageData.stagiaire.nom}`
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // Enlever les accents
-            .replace(/\s+/g, '-'); // Remplacer espaces par tirets
-
+            .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
         const annee = stageData.anneeStage || new Date().getFullYear();
         const reference = nouvelleNote.reference.replace(/\//g, '-');
-        
-        // Format: note-service-stage-[reference]-[nom-prenom]-[annee].pdf
-        // Exemple: note-service-stage-NS-001-2025-MINFI-jean-dupont-2025.pdf
         const nomFichier = `note-service-stage-${reference}-${nomStagiaire}-${annee}.pdf`;
 
-        // Valider la transaction
         await session.commitTransaction();
         session.endSession();
 
-        // Envoyer le PDF
         res.set({
             'Content-Type': 'application/pdf',
             'content-disposition': `attachment; filename="${nomFichier}"`,
             'Content-Length': pdfBuffer.length
         });
-        
         return res.send(pdfBuffer);
 
     } catch (error) {
-        console.error('Erreur lors de la création de la note de service stage:', error);
+        console.error('Erreur creerNoteServiceStage:', error);
         logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
-
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -505,6 +400,7 @@ export const creerNoteServiceStage = async (req, res) => {
         });
     }
 };
+
 
 /**
  * Crée ou met à jour une note de service pour un stage de groupe
@@ -1236,6 +1132,254 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
     } catch (error) {
         logger.error('Note exception:', error);
         console.error('Erreur lors de la génération du PDF stage rotations:', error);
+        throw error;
+    }
+};
+
+/**
+ * Sous-fonction privée : note de service pour un stage BATCH
+ */
+const _creerNoteServiceStageBatch = async ({
+    stageData, titreFr, titreEn, copieA, creePar,
+    designationTuteur, miseEnOeuvre, session, lang, res
+}) => {
+    const stageId = stageData._id;
+    const etablissementDoc = stageData.etablissement;
+    const nbStagiaires = stageData.stagiaires.length;
+
+    // ── Titres automatiques ──────────────────────────────────────────────────
+    let titreNoteFr = titreFr;
+    let titreNoteEn = titreEn;
+
+    if (!titreNoteFr) {
+        const articleEtab = etablissementDoc ? getArticleDe(etablissementDoc.nomFr) : 'de';
+        titreNoteFr = `Relative à la mise en stage de ${nbStagiaires} étudiant(s) ${articleEtab} ${etablissementDoc?.nomFr || ''}`.trim();
+    }
+    if (!titreNoteEn) {
+        titreNoteEn = `Relating to the internship of ${nbStagiaires} student(s) from ${etablissementDoc?.nomEn || ''}`.trim();
+    }
+
+    // ── CopieA ───────────────────────────────────────────────────────────────
+    const copieAArray = (copieA || '').split(';').map(e => e.trim()).filter(e => e !== '');
+    if (!copieAArray.some(e => e.toLowerCase() === 'intéressé(e)s')) copieAArray.push('Intéressé(e)s');
+    if (!copieAArray.includes('Archives/Chrono')) copieAArray.push('Archives/Chrono');
+    const copieAComplete = copieAArray.join(';');
+
+    // ── Récupérer les affectations de chaque stagiaire ───────────────────────
+    const affectationsParStagiaire = [];
+
+    for (const stagiaireDoc of stageData.stagiaires) {
+        // Parcours de l'année du stage
+        let parcoursAnnee = stagiaireDoc.parcours?.find(p => p.annee === stageData.anneeStage);
+        if (!parcoursAnnee) {
+            const anterieurs = (stagiaireDoc.parcours || [])
+                .filter(p => p.annee < stageData.anneeStage)
+                .sort((a, b) => b.annee - a.annee);
+            parcoursAnnee = anterieurs[0] || null;
+        }
+
+        const affectations = await AffectationFinale.find({
+            stage: stageId,
+            stagiaire: stagiaireDoc._id
+        })
+        .populate({ path: 'structure', select: 'nomFr nomEn' })
+        .populate({
+            path: 'superviseur', select: 'nom prenom posteDeTravail',
+            populate: { path: 'posteDeTravail', select: 'nomFr nomEn' }
+        })
+        .lean();
+
+        if (!affectations || affectations.length === 0) {
+            // Renvoi direct de la réponse erreur depuis la sous-fonction
+            res.status(404).json({
+                success: false,
+                message: `${lang === 'fr' ? 'Affectation introuvable pour' : 'Affectation not found for'} ${stagiaireDoc.nom} ${stagiaireDoc.prenom}`
+            });
+            throw new Error('AFFECTATION_MANQUANTE'); // interrompt la transaction
+        }
+
+        affectationsParStagiaire.push({
+            stagiaire: stagiaireDoc,
+            parcours:  parcoursAnnee,
+            affectations
+        });
+    }
+
+    // ── Créer ou mettre à jour la NoteService ────────────────────────────────
+    let noteExistante = await NoteService.findOne({
+        stage: stageId,
+        typeNote: 'acceptation_stage'
+    });
+
+    let noteEnregistree;
+
+    if (noteExistante) {
+        noteExistante.titreFr           = titreNoteFr;
+        noteExistante.titreEn           = titreNoteEn;
+        noteExistante.copieA            = copieAComplete;
+        noteExistante.creePar           = creePar;
+        noteExistante.designationTuteur = designationTuteur;
+        noteExistante.miseEnOeuvre      = miseEnOeuvre;
+        noteExistante.valideParDG       = false;
+        noteEnregistree = await noteExistante.save({ session });
+    } else {
+        const reference = await genererReference();
+        noteEnregistree = new NoteService({
+            reference,
+            stage: stageId,
+            typeNote: 'acceptation_stage',
+            titreFr: titreNoteFr,
+            titreEn: titreNoteEn,
+            copieA: copieAComplete,
+            creePar,
+            designationTuteur,
+            miseEnOeuvre,
+            valideParDG: false
+        });
+        noteEnregistree = await noteEnregistree.save({ session });
+    }
+
+    const createur = await Utilisateur.findById(creePar).lean();
+
+    const pdfBuffer = await genererPDFStageBatch(
+        noteEnregistree,
+        stageData,
+        affectationsParStagiaire,
+        lang,
+        createur
+    );
+
+    const nomFichier = `note-service-stage-batch-${noteEnregistree.reference.replace(/\//g, '-')}-${stageData.anneeStage}.pdf`;
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${nomFichier}"`,
+        'Content-Length': pdfBuffer.length
+    });
+    return res.send(pdfBuffer);
+};
+
+
+/**
+ * Génère le PDF pour un stage BATCH
+ */
+const genererPDFStageBatch = async (note, stageData, affectationsParStagiaire, lang, createur) => {
+    try {
+        const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
+        const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
+        const noteAbr = createur?.abreviationNoteServie ? `/${createur.abreviationNoteServie}` : '';
+
+        const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
+            errorCorrectionLevel: 'H', type: 'image/png', width: 100, margin: 1,
+            color: { dark: '#000000', light: '#FFFFFF' }
+        });
+
+        const etablissementDoc = stageData.etablissement;
+
+        // ── Formater chaque stagiaire ────────────────────────────────────────
+        const stagiairesFormates = affectationsParStagiaire.map((item, idx) => {
+            const { stagiaire, parcours, affectations } = item;
+
+            const etablissementNom = parcours?.etablissement
+                ? (lang === 'fr' ? parcours.etablissement.nomFr : parcours.etablissement.nomEn)
+                : (lang === 'fr' ? etablissementDoc?.nomFr : etablissementDoc?.nomEn) || null;
+
+            const affectationsFormatees = affectations.map((aff, i) => {
+                const structureNom = aff.structure
+                    ? (lang === 'fr' ? aff.structure.nomFr : aff.structure.nomEn)
+                    : '________________';
+                return {
+                    numero:    i + 1,
+                    structure: structureNom,
+                    article:   aff.structure ? getArticle(structureNom) : '_____',
+                    dateDebut: aff.dateDebut
+                        ? new Date(aff.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+                        : '______________',
+                    dateFin: aff.dateFin
+                        ? new Date(aff.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+                        : '______________',
+                };
+            });
+
+            return {
+                numero:           idx + 1,
+                sexe:             stagiaire.genre === 'M' ? 'M.' : 'Mme',
+                nomComplet:       `${stagiaire.nom} ${stagiaire.prenom || ''}`.trim(),
+                etudiant:         stagiaire.genre === 'M' ? 'étudiant' : 'étudiante',
+                admis:            stagiaire.genre === 'M' ? 'admis' : 'admise',
+                niveau:           parcours?.niveau  || '______________',
+                filiere:          parcours?.filiere || '______________',
+                universite:       etablissementNom ? formatWithArticle(etablissementNom) : '______________',
+                affectations:     affectationsFormatees,
+                affectationUnique: affectationsFormatees.length === 1 ? affectationsFormatees[0] : null,
+                avecRotations:    affectationsFormatees.length > 1
+            };
+        });
+
+        const etablissementNomFr = etablissementDoc?.nomFr || '';
+
+        const templateData = {
+            documentTitle: 'Note de Service - Stage BATCH',
+            logoUrl:       getLogoBase64(__dirname),
+            referenceSysteme: note.reference || 'REF-XXX',
+            noteAbr,
+            qrCodeUrl:       qrCodeDataUrl,
+            urlVerification,
+            noteTitle: lang === 'fr'
+                ? (note.titreFr || 'ACCEPTATION DE STAGES')
+                : (note.titreEn || 'INTERNSHIP ACCEPTANCE'),
+            etablissement:         etablissementNomFr,
+            articleEtablissement:  etablissementNomFr ? getArticleDe(etablissementNomFr) : 'de',
+            stagiaires:            stagiairesFormates,
+            nombreStagiaires:      stagiairesFormates.length,
+            designationTuteur:     note.designationTuteur || '___________________',
+            miseEnOeuvre:          note.miseEnOeuvre      || '___________________________',
+            copies: note.copieA
+                ? note.copieA.split(/[;,]/).map(e => e.trim()).filter(e => e.length > 0)
+                : ['Intéressé(e)s', 'Archives/Chrono'],
+            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
+            dateTime: new Date().toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'long', year: 'numeric',
+                hour: 'numeric', minute: 'numeric'
+            })
+        };
+
+        const templatePath = path.join(__dirname, '../views/note-service-stage-batch.ejs');
+        const html = await ejs.renderFile(templatePath, templateData);
+
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                   '--disable-accelerated-2d-canvas','--no-first-run','--no-zygote','--disable-gpu']
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4', printBackground: true,
+            margin: { top: '20px', right: '20px', bottom: '60px', left: '20px' },
+            displayHeaderFooter: true,
+            headerTemplate: '<div></div>',
+            footerTemplate: `
+                <div style="font-size:10px;width:100%;margin:0 20px;display:flex;
+                            justify-content:space-between;align-items:center;color:#666;">
+                    <div style="flex:1;">Généré par ${templateData.createurNom}</div>
+                    <div style="flex:1;text-align:center;">Le ${templateData.dateTime}</div>
+                    <div style="flex:1;text-align:right;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    </div>
+                </div>`
+        });
+
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        logger.error('Note exception:', error);
+        console.error('Erreur genererPDFStageBatch:', error);
         throw error;
     }
 };
@@ -3422,119 +3566,105 @@ const genererPDFStage = async (note, lang) => {
         .populate({
             path: 'stagiaire',
             select: 'nom prenom genre parcours',
-            options: { strictPopulate: false },
-            populate: {
-                path: 'parcours.etablissement',
-                select: 'nomFr nomEn',
-                options: { strictPopulate: false }
-            }
+            populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
         })
+        .populate({
+            path: 'stagiaires',   // BATCH
+            select: 'nom prenom genre parcours',
+            populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
+        })
+        .populate('etablissement', 'nomFr nomEn')
         .populate({
             path: 'groupes',
             populate: {
                 path: 'stagiaires',
                 select: 'nom prenom genre parcours',
-                options: { strictPopulate: false },
-                populate: {
-                    path: 'parcours.etablissement',
-                    select: 'nomFr nomEn',
-                    options: { strictPopulate: false }
-                }
+                populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
             }
         })
         .lean();
 
     const createur = await Utilisateur.findById(note.creePar).lean();
 
-    // STAGE INDIVIDUEL
+    // ── INDIVIDUEL ───────────────────────────────────────────────────────────
     if (stageData.type === 'INDIVIDUEL') {
-        const affectations = await AffectationFinale.find({ 
+        const affectations = await AffectationFinale.find({
             stage: note.stage._id,
             stagiaire: stageData.stagiaire._id
         })
+        .populate({ path: 'structure', select: 'nomFr nomEn' })
         .populate({
-            path: 'structure',
-            select: 'nomFr nomEn'
-        })
-        .populate({
-            path: 'superviseur',
-            select: 'nom prenom titre posteDeTravail',
-            populate: {
-                path: 'posteDeTravail',
-                select: 'nomFr nomEn'
-            }
+            path: 'superviseur', select: 'nom prenom titre posteDeTravail',
+            populate: { path: 'posteDeTravail', select: 'nomFr nomEn' }
         })
         .lean();
 
-        if (!affectations || affectations.length === 0) {
+        if (!affectations || affectations.length === 0)
             throw new Error('Affectations non trouvées pour ce stage');
+
+        return affectations.length === 1
+            ? await genererPDFStageIndividuel(note, stageData, affectations[0], lang, createur)
+            : await genererPDFStageRotations(note, stageData, affectations, lang, createur);
+    }
+
+    // ── BATCH ────────────────────────────────────────────────────────────────
+    if (stageData.type === 'BATCH') {
+        const affectationsParStagiaire = [];
+
+        for (const stagiaireDoc of stageData.stagiaires) {
+            let parcoursAnnee = stagiaireDoc.parcours?.find(p => p.annee === stageData.anneeStage);
+            if (!parcoursAnnee) {
+                const anterieurs = (stagiaireDoc.parcours || [])
+                    .filter(p => p.annee < stageData.anneeStage)
+                    .sort((a, b) => b.annee - a.annee);
+                parcoursAnnee = anterieurs[0] || null;
+            }
+
+            const affectations = await AffectationFinale.find({
+                stage: note.stage._id,
+                stagiaire: stagiaireDoc._id
+            })
+            .populate({ path: 'structure', select: 'nomFr nomEn' })
+            .populate({
+                path: 'superviseur', select: 'nom prenom posteDeTravail',
+                populate: { path: 'posteDeTravail', select: 'nomFr nomEn' }
+            })
+            .lean();
+
+            affectationsParStagiaire.push({
+                stagiaire: stagiaireDoc,
+                parcours:  parcoursAnnee,
+                affectations
+            });
         }
 
-        // 1 affectation = stage simple
-        if (affectations.length === 1) {
-            return await genererPDFStageIndividuel(
-                note, 
-                stageData, 
-                affectations[0], 
-                lang,
-                createur
-            );
-        }
-        // Plusieurs affectations = stage avec rotations
-        else {
-            return await genererPDFStageRotations(
-                note, 
-                stageData, 
-                affectations, 
-                lang,
-                createur
-            );
-        }
+        return await genererPDFStageBatch(note, stageData, affectationsParStagiaire, lang, createur);
     }
-    // STAGE DE GROUPE
-    else if (stageData.type === 'GROUPE') {
-        const rotations = await Rotation.find({ 
+
+    // ── GROUPE ───────────────────────────────────────────────────────────────
+    if (stageData.type === 'GROUPE') {
+        const rotations = await Rotation.find({
             stage: note.stage._id,
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
-        .populate({
-            path: 'structure',
-            select: 'nomFr nomEn'
-        })
-        .populate({
-            path: 'groupe',
-            select: 'numero'
-        })
+        .populate({ path: 'structure', select: 'nomFr nomEn' })
+        .populate({ path: 'groupe', select: 'numero' })
         .sort({ 'groupe.numero': 1, dateDebut: 1 })
         .lean();
 
-        const affectations = await AffectationFinale.find({ 
+        const affectations = await AffectationFinale.find({
             stage: note.stage._id,
             groupe: { $in: stageData.groupes.map(g => g._id) }
         })
-        .populate({
-            path: 'structure',
-            select: 'nomFr nomEn'
-        })
-        .populate({
-            path: 'groupe',
-            select: 'numero'
-        })
+        .populate({ path: 'structure', select: 'nomFr nomEn' })
+        .populate({ path: 'groupe', select: 'numero' })
         .sort({ 'groupe.numero': 1 })
         .lean();
 
-        return await genererPDFStageGroupe(
-            note, 
-            stageData, 
-            rotations,
-            affectations,
-            lang,
-            createur
-        );
+        return await genererPDFStageGroupe(note, stageData, rotations, affectations, lang, createur);
     }
-    else {
-        throw new Error(`Type de stage non supporté: ${stageData.type}`);
-    }
+
+    throw new Error(`Type de stage non supporté: ${stageData.type}`);
 };
 
 /**

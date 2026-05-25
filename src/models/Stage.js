@@ -4,9 +4,12 @@ import mongoose from 'mongoose';
 const StageSchema = new mongoose.Schema({
     nomFr:{type:String, required: true},
     nomEn:{type:String, required: true},
-    type: { type: String, enum: ["INDIVIDUEL", "GROUPE"], required: true },
+    type: { type: String, enum: ["INDIVIDUEL", "GROUPE", "BATCH"], required: true },
     stagiaire: { type: mongoose.Schema.Types.ObjectId, ref: "Stagiaire" }, // si individuel
     groupes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Groupe" }], // si groupe
+    // BATCH — plusieurs stagiaires du même établissement, affectation individuelle
+    stagiaires:    [{ type: mongoose.Schema.Types.ObjectId, ref: "Stagiaire" }],
+    etablissement: { type: mongoose.Schema.Types.ObjectId, ref: "Etablissement" },
 
     dateDebut: { type: Date, required: true },
     dateFin: { type: Date, required: true },

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title><%= documentTitle %></title>
+    <style>
+        @page { margin: 1.5cm 2.5cm 1.5cm 2.5cm; size: A4; }
+        body {
+            font-family: 'Times New Roman', serif;
+            margin: 0; padding: 0;
+            font-size: 16px; line-height: 1.4; color: #000;
+        }
+        .header {
+            display: flex; justify-content: space-between;
+            align-items: flex-start; margin-bottom: 40px;
+        }
+        .header-left, .header-right {
+            width: 40%; font-size: 10px; font-weight: bold; text-align: center;
+        }
+        .header-center { width: 20%; text-align: center; }
+        .header-center img { max-width: 90px; }
+        .note-title { text-align: center; margin-bottom: 24px; }
+        .document-title { font-size: 17px; font-weight: bold; line-height: 1.4; }
+
+        /* Bloc par stagiaire */
+        .stagiaire-bloc {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px dashed #999;
+        }
+        .stagiaire-bloc:last-of-type { border-bottom: none; margin-bottom: 0; }
+
+        .stagiaire-titre {
+            font-weight: bold;
+            font-size: 15px;
+            text-decoration: underline;
+            margin-bottom: 6px;
+        }
+        .body-content { text-align: justify; line-height: 1.5; font-size: 16px; }
+        .body-content p { text-indent: 1.2cm; margin-bottom: 10px; }
+
+        /* Tableau rotations intra-stagiaire */
+        .rotations-table {
+            width: 100%; border-collapse: collapse;
+            margin: 8px 0 10px 1.2cm; font-size: 14px;
+        }
+        .rotations-table th {
+            background-color: #2c3e50; color: #fff;
+            padding: 6px 10px; border: 1px solid #000; text-align: center;
+        }
+        .rotations-table td {
+            padding: 5px 10px; border: 1px solid #000; text-align: center;
+        }
+
+        /* Dispositions communes */
+        .commun { margin-top: 20px; }
+        .copie-section { margin-top: 32px; font-size: 16px; }
+        .copie-title { font-weight: bold; text-decoration: underline; margin-bottom: 8px; }
+
+        .verification-section { margin-top: 20px; width: 150px; text-align: center; }
+        .qr-code-container img { width: 85px; height: 85px; }
+        .reference-systeme { font-size: 10px; font-weight: bold; margin-top: 5px; }
+        .verification-text { font-size: 8px; color: #555; margin-top: 3px; }
+
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-left">
+        REPUBLIQUE DU CAMEROUN<br>Paix - Travail - Patrie<br>
+        ----------------------<br>MINISTERE DES FINANCES<br>
+        ----------------------<br>DIRECTION GENERALE DES IMPOTS<br>
+        ----------------------<br>DIRECTION DES AFFAIRES GENERALES<br>
+        ----------------------<br>CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+        ----------------------
+    </div>
+    <div class="header-center">
+        <% if (logoUrl) { %><img src="<%= logoUrl %>" alt="Armoiries"><% } %>
+    </div>
+    <div class="header-right">
+        REPUBLIC OF CAMEROON<br>Peace - Work - Fatherland<br>
+        ----------------------<br>MINISTRY OF FINANCE<br>
+        ----------------------<br>DIRECTORATE GENERAL OF TAXATION<br>
+        ----------------------<br>DEPARTMENT OF GENERAL AFFAIRS<br>
+        ----------------------<br>TRAINING AND SKILLS PERFECTION UNIT<br>
+        ----------------------
+    </div>
+</div>
+
+<!-- TITRE -->
+<div class="note-title">
+    <h3 class="document-title">
+        Note de service N°____________ MINFI/DGI/DAG/CPFC<%= noteAbr %> du ___________<br>
+        <%= noteTitle %>
+    </h3>
+</div>
+
+<!-- BLOC PAR STAGIAIRE -->
+<% stagiaires.forEach(function(s) { %>
+<div class="stagiaire-bloc">
+
+    <div class="stagiaire-titre"><%= s.numero %>. <%= s.sexe %> <%= s.nomComplet %></div>
+
+    <div class="body-content">
+        <% if (!s.avecRotations) { %>
+            <%/* Affectation unique */%>
+            <p>
+                <strong><%= s.sexe %> <%= s.nomComplet %></strong>,
+                <%= s.etudiant %> en <%= s.niveau %> de la filière
+                <strong><%= s.filiere %></strong> <strong><%= s.universite %></strong>,
+                <%= s.admis %> en stage académique à la Direction Générale des Impôts,
+                effectuera ledit stage <%= s.affectationUnique.article %>
+                <strong><%= s.affectationUnique.structure %></strong>
+                du <strong><%= s.affectationUnique.dateDebut %></strong>
+                au <strong><%= s.affectationUnique.dateFin %></strong>.
+            </p>
+        <% } else { %>
+            <%/* Plusieurs affectations */%>
+            <p>
+                <strong><%= s.sexe %> <%= s.nomComplet %></strong>,
+                <%= s.etudiant %> en <%= s.niveau %> de la filière
+                <strong><%= s.filiere %></strong> <strong><%= s.universite %></strong>,
+                est <%= s.admis %> en stage académique auprès des structures de la
+                Direction Générale des Impôts suivant le calendrier ci-après :
+            </p>
+            <table class="rotations-table">
+                <thead>
+                    <tr>
+                        <th style="width:8%;">N°</th>
+                        <th style="width:46%;">Structure d'accueil</th>
+                        <th style="width:23%;">Date de début</th>
+                        <th style="width:23%;">Date de fin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% s.affectations.forEach(function(aff) { %>
+                    <tr>
+                        <td><%= aff.numero %></td>
+                        <td style="text-align:left;padding-left:10px;"><%= aff.structure %></td>
+                        <td><%= aff.dateDebut %></td>
+                        <td><%= aff.dateFin %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        <% } %>
+    </div>
+
+</div>
+<% }); %>
+
+<!-- DISPOSITIONS COMMUNES -->
+<div class="body-content commun">
+    <p>
+        <%= designationTuteur %> désignera un tuteur chargé de l'encadrement
+        et du suivi de chaque stagiaire dans son service d'accueil.
+    </p>
+    <p>
+        A l'échéance, chaque stagiaire soumettra au Directeur Général des Impôts
+        un rapport y afférent.
+    </p>
+    <p>
+        <%= miseEnOeuvre %> est chargée de la mise en œuvre des termes
+        de la présente note de service.
+    </p>
+</div>
+
+<!-- COPIE -->
+<div class="copie-section">
+    <div class="copie-title">Copie :</div>
+    <% copies.forEach(function(copie) { %>
+        - <%= copie.trim() %><br>
+    <% }); %>
+</div>
+
+<!-- QR CODE -->
+<div class="verification-section">
+    <div class="qr-code-container">
+        <img src="<%= qrCodeUrl %>" alt="QR Code">
+    </div>
+    <div class="reference-systeme">Réf. Système : <%= referenceSysteme %></div>
+    <div class="verification-text">Scanner pour vérifier l'authenticité</div>
+</div>
+
+</body>
+</html>

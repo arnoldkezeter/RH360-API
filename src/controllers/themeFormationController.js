@@ -1412,7 +1412,7 @@ export const getTargetedUsers = async (req, res) => {
         }
 
         const userIds = new Set();
-
+        
         // Parcourir le public cible pour récupérer tous les utilisateurs ciblés
         for (const familleCible of theme.publicCible) {
             // Vérifier que familleMetier est peuplé
@@ -1423,8 +1423,9 @@ export const getTargetedUsers = async (req, res) => {
 
             // Cas 1: Toute la famille (pas de restrictions)
             if (!familleCible.postes || familleCible.postes.length === 0) {
+                
                 const postes = await PosteDeTravail.find({ 
-                    familleMetier: familleCible.familleMetier._id 
+                    famillesMetier: familleCible.familleMetier._id 
                 }).select('_id').lean();
                 
                 if (postes.length > 0) {
@@ -1498,7 +1499,7 @@ export const getTargetedUsers = async (req, res) => {
 
         // Conversion en tableau
         const userIdsArray = Array.from(userIds);
-
+        
         if (userIdsArray.length === 0) {
             return res.status(200).json({
                 success: true,
@@ -1521,7 +1522,7 @@ export const getTargetedUsers = async (req, res) => {
         // Filtrer par famille de métier
         if (familleMetier) {
             const postesInFamille = await PosteDeTravail.find({
-                familleMetier: familleMetier
+                famillesMetier: familleMetier
             }).select('_id').lean();
             
             if (postesInFamille.length > 0) {

@@ -102,7 +102,7 @@ themeFormationSchema.methods.resolveTargetedUsers = async function() {
     for (const familleCible of this.publicCible) {
         if (!familleCible.postes || familleCible.postes.length === 0) {
             const postes = await PosteDeTravail.find({ 
-                familleMetier: familleCible.familleMetier 
+                famillesMetier: familleCible.familleMetier 
             }).select('_id');
             
             const posteIds = postes.map(p => p._id);
@@ -160,7 +160,7 @@ themeFormationSchema.methods.isUserTargeted = async function(userId) {
     if (!user) return false;
     
     for (const familleCible of this.publicCible) {
-        if (user.posteDeTravail.familleMetier.toString() !== familleCible.familleMetier.toString()) {
+        if (!user.familleMetier || user.familleMetier.toString() !== familleCible.familleMetier.toString()) {
             continue;
         }
         

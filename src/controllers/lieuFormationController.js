@@ -162,67 +162,53 @@ const validateParticipantsAgainstPublicCible = async (participantsFormatted, the
     return { valid: true };
 };
 
+// ─── Helper : recalcule les dates du ThemeFormation ───────────────────────────
+const syncDatesThemeFormation = async (themeId) => {
+    const lieux = await LieuFormation.find({ theme: themeId }).select('dateDebut dateFin').lean();
+
+    const dateDebuts = lieux.map(l => l.dateDebut).filter(Boolean);
+    const dateFins   = lieux.map(l => l.dateFin).filter(Boolean);
+
+    await ThemeFormation.findByIdAndUpdate(themeId, {
+        dateDebut: dateDebuts.length > 0 ? new Date(Math.min(...dateDebuts.map(d => new Date(d)))) : null,
+        dateFin:   dateFins.length   > 0 ? new Date(Math.max(...dateFins.map(d => new Date(d))))   : null,
+    });
+};
+
 // Ajouter un lieu de formation
 export const ajouterLieuFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { themeId } = req.params;
     const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
 
-    // Vérif des champs obligatoires
     if (!lieu || !participants || participants.length === 0) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-        });
+        return res.status(400).json({ success: false, message: t('champs_obligatoires', lang) });
     }
-
     if (!isValidObjectId(themeId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
         const theme = await ThemeFormation.findById(themeId);
         if (!theme) {
-            return res.status(404).json({
-                success: false,
-                message: t('theme_non_trouve', lang),
-            });
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
         }
 
-        // Validation ASYNCHRONE des participants
         const validationParticipants = await validateAndFormatParticipants(participants, lang);
         if (!validationParticipants.ok) {
-            return res.status(400).json({
-                success: false,
-                message: validationParticipants.message,
-            });
+            return res.status(400).json({ success: false, message: validationParticipants.message });
         }
         const participantsFormatted = validationParticipants.data;
 
-        // Vérifier que les participants sont dans le public cible
-        const validationPublicCible = await validateParticipantsAgainstPublicCible(
-            participantsFormatted,
-            themeId,
-            lang
-        );
+        const validationPublicCible = await validateParticipantsAgainstPublicCible(participantsFormatted, themeId, lang);
         if (!validationPublicCible.valid) {
-            return res.status(400).json({
-                success: false,
-                message: validationPublicCible.message,
-            });
+            return res.status(400).json({ success: false, message: validationPublicCible.message });
         }
 
-        // Valider les cohortes si fournies
         if (cohortes && Array.isArray(cohortes)) {
             const invalidCohortes = cohortes.filter(id => !isValidObjectId(id));
             if (invalidCohortes.length > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: t('identifiant_invalide', lang) + ': cohortes',
-                });
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) + ': cohortes' });
             }
         }
 
@@ -231,35 +217,26 @@ export const ajouterLieuFormation = async (req, res) => {
             cohortes: cohortes || [],
             participants: participantsFormatted,
             dateDebut: dateDebut || null,
-            dateFin: dateFin || null,
+            dateFin:   dateFin   || null,
             theme: themeId,
         });
-
         await nouveauLieu.save();
 
+        // ✅ Sync dates sur le ThemeFormation
+        await syncDatesThemeFormation(themeId);
+
         const lieuFormationPopule = await LieuFormation.findById(nouveauLieu._id)
-            .populate({
-                path: 'cohortes',
-                select: 'nomFr nomEn participants',
-            })
-            .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'cohortes', select: 'nomFr nomEn participants' })
+            .populate({ path: 'participants.familleMetier',                          options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.poste',                           options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.structure',            options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.services.service',     options: { strictPopulate: false } })
             .lean();
 
-        return res.status(201).json({
-            success: true,
-            message: t('ajouter_succes', lang),
-            data: lieuFormationPopule,
-        });
+        return res.status(201).json({ success: true, message: t('ajouter_succes', lang), data: lieuFormationPopule });
     } catch (error) {
         console.error('Erreur ajouterLieuFormation:', error);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
     }
 };
 
@@ -269,97 +246,63 @@ export const modifierLieuFormation = async (req, res) => {
     const { lieuId } = req.params;
     const { lieu, cohortes, participants, dateDebut, dateFin, dateDebutEffective, dateFinEffective } = req.body;
 
-    // Vérif des champs obligatoires
     if (!lieu || !participants || participants.length === 0) {
-        return res.status(400).json({
-            success: false,
-            message: t('champs_obligatoires', lang),
-        });
+        return res.status(400).json({ success: false, message: t('champs_obligatoires', lang) });
     }
-
     if (!isValidObjectId(lieuId)) {
-        return res.status(400).json({
-            success: false,
-            message: t('identifiant_invalide', lang),
-        });
+        return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
     }
 
     try {
         const lieuFormation = await LieuFormation.findById(lieuId).populate('theme');
         if (!lieuFormation) {
-            return res.status(404).json({
-                success: false,
-                message: t('lieu_non_trouve', lang),
-            });
+            return res.status(404).json({ success: false, message: t('lieu_non_trouve', lang) });
         }
 
-        // Validation ASYNCHRONE des participants
         const validationParticipants = await validateAndFormatParticipants(participants, lang);
         if (!validationParticipants.ok) {
-            return res.status(400).json({
-                success: false,
-                message: validationParticipants.message,
-            });
+            return res.status(400).json({ success: false, message: validationParticipants.message });
         }
         const participantsFormatted = validationParticipants.data;
 
-        // Vérifier que les participants sont dans le public cible
         const validationPublicCible = await validateParticipantsAgainstPublicCible(
-            participantsFormatted,
-            lieuFormation.theme._id,
-            lang
+            participantsFormatted, lieuFormation.theme._id, lang
         );
         if (!validationPublicCible.valid) {
-            return res.status(400).json({
-                success: false,
-                message: validationPublicCible.message,
-            });
+            return res.status(400).json({ success: false, message: validationPublicCible.message });
         }
 
-        // Valider les cohortes si fournies
         if (cohortes && Array.isArray(cohortes)) {
             const invalidCohortes = cohortes.filter(id => !isValidObjectId(id));
             if (invalidCohortes.length > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: t('identifiant_invalide', lang) + ': cohortes',
-                });
+                return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) + ': cohortes' });
             }
         }
 
-        lieuFormation.lieu = lieu;
-        lieuFormation.cohortes = cohortes || [];
-        lieuFormation.participants = participantsFormatted;
-        lieuFormation.dateDebut = dateDebut || null;
-        lieuFormation.dateFin = dateFin || null;
-        lieuFormation.dateDebutEffective = dateDebutEffective || null;
-        lieuFormation.dateFinEffective = dateFinEffective || null;
-
+        lieuFormation.lieu                 = lieu;
+        lieuFormation.cohortes             = cohortes || [];
+        lieuFormation.participants         = participantsFormatted;
+        lieuFormation.dateDebut            = dateDebut            || null;
+        lieuFormation.dateFin              = dateFin              || null;
+        lieuFormation.dateDebutEffective   = dateDebutEffective   || null;
+        lieuFormation.dateFinEffective     = dateFinEffective     || null;
         await lieuFormation.save();
 
+        // ✅ Sync dates sur le ThemeFormation
+        await syncDatesThemeFormation(lieuFormation.theme._id);
+
         const lieuFormationPopule = await LieuFormation.findById(lieuFormation._id)
-            .populate({
-                path: 'cohortes',
-                select: 'nomFr nomEn participants',
-            })
-            .populate({ path: 'participants.familleMetier', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.poste', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.structures.structure', options: { strictPopulate: false } })
-            .populate({ path: 'participants.postes.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'cohortes', select: 'nomFr nomEn participants' })
+            .populate({ path: 'participants.familleMetier',                          options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.poste',                           options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.structure',            options: { strictPopulate: false } })
+            .populate({ path: 'participants.postes.structures.services.service',     options: { strictPopulate: false } })
             .lean();
 
-        return res.status(200).json({
-            success: true,
-            message: t('modifier_succes', lang),
-            data: lieuFormationPopule,
-        });
+        return res.status(200).json({ success: true, message: t('modifier_succes', lang), data: lieuFormationPopule });
     } catch (error) {
         console.error('Erreur modifierLieuFormation:', error);
-        return res.status(500).json({
-            success: false,
-            message: t('erreur_serveur', lang),
-            error: error.message,
-        });
+        return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
     }
 };
 
@@ -376,13 +319,20 @@ export const supprimerLieuFormation = async (req, res) => {
     }
 
     try {
-        const lieuFormation = await LieuFormation.findByIdAndDelete(lieuId);
+        const lieuFormation = await LieuFormation.findById(lieuId);
         if (!lieuFormation) {
             return res.status(404).json({
                 success: false,
                 message: t('lieu_non_trouve', lang),
             });
         }
+
+        const themeId = lieuFormation.theme;
+
+        await lieuFormation.deleteOne();
+
+        // ✅ Sync dates sur le ThemeFormation après suppression
+        await syncDatesThemeFormation(themeId);
 
         return res.status(200).json({
             success: true,

@@ -1484,6 +1484,7 @@ export const getTargetedUsers = async (req, res) => {
                                 if (serviceIds.length > 0) {
                                     const users = await Utilisateur.find({
                                         posteDeTravail: posteRestriction.poste._id,
+                                        structure: structureRestriction.structure._id,
                                         service: { $in: serviceIds },
                                         actif: true
                                     }).select('_id').lean();

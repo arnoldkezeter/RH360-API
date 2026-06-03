@@ -558,6 +558,7 @@ const genererPDFTdr = async ({
         duree: theme.duree || null,
         lieu: lieux.length > 0 ? lieux[0].lieu : '___________',
         lieux,
+        nombreParticipants: nombreParticipants || 0,
         
 
         // Sections du TDR

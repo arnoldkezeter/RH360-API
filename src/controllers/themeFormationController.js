@@ -2424,14 +2424,14 @@ export const getFormationsUtilisateur = async (req, res) => {
         const themesResponsable = await ThemeFormation.find({
             responsable: userId
         })
-        .select('_id formation titreFr titreEn dateDebut dateFin duree')
-        .populate('formation', 'titreFr titreEn')
+        .select('_id titreFr titreEn dateDebut dateFin duree')
+        // .populate('formation', 'titreFr titreEn')
         .lean();
 
         // 2. Récupérer TOUS les thèmes (sans filtre de date)
         const tousLesThemes = await ThemeFormation.find({})
-        .select('_id formation titreFr titreEn dateDebut dateFin duree publicCible')
-        .populate('formation', 'titreFr titreEn')
+        .select('_id titreFr titreEn dateDebut dateFin duree publicCible')
+        // .populate('formation', 'titreFr titreEn')
         .lean();
 
         // 3. Filtrer les thèmes où l'utilisateur est participant (sans filtre de date)
@@ -2454,14 +2454,14 @@ export const getFormationsUtilisateur = async (req, res) => {
         const formationMap = new Map();
 
         for (const theme of tousLesThemesUtilisateur) {
-            const formationId = theme.formation._id.toString();
+            const formationId = theme._id.toString();
             const role = themesResponsable.some(t => t._id.toString() === theme._id.toString()) 
-                ? 'responsable' 
-                : 'participant';
+                ? 'RESPONSABLE-FORMATION' 
+                : 'PARTICIPANT';
 
             if (!formationMap.has(formationId)) {
                 formationMap.set(formationId, {
-                    _id: theme.formation._id,
+                    _id: theme._id,
                     titreFr: theme.titreFr,
                     titreEn: theme.titreEn,
                     themes: [],

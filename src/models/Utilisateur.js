@@ -29,7 +29,8 @@ const utilisateurSchema = new mongoose.Schema({
     commune:{ type: mongoose.Schema.Types.ObjectId, ref: 'Commune' },
     actif: { type: Boolean, default: true },
     photoDeProfil:{type:String},
-    abreviationNoteServie:{type:String}
+    abreviationNoteServie:{type:String},
+    estExterneAutoCreated:{type:Boolean, default:false}
 }, { timestamps: true });
 
 utilisateurSchema.pre('save', async function (next) {

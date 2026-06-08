@@ -26,7 +26,7 @@ const lieuFormationSchema = new mongoose.Schema({
     
     // NOUVELLE STRUCTURE PARTICIPANTS (même logique que publicCible)
     participants: [familleMetierRestrictionSchema],
-    
+    formateurs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Formateur' }],
     dateDebut: { type: Date },
     dateFin: { type: Date },
     dateDebutEffective: { type: Date },

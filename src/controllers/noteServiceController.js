@@ -2225,51 +2225,132 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
 
 
 /**
- * Génère le PDF pour la convocation des participants
+ * Génère le PDF de convocation des participants.
+ *
+ * Corrections apportées :
+ *  1. Article « la / le / l' / les » calculé via getArticle() et passé
+ *     au template sous la clé `articleTheme`.
+ *  2. Formateurs récupérés par lieu et inclus dans chaque entrée du tableau
+ *     (clé `formateurs` : tableau de chaînes "Prénom NOM").
+ *  3. Le rowspan de la colonne "Lieu & Période" (et "Formateur(s)") est calculé
+ *     sur la clé normalisée lieu+période, garantissant la fusion correcte.
+ *  4. Le QR code reste sur la page 1 grâce au bloc `.first-page-anchor` du template.
+ *  5. Les marges de l'annexe sont gérées dans le template via `@page annexe`.
  */
 const genererPDFConvocationParticipants = async (note, themeData, participants, lang, createur) => {
     try {
-        // Générer l'URL de vérification et le QR code (inchangé)
+        // ── 1. QR Code ──────────────────────────────────────────────────────────
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
-        
+
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
             errorCorrectionLevel: 'H',
             type: 'image/png',
             width: 100,
             margin: 1,
-            color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-            }
+            color: { dark: '#000000', light: '#FFFFFF' }
         });
-        
-        // Grouper les participants par service
+
+        // ── 2. Article pour le thème (« sur LA formation », « sur LE thème », …) ─
+        const themeLibelle = lang === 'fr' ? themeData.titreFr : themeData.titreEn;
+
+        // getArticle() est importée depuis votre module utilitaire.
+        // Elle retourne 'au', 'à la', "à l'", 'aux' ou 'à la/au'.
+        // Ici on veut uniquement « la » / « le » / « l' » / « les » (sans la préposition « à »).
+        const articleTheme = (() => {
+            const full = getArticle(themeLibelle || '');
+            // Retirer la préposition « à » initiale pour obtenir l'article seul.
+            // 'au'      → 'le'
+            // 'à la'    → 'la'
+            // "à l'"    → "l'"
+            // 'aux'     → 'les'
+            // 'à la/au' → 'la/le'   (cas de secours)
+            const map = {
+                'au':      'le',
+                'à la':    'la',
+                "à l'":    "l'",
+                'aux':     'les',
+                'à la/au': 'la/le',
+            };
+            return map[full] ?? 'la';
+        })();
+
+        // ── 3. Récupérer les formateurs par lieu de formation ───────────────────
+        // On construit une Map  lieu (string normalisé) → [noms formateurs]
+        // à partir des données disponibles dans la base.
+        //
+        // LieuFormation contient un tableau `formateurs` de refs vers Formateur.
+        // On re-populle les lieuxFormation avec les noms pour éviter de multiplier
+        // les requêtes dans la boucle qui suit.
+        const lieuxFormation = await LieuFormation.find({ theme: note.theme._id ?? note.theme })
+            .populate({
+                path: 'formateurs',
+                populate: {
+                    path: 'utilisateur',
+                    select: 'nom prenom'
+                }
+            })
+            .lean();
+
+        /**
+         * Construit la clé de regroupement normalisée pour un lieu+période.
+         * @param {string} lieu
+         * @param {string} periode
+         * @returns {string}
+         */
+        const buildKey = (lieu, periode) =>
+            `${(lieu || '').trim().toLowerCase()}_${(periode || '').trim().toLowerCase()}`;
+
+        /**
+         * Retourne la liste des noms de formateurs associés à un lieu donné.
+         * On cherche le LieuFormation dont le champ `lieu` correspond (insensible à la casse).
+         * @param {string} lieu - Valeur du champ `lieu` du participant
+         * @returns {string[]}
+         */
+        const getFormateursForLieu = (lieu) => {
+            const lieuNorm = (lieu || '').trim().toLowerCase();
+            const lieuDoc = lieuxFormation.find(
+                lf => (lf.lieu || '').trim().toLowerCase() === lieuNorm
+            );
+            if (!lieuDoc || !lieuDoc.formateurs || lieuDoc.formateurs.length === 0) {
+                return [];
+            }
+            return lieuDoc.formateurs
+                .filter(f => f.utilisateur)
+                .map(f => {
+                    const u = f.utilisateur;
+                    return `${u.prenom ? u.prenom + ' ' : ''}${u.nom}`.trim();
+                });
+        };
+
+        // ── 4. Grouper les participants par service ─────────────────────────────
         const participantsParService = {};
 
         participants.forEach(participant => {
             const utilisateur = participant.utilisateur;
-            
-            // ... (Définition structureId et structureNom inchangée)
-            const structureId = utilisateur.service?._id?.toString() || 'sans_service';
+
+            const structureId = utilisateur.structure?._id?.toString()
+                             || utilisateur.service?._id?.toString()
+                             || 'sans_service';
+
             let structureNom;
-            if (utilisateur.service) {
-                const nom = lang === 'fr' 
-                    ? utilisateur.structure.nomFr 
-                    : utilisateur.structure.nomEn;
-                structureNom = nom || 'Nom de Service Manquant'; 
+            if (utilisateur.structure) {
+                structureNom = (lang === 'fr'
+                    ? utilisateur.structure.nomFr
+                    : utilisateur.structure.nomEn) || 'Nom de Structure Manquant';
+            } else if (utilisateur.service) {
+                structureNom = (lang === 'fr'
+                    ? utilisateur.service.nomFr
+                    : utilisateur.service.nomEn) || 'Nom de Service Manquant';
             } else {
                 structureNom = 'Service non spécifié';
             }
 
             if (!participantsParService[structureId]) {
-                participantsParService[structureId] = {
-                    structureNom,
-                    participants: []
-                };
+                participantsParService[structureId] = { structureNom, participants: [] };
             }
-            
-            // Formatage des dates avec mois en format numérique (inchangé)
+
+            // Formatage des dates
             const dateOptions = { day: '2-digit', month: 'numeric', year: 'numeric' };
 
             const dateDebut = participant.dateDebut
@@ -2281,72 +2362,73 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
                 : '';
 
             const periode = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
-            
+
             const poste = utilisateur.posteDeTravail
-                ? (lang === 'fr' ? utilisateur.posteDeTravail.nomFr : utilisateur.posteDeTravail.nomEn)
+                ? (lang === 'fr'
+                    ? utilisateur.posteDeTravail.nomFr
+                    : utilisateur.posteDeTravail.nomEn)
                 : '';
 
             participantsParService[structureId].participants.push({
-                nom: utilisateur.nom,
-                prenom: utilisateur.prenom || '',
+                nom:     utilisateur.nom,
+                prenom:  utilisateur.prenom || '',
                 poste,
-                lieu: participant.lieu,
+                lieu:    participant.lieu,
                 periode
             });
         });
 
-        // Tri des services (inchangé)
+        // Tri alphabétique des services
         const servicesOrdonnes = Object.values(participantsParService).sort((a, b) =>
             a.structureNom.localeCompare(b.structureNom)
         );
 
+        // ── 5. Formatage final avec rowspan sur lieu+période ────────────────────
         let numeroGlobal = 1;
         const participantsFormates = [];
 
         servicesOrdonnes.forEach(service => {
-            
-            // 🚀 MODIFICATION MAJEURE: Regroupement par Lieu/Période pour le Rowspan
-            // Utiliser une structure imbriquée pour garantir l'ordre : 
-            // 1. Groupe par Service (déjà fait)
-            // 2. Groupe par Lieu/Période
-            
-            const participantsGroupesParLieuPeriode = {};
-            
+
+            // Regrouper par clé normalisée lieu+période
+            const groupesParLieuPeriode = {};
+
             service.participants.forEach(p => {
-                // Créer une clé normalisée pour le regroupement
-                // Enlever les espaces en début/fin et forcer le lieu à être une chaîne.
-                const key = `${p.lieu || ''}_${p.periode || ''}`.trim().toLowerCase();
-                
-                if (!participantsGroupesParLieuPeriode[key]) {
-                    participantsGroupesParLieuPeriode[key] = [];
+                const key = buildKey(p.lieu, p.periode);
+                if (!groupesParLieuPeriode[key]) {
+                    groupesParLieuPeriode[key] = [];
                 }
-                participantsGroupesParLieuPeriode[key].push(p);
+                groupesParLieuPeriode[key].push(p);
             });
-            
-            // Formatage final avec calcul du Rowspan
-            Object.values(participantsGroupesParLieuPeriode).forEach(groupe => {
-                const rowspan = groupe.length;
+
+            // Pour chaque groupe, calculer le rowspan et pré-charger les formateurs
+            Object.values(groupesParLieuPeriode).forEach(groupe => {
+                const rowspan    = groupe.length;
+                // Les formateurs sont identiques pour tout le groupe (même lieu)
+                const formateurs = getFormateursForLieu(groupe[0].lieu);
 
                 groupe.forEach((participant, index) => {
-                    const estPremiereLigneDuLieuPeriode = (index === 0);
+                    const estPremiereLigne = index === 0;
 
                     participantsFormates.push({
-                        numero: numeroGlobal++,
-                        nom: `${participant.nom} ${participant.prenom}`.trim(),
+                        numero:   numeroGlobal++,
+                        nom:      `${participant.nom} ${participant.prenom}`.trim(),
                         fonction: participant.poste,
-                        service: service.structureNom,
-                        
-                        // Infos Rowspan (pour le template)
-                        lieu: participant.lieu,
-                        periode: participant.periode,
-                        rowspan: estPremiereLigneDuLieuPeriode ? rowspan : 0, 
-                        afficherLieuPeriode: estPremiereLigneDuLieuPeriode 
+                        service:  service.structureNom,
+
+                        // Données de la cellule fusionnée
+                        lieu:     participant.lieu,
+                        periode:  participant.periode,
+                        formateurs,         // tableau de noms (identique dans le groupe)
+
+                        // Contrôle du rowspan dans le template
+                        rowspan:             estPremiereLigne ? rowspan : 0,
+                        afficherLieuPeriode: estPremiereLigne,
                     });
                 });
             });
         });
 
-        // 🚀 MODIFICATION 1 (ThemeData): Formatage des dates du thème avec mois en format numérique
+        // ── 6. Dates globales du thème ──────────────────────────────────────────
         const dateOptionsTheme = { day: '2-digit', month: 'numeric', year: 'numeric' };
 
         const dateDebutTheme = themeData.dateDebut
@@ -2357,76 +2439,105 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
             ? new Date(themeData.dateFin).toLocaleDateString('fr-FR', dateOptionsTheme)
             : '______________';
 
+        // ── 7. Données du template ──────────────────────────────────────────────
         const templateData = {
             documentTitle: 'Note de Service - Convocation des Participants',
-            logoUrl: getLogoBase64(__dirname),
+            logoUrl:        getLogoBase64(__dirname),
 
-            // QR Code et référence
-            qrCodeUrl: qrCodeDataUrl,
-            urlVerification: urlVerification,
+            qrCodeUrl:        qrCodeDataUrl,
+            urlVerification:  urlVerification,
             referenceSysteme: note.reference || 'REF-XXX',
 
             noteTitle: lang === 'fr'
                 ? (note.titreFr || "CONVOCATION À LA FORMATION")
                 : (note.titreEn || "TRAINING CONVOCATION"),
 
-            themeLibelle: lang === 'fr' ? themeData.titreFr : themeData.titreEn, // Utilisation de titreFr/titreEn
-            dateDebut: dateDebutTheme,
-            dateFin: dateFinTheme,
+            // Article + libellé du thème pour la phrase d'introduction
+            articleTheme,
+            themeLibelle,
 
-            participants: participantsFormates,
-            nombreParticipants: participantsFormates.length,
+            dateDebut: dateDebutTheme,
+            dateFin:   dateFinTheme,
+
+            participants:        participantsFormates,
+            nombreParticipants:  participantsFormates.length,
 
             copies: note.copieA
-                ? note.copieA.split(/[;,]/)
-                    .map(e => e.trim())
-                    .filter(e => e.length > 0)
+                ? note.copieA.split(/[;,]/).map(e => e.trim()).filter(e => e.length > 0)
                 : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
 
-            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
+            createurNom: createur
+                ? `${createur.nom} ${createur.prenom || ''}`.trim()
+                : 'Système',
 
             dateTime: new Date().toLocaleDateString('fr-FR', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-                hour: 'numeric',
+                day:    '2-digit',
+                month:  'long',
+                year:   'numeric',
+                hour:   'numeric',
                 minute: 'numeric',
-            })
+            }),
         };
 
-        const templatePath = path.join(__dirname, '../views/note-service-convocation-participants.ejs');
+        // ── 8. Rendu EJS → HTML ─────────────────────────────────────────────────
+        const templatePath = path.join(
+            __dirname,
+            '../views/note-service-convocation-participants.ejs'
+        );
         const html = await ejs.renderFile(templatePath, templateData);
 
-        // ... (Code Puppeteer inchangé)
-        const browser = await puppeteer.launch({ /* ... */ });
+        // ── 9. Génération PDF via Puppeteer ─────────────────────────────────────
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
         const page = await browser.newPage();
-        await page.setContent(html, { /* ... */ });
-        
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+
+        // S'assurer que les scripts inline du template (padding-bottom du flux
+        // et box-shadow des rowspan) sont bien exécutés et que le layout
+        // est stable avant d'appeler page.pdf().
+        await page.evaluate(() => {
+            // Force un reflow complet pour que getBoundingClientRect()
+            // retourne les valeurs définitives utilisées par les scripts inline.
+            document.body.getBoundingClientRect();
+        });
+
         const pdfBuffer = await page.pdf({
-            format: 'A4',
-            landscape: true, // Revert back to true for better table display
+            format:          'A4',
             printBackground: true,
+            // Les marges de la page principale sont définies dans @page {} du CSS.
+            // On passe des marges minimales ici pour ne pas doubler.
             margin: {
-                top: '20px',
-                right: '20px',
-                bottom: '60px',
-                left: '20px'
+                top:    '0px',
+                right:  '0px',
+                bottom: '50px',   // espace pour le footer
+                left:   '0px',
             },
             displayHeaderFooter: true,
             headerTemplate: '<div></div>',
             footerTemplate: `
-                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
-                    <div style="text-align: left; flex: 1;">
+                <div style="
+                    font-size: 10px;
+                    width: 100%;
+                    margin: 0 20px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    color: #666;
+                ">
+                    <div style="text-align:left; flex:1;">
                         Généré par ${templateData.createurNom}
                     </div>
-                    <div style="text-align: center; flex: 1;">
+                    <div style="text-align:center; flex:1;">
                         Le ${templateData.dateTime}
                     </div>
-                    <div style="text-align: right; flex: 1;">
-                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
+                    <div style="text-align:right; flex:1;">
+                        Page <span class="pageNumber"></span>
+                        sur <span class="totalPages"></span>
                     </div>
                 </div>
-            `
+            `,
         });
 
         await browser.close();
@@ -2434,7 +2545,10 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
 
     } catch (error) {
         logger.error('Note exception:', error);
-        console.error('Erreur lors de la génération du PDF de convocation participants:', error);
+        console.error(
+            'Erreur lors de la génération du PDF de convocation participants:',
+            error
+        );
         throw error;
     }
 };

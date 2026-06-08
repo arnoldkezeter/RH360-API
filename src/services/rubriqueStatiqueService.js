@@ -301,14 +301,41 @@ export async function initialiserQuestionsStatiques() {
  * Les questions contiennent les vrais ObjectId des types d'échelles
  */
 export async function getRubriquesStatiquesCompletes() {
+    // 1. Récupération des rubriques et des questions actives
     const rubriques = await RubriqueStatique.find({ actif: true }).sort({ ordre: 1 });
     const questions = await QuestionStatique.find({ actif: true })
-        .populate('typeEchelle')  // Peupler les infos du type d'échelle
+        .populate('typeEchelle')  // Popule les infos de TypeEchelleReponse (nomFr, nomEn, etc.)
         .sort({ ordre: 1 });
-    
+
+    // 2. Récupération de TOUTES les échelles de réponses triées par ordre pour le formatage textuel
+    const echelles = await EchelleReponse.find().sort({ ordre: 1 });
+
+    // 3. Transformation des questions pour y injecter la string des échelles correspondantes
+    const questionsEnrichies = questions.map(q => {
+        const questionObj = q.toObject();
+
+        // Si la question possède un typeEchelle populé
+        if (questionObj.typeEchelle && questionObj.typeEchelle._id) {
+            // On filtre les échelles qui appartiennent à ce typeEchelle
+            const echellesAssociees = echelles.filter(
+                e => e.typeEchelle.toString() === questionObj.typeEchelle._id.toString()
+            );
+
+            // On crée la string (Ex en FR: "Faible, Moyen, Fort")
+            // Vous pouvez remplacer 'nomFr' par 'nomEn' selon vos besoins de langue
+            const echellesString = echellesAssociees.map(e => e.nomFr).join(', ');
+
+            // On enrichit l'objet typeEchelle avec la string générée
+            questionObj.typeEchelle.echellesString = echellesString;
+        }
+
+        return questionObj;
+    });
+
+    // 4. Structuration finale par rubrique
     return rubriques.map(rubrique => ({
         ...rubrique.toObject(),
-        questions: questions.filter(q => q.rubriqueCode === rubrique.code)
+        questions: questionsEnrichies.filter(q => q.rubriqueCode === rubrique.code)
     }));
 }
 

@@ -179,13 +179,20 @@ const syncDatesThemeFormation = async (themeId) => {
 export const ajouterLieuFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { themeId } = req.params;
-    const { lieu, cohortes, participants, dateDebut, dateFin } = req.body;
+    const { lieu, cohortes, participants, formateurs, dateDebut, dateFin } = req.body;
 
     if (!lieu || !participants || participants.length === 0) {
         return res.status(400).json({ success: false, message: t('champs_obligatoires', lang) });
     }
     if (!isValidObjectId(themeId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    if (formateurs && Array.isArray(formateurs)) {
+        const invalidFormateurs = formateurs.filter(id => !isValidObjectId(id));
+        if (invalidFormateurs.length > 0) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) + ': formateurs' });
+        }
     }
 
     try {
@@ -216,6 +223,7 @@ export const ajouterLieuFormation = async (req, res) => {
             lieu,
             cohortes: cohortes || [],
             participants: participantsFormatted,
+            formateurs: formateurs || [],
             dateDebut: dateDebut || null,
             dateFin:   dateFin   || null,
             theme: themeId,
@@ -227,6 +235,13 @@ export const ajouterLieuFormation = async (req, res) => {
 
         const lieuFormationPopule = await LieuFormation.findById(nouveauLieu._id)
             .populate({ path: 'cohortes', select: 'nomFr nomEn participants' })
+            .populate({
+                path: 'formateurs',
+                populate: {
+                    path: 'utilisateur',
+                    select: 'nom prenom email' // Ajustez les champs à sélectionner selon votre modèle 'Utilisateur'
+                }
+            })
             .populate({ path: 'participants.familleMetier',                          options: { strictPopulate: false } })
             .populate({ path: 'participants.postes.poste',                           options: { strictPopulate: false } })
             .populate({ path: 'participants.postes.structures.structure',            options: { strictPopulate: false } })
@@ -244,13 +259,20 @@ export const ajouterLieuFormation = async (req, res) => {
 export const modifierLieuFormation = async (req, res) => {
     const lang = req.headers['accept-language'] || 'fr';
     const { lieuId } = req.params;
-    const { lieu, cohortes, participants, dateDebut, dateFin, dateDebutEffective, dateFinEffective } = req.body;
+    const { lieu, cohortes, participants, formateurs, dateDebut, dateFin, dateDebutEffective, dateFinEffective } = req.body;
 
     if (!lieu || !participants || participants.length === 0) {
         return res.status(400).json({ success: false, message: t('champs_obligatoires', lang) });
     }
     if (!isValidObjectId(lieuId)) {
         return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) });
+    }
+
+    if (formateurs && Array.isArray(formateurs)) {
+        const invalidFormateurs = formateurs.filter(id => !isValidObjectId(id));
+        if (invalidFormateurs.length > 0) {
+            return res.status(400).json({ success: false, message: t('identifiant_invalide', lang) + ': formateurs' });
+        }
     }
 
     try {
@@ -282,6 +304,7 @@ export const modifierLieuFormation = async (req, res) => {
         lieuFormation.lieu                 = lieu;
         lieuFormation.cohortes             = cohortes || [];
         lieuFormation.participants         = participantsFormatted;
+        lieuFormation.formateurs           = formateurs;
         lieuFormation.dateDebut            = dateDebut            || null;
         lieuFormation.dateFin              = dateFin              || null;
         lieuFormation.dateDebutEffective   = dateDebutEffective   || null;
@@ -293,6 +316,13 @@ export const modifierLieuFormation = async (req, res) => {
 
         const lieuFormationPopule = await LieuFormation.findById(lieuFormation._id)
             .populate({ path: 'cohortes', select: 'nomFr nomEn participants' })
+            .populate({
+                path: 'formateurs',
+                populate: {
+                    path: 'utilisateur',
+                    select: 'nom prenom email' // Ajustez les champs à sélectionner selon votre modèle 'Utilisateur'
+                }
+            })
             .populate({ path: 'participants.familleMetier',                          options: { strictPopulate: false } })
             .populate({ path: 'participants.postes.poste',                           options: { strictPopulate: false } })
             .populate({ path: 'participants.postes.structures.structure',            options: { strictPopulate: false } })

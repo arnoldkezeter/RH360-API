@@ -20,11 +20,27 @@ const familleMetierRestrictionSchema = new mongoose.Schema({
     postes: [posteRestrictionSchema]
 }, { _id: false });
 
+const publicCibleEntrySchema = new mongoose.Schema({
+    type: {
+        type: String,
+        enum: ['famille', 'structure', 'service'],
+        required: true,
+        default: 'famille'
+    },
+    // Pour type='famille'
+    familleMetier: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilleMetier' },
+    postes: [posteRestrictionSchema],
+    // Pour type='structure'
+    structures: [structureRestrictionSchema],
+    // Pour type='service'
+    services: [serviceRestrictionSchema],
+}, { _id: false });
+
 const themeFormationSchema = new mongoose.Schema({
     titreFr: { type: String, required: true },
     titreEn: { type: String, required: true },
 
-    publicCible: [familleMetierRestrictionSchema],
+    publicCible: [publicCibleEntrySchema],
     duree: { type: Number },
     dateDebut: { type: Date },
     dateFin: { type: Date },

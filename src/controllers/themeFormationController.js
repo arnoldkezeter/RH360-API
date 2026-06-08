@@ -52,101 +52,261 @@ const isValidObjectId = (id) => {
  * Retourne { ok: true, data: formattedArray } ou { ok: false, message: '...' }
  */
 const validateAndFormatPublicCible = async (publicCible, lang) => {
+    if (!publicCible) return { ok: true, data: [] };
+    if (!Array.isArray(publicCible)) return { ok: false, message: t('identifiant_invalide', lang) };
+
     const formatted = [];
 
-    if (!publicCible) return { ok: true, data: [] };
+    for (const entry of publicCible) {
+        const type = entry.type || 'famille';
 
-    if (!Array.isArray(publicCible)) {
-        return { ok: false, message: t('identifiant_invalide', lang) };
-    }
+        // ── Type famille ───────────────────────────────────────────────────
+        if (type === 'famille') {
+            const famId = entry?.familleMetier?._id || entry?.familleMetier;
+            if (!isValidObjectId(famId)) return { ok: false, message: t('identifiant_invalide', lang) };
 
-    // ✅ CORRECTION 1: Validation de l'existence des familles de métier
-    for (const fam of publicCible) {
-        const famId = fam?.familleMetier?._id || fam?.familleMetier;
-        if (!isValidObjectId(famId)) {
-            return { ok: false, message: t('identifiant_invalide', lang) };
-        }
+            const familleExists = await FamilleMetier.findById(famId);
+            if (!familleExists) return { ok: false, message: `Famille ${famId} introuvable` };
 
-        // Vérifier que la famille de métier existe
-        const familleExists = await FamilleMetier.findById(famId);
-        if (!familleExists) {
-            return { ok: false, message: `Famille de métier ${famId} introuvable` };
-        }
+            const famObj = { type: 'famille', familleMetier: famId, postes: [] };
 
-        const famObj = { familleMetier: famId, postes: [] };
-
-        if (Array.isArray(fam.postes)) {
-            for (const pos of fam.postes) {
+            for (const pos of (entry.postes || [])) {
                 const posId = pos?.poste?._id || pos?.poste;
-                if (!isValidObjectId(posId)) {
-                    return { ok: false, message: t('identifiant_invalide', lang) };
-                }
+                if (!isValidObjectId(posId)) return { ok: false, message: t('identifiant_invalide', lang) };
 
-                // ✅ CORRECTION 2: Vérifier que le poste existe ET appartient à la famille
                 const poste = await PosteDeTravail.findById(posId);
-                if (!poste) {
-                    return { ok: false, message: `Poste de travail ${posId} introuvable` };
-                }
-                // Vérifier que le poste appartient bien à cette famille (un poste peut avoir plusieurs familles)
-                const appartientALaFamille = poste.famillesMetier.some(
-                    fm => fm.toString() === famId.toString()
-                );
-                if (!appartientALaFamille) {
-                    return { 
-                        ok: false, 
-                        message: `Le poste ${posId} n'appartient pas à la famille de métier ${famId}` 
-                    };
-                }
+                if (!poste) return { ok: false, message: `Poste ${posId} introuvable` };
+
+                const appartient = poste.famillesMetier.some(fm => fm.toString() === famId.toString());
+                if (!appartient) return { ok: false, message: `Le poste ${posId} n'appartient pas à la famille ${famId}` };
 
                 const postObj = { poste: posId, structures: [] };
 
-                if (Array.isArray(pos.structures)) {
-                    for (const st of pos.structures) {
-                        const structId = st?.structure?._id || st?.structure;
-                        if (!isValidObjectId(structId)) {
-                            return { ok: false, message: t('identifiant_invalide', lang) };
+                for (const st of (pos.structures || [])) {
+                    const structId = st?.structure?._id || st?.structure;
+                    if (!isValidObjectId(structId)) return { ok: false, message: t('identifiant_invalide', lang) };
+
+                    const structureExists = await Structure.findById(structId);
+                    if (!structureExists) return { ok: false, message: `Structure ${structId} introuvable` };
+
+                    const structObj = { structure: structId, services: [] };
+
+                    for (const serv of (st.services || [])) {
+                        const servId = serv?.service?._id || serv?.service;
+                        if (!isValidObjectId(servId)) return { ok: false, message: t('identifiant_invalide', lang) };
+
+                        const service = await Service.findById(servId);
+                        if (!service) return { ok: false, message: `Service ${servId} introuvable` };
+                        if (service.structure.toString() !== structId.toString())
+                            return { ok: false, message: `Le service ${servId} n'appartient pas à la structure ${structId}` };
+
+                        structObj.services.push({ service: servId });
+                    }
+                    postObj.structures.push(structObj);
+                }
+                famObj.postes.push(postObj);
+            }
+            formatted.push(famObj);
+        }
+
+        // ── Type structure directe ─────────────────────────────────────────
+        else if (type === 'structure') {
+            // Pour chaque structure, on résout les postes et familles automatiquement
+            // On va créer des entrées de type 'famille' avec les postes filtrés par structure
+
+            for (const st of (entry.structures || [])) {
+                const structId = st?.structure?._id || st?.structure;
+                if (!isValidObjectId(structId)) return { ok: false, message: t('identifiant_invalide', lang) };
+
+                const structureExists = await Structure.findById(structId);
+                if (!structureExists) return { ok: false, message: `Structure ${structId} introuvable` };
+
+                // Valider les services si fournis
+                const servicesValides = [];
+                for (const serv of (st.services || [])) {
+                    const servId = serv?.service?._id || serv?.service;
+                    if (!isValidObjectId(servId)) return { ok: false, message: t('identifiant_invalide', lang) };
+
+                    const service = await Service.findById(servId);
+                    if (!service) return { ok: false, message: `Service ${servId} introuvable` };
+                    if (service.structure.toString() !== structId.toString())
+                        return { ok: false, message: `Le service ${servId} n'appartient pas à la structure ${structId}` };
+
+                    servicesValides.push(servId);
+                }
+
+                // Résoudre les postes liés à cette structure
+                // Un poste est lié à une structure si au moins un de ses services appartient à cette structure
+                const postesLies = await PosteDeTravail.find({}).populate('services').lean();
+                const postesDeLaStructure = postesLies.filter(poste =>
+                    (poste.services || []).some(srv => srv.structure?.toString() === structId.toString())
+                );
+
+                if (postesDeLaStructure.length === 0) {
+                    // Aucun poste lié, on garde quand même la structure (entrée directe sans famille)
+                    // On ajoute une entrée type 'structure' simple
+                    const strObj = { type: 'structure', structures: [{ 
+                        structure: structId, 
+                        services: servicesValides.map(s => ({ service: s }))
+                    }]};
+                    formatted.push(strObj);
+                    continue;
+                }
+
+                // Grouper les postes par famille métier
+                const familleMap = new Map(); // familleId -> { familleId, postes: [...] }
+
+                for (const poste of postesDeLaStructure) {
+                    for (const famille of (poste.famillesMetier || [])) {
+                        const famId = famille.toString();
+                        if (!familleMap.has(famId)) {
+                            familleMap.set(famId, { familleId: famId, postes: [] });
                         }
 
-                        // ✅ CORRECTION 3: Vérifier que la structure existe
-                        const structureExists = await Structure.findById(structId);
-                        if (!structureExists) {
-                            return { ok: false, message: `Structure ${structId} introuvable` };
-                        }
+                        // Construire la restriction de structure pour ce poste
+                        const structureRestriction = {
+                            structure: structId,
+                            services: servicesValides.map(s => ({ service: s }))
+                        };
 
-                        const structObj = { structure: structId, services: [] };
-
-                        if (Array.isArray(st.services)) {
-                            for (const serv of st.services) {
-                                const servId = serv?.service?._id || serv?.service;
-                                if (!isValidObjectId(servId)) {
-                                    return { ok: false, message: t('identifiant_invalide', lang) };
-                                }
-
-                                // ✅ CORRECTION 4: Vérifier que le service existe ET appartient à la structure
-                                const service = await Service.findById(servId);
-                                if (!service) {
-                                    return { ok: false, message: `Service ${servId} introuvable` };
-                                }
-                                if (service.structure.toString() !== structId.toString()) {
-                                    return { 
-                                        ok: false, 
-                                        message: `Le service ${servId} n'appartient pas à la structure ${structId}` 
-                                    };
-                                }
-
-                                structObj.services.push({ service: servId });
-                            }
-                        }
-
-                        postObj.structures.push(structObj);
+                        familleMap.get(famId).postes.push({
+                            poste: poste._id,
+                            structures: [structureRestriction]
+                        });
                     }
                 }
 
-                famObj.postes.push(postObj);
+                // Créer une entrée de type 'famille' par famille métier trouvée
+                for (const [famId, famData] of familleMap) {
+                    const familleExists = await FamilleMetier.findById(famId);
+                    if (!familleExists) continue;
+
+                    // Vérifier si une entrée pour cette famille existe déjà dans formatted
+                    const existingFamEntry = formatted.find(f => 
+                        f.type === 'famille' && f.familleMetier?.toString() === famId
+                    );
+
+                    if (existingFamEntry) {
+                        // Fusionner les postes
+                        existingFamEntry.postes = existingFamEntry.postes || [];
+                        for (const newPoste of famData.postes) {
+                            const existingPoste = existingFamEntry.postes.find(
+                                p => p.poste.toString() === newPoste.poste.toString()
+                            );
+                            if (existingPoste) {
+                                // Fusionner les structures
+                                existingPoste.structures = [
+                                    ...(existingPoste.structures || []),
+                                    ...newPoste.structures
+                                ];
+                            } else {
+                                existingFamEntry.postes.push(newPoste);
+                            }
+                        }
+                    } else {
+                        formatted.push({
+                            type: 'famille',
+                            familleMetier: famId,
+                            postes: famData.postes
+                        });
+                    }
+                }
             }
         }
 
-        formatted.push(famObj);
+        // ── Type service direct ────────────────────────────────────────────
+        else if (type === 'service') {
+            for (const serv of (entry.services || [])) {
+                const servId = serv?.service?._id || serv?.service;
+                if (!isValidObjectId(servId)) return { ok: false, message: t('identifiant_invalide', lang) };
+
+                const service = await Service.findById(servId);
+                if (!service) return { ok: false, message: `Service ${servId} introuvable` };
+
+                const structId = service.structure?.toString();
+                if (!structId) {
+                    // Service sans structure, entrée directe
+                    formatted.push({ type: 'service', services: [{ service: servId }] });
+                    continue;
+                }
+
+                // Résoudre les postes liés à ce service
+                const postesLies = await PosteDeTravail.find({ services: servId }).lean();
+
+                if (postesLies.length === 0) {
+                    formatted.push({ type: 'service', services: [{ service: servId }] });
+                    continue;
+                }
+
+                // Grouper par famille
+                const familleMap = new Map();
+
+                for (const poste of postesLies) {
+                    for (const famille of (poste.famillesMetier || [])) {
+                        const famId = famille.toString();
+                        if (!familleMap.has(famId)) {
+                            familleMap.set(famId, { familleId: famId, postes: [] });
+                        }
+
+                        familleMap.get(famId).postes.push({
+                            poste: poste._id,
+                            structures: [{
+                                structure: structId,
+                                services: [{ service: servId }]
+                            }]
+                        });
+                    }
+                }
+
+                // Créer/fusionner les entrées par famille
+                for (const [famId, famData] of familleMap) {
+                    const familleExists = await FamilleMetier.findById(famId);
+                    if (!familleExists) continue;
+
+                    const existingFamEntry = formatted.find(f =>
+                        f.type === 'famille' && f.familleMetier?.toString() === famId
+                    );
+
+                    if (existingFamEntry) {
+                        existingFamEntry.postes = existingFamEntry.postes || [];
+                        for (const newPoste of famData.postes) {
+                            const existingPoste = existingFamEntry.postes.find(
+                                p => p.poste.toString() === newPoste.poste.toString()
+                            );
+                            if (existingPoste) {
+                                const existingStr = existingPoste.structures?.find(
+                                    s => s.structure.toString() === structId
+                                );
+                                if (existingStr) {
+                                    // Fusionner les services
+                                    existingStr.services = [
+                                        ...(existingStr.services || []),
+                                        ...newPoste.structures[0].services
+                                    ];
+                                } else {
+                                    existingPoste.structures = [
+                                        ...(existingPoste.structures || []),
+                                        ...newPoste.structures
+                                    ];
+                                }
+                            } else {
+                                existingFamEntry.postes.push(newPoste);
+                            }
+                        }
+                    } else {
+                        formatted.push({
+                            type: 'famille',
+                            familleMetier: famId,
+                            postes: famData.postes
+                        });
+                    }
+                }
+            }
+        }
+
+        else {
+            return { ok: false, message: `Type de public cible inconnu : ${type}` };
+        }
     }
 
     return { ok: true, data: formatted };
@@ -222,8 +382,10 @@ export const createThemeFormation = async (req, res) => {
             .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
-            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
-
+            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } });
         // Calcul durée en jours (si fournie)
         let dureeJour = null;
         if (dateDebut && dateFin) {
@@ -283,7 +445,7 @@ export const updateThemeFormation = async (req, res) => {
             formation,
             publicCible
         } = req.body;
-
+        
         // Validate formation & responsable si fournis
         if (formation) {
             const formationId = formation._id || formation;
@@ -359,8 +521,10 @@ export const updateThemeFormation = async (req, res) => {
             .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
-            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } });
-
+            .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })       // ← MANQUANT
+            .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } }) // ← MANQUANT
+            .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } });   
         // Calcul durée
         let dureeJour = null;
         if (themePopule.dateDebut && themePopule.dateFin) {
@@ -1034,12 +1198,15 @@ export const getFilteredThemes = async (req, res) => {
         path: 'formation',
         populate: { path: 'programmeFormation' }
       })
-      .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
-      .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
-      .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
-      .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
-      .populate({ path: 'responsable', options: { strictPopulate: false } })
-      .lean();
+        .populate({ path: 'publicCible.familleMetier', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'responsable', options: { strictPopulate: false } })
+        .lean();
 
     const themeIds = themes.map(t => t._id);
 
@@ -1154,6 +1321,9 @@ export const getThemesByFamilleMetier = async (req, res) => {
         .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
         .lean();
 
@@ -1210,6 +1380,9 @@ export const getThemesByFormation = async (req, res) => {
         .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
         .lean();
 
@@ -1257,6 +1430,9 @@ export const getThemeFormations = async (req, res) => {
             .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
             .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+            .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } })
             .populate({ path: 'formateurs', options: { strictPopulate: false } })
             .lean();
 
@@ -1309,6 +1485,9 @@ export const searchThemeFormationByTitre = async (req, res) => {
         .populate({ path: 'publicCible.postes.poste', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.structure', options: { strictPopulate: false } })
         .populate({ path: 'publicCible.postes.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.structure', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.structures.services.service', options: { strictPopulate: false } })
+        .populate({ path: 'publicCible.services.service', options: { strictPopulate: false } })
         .populate({ path: 'formateurs', options: { strictPopulate: false } })
         .lean();
 
@@ -1358,7 +1537,6 @@ export const getTargetedUsers = async (req, res) => {
         });
     }
 
-    // Validation des filtres ObjectId
     const objectIdFilters = { familleMetier, poste, structure, service };
     for (const [key, value] of Object.entries(objectIdFilters)) {
         if (value && !mongoose.Types.ObjectId.isValid(value)) {
@@ -1370,24 +1548,14 @@ export const getTargetedUsers = async (req, res) => {
     }
 
     try {
-        // CORRECTION DU POPULATE
         const theme = await ThemeFormation.findById(themeId)
-            .populate({
-                path: 'publicCible.familleMetier',
-                select: 'nomFr nomEn code'
-            })
-            .populate({
-                path: 'publicCible.postes.poste',
-                select: 'nomFr nomEn code'
-            })
-            .populate({
-                path: 'publicCible.postes.structures.structure',
-                select: 'nomFr nomEn code'
-            })
-            .populate({
-                path: 'publicCible.postes.structures.services.service',
-                select: 'nomFr nomEn code'
-            })
+            .populate({ path: 'publicCible.familleMetier', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.postes.poste', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.postes.structures.structure', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.postes.structures.services.service', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.structures.structure', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.structures.services.service', select: 'nomFr nomEn code' })
+            .populate({ path: 'publicCible.services.service', select: 'nomFr nomEn code' })
             .lean();
 
         if (!theme) {
@@ -1397,187 +1565,189 @@ export const getTargetedUsers = async (req, res) => {
             });
         }
 
-        // Vérifier que publicCible existe et n'est pas vide
         if (!theme.publicCible || theme.publicCible.length === 0) {
             return res.status(200).json({
                 success: true,
-                data: {
-                    utilisateurs: [],
-                    totalItems: 0,
-                    currentPage: pageNum,
-                    totalPages: 0,
-                    pageSize: limitNum,
-                },
+                data: { utilisateurs: [], totalItems: 0, currentPage: pageNum, totalPages: 0, pageSize: limitNum },
             });
         }
 
         const userIds = new Set();
-        
-        // Parcourir le public cible pour récupérer tous les utilisateurs ciblés
-        for (const familleCible of theme.publicCible) {
-            // Vérifier que familleMetier est peuplé
-            if (!familleCible.familleMetier || !familleCible.familleMetier._id) {
-                console.warn('FamilleMetier non peuplée dans publicCible');
-                continue;
-            }
 
-            // Cas 1: Toute la famille (pas de restrictions)
-            if (!familleCible.postes || familleCible.postes.length === 0) {
-                
-                const postes = await PosteDeTravail.find({ 
-                    famillesMetier: familleCible.familleMetier._id 
-                }).select('_id').lean();
-                
-                if (postes.length > 0) {
-                    const posteIds = postes.map(p => p._id);
-                    
-                    const users = await Utilisateur.find({
-                        posteDeTravail: { $in: posteIds },
-                        actif: true // Filtrer les utilisateurs actifs
-                    }).select('_id').lean();
-                    
-                    users.forEach(u => userIds.add(u._id.toString()));
+        for (const entry of theme.publicCible) {
+            const type = entry.type || 'famille';
+
+            // ── Type famille ───────────────────────────────────────────────
+            if (type === 'famille') {
+                if (!entry.familleMetier?._id) {
+                    console.warn('FamilleMetier non peuplée dans publicCible (famille)');
+                    continue;
                 }
-            } 
-            // Cas 2: Restrictions par postes
-            else {
-                for (const posteRestriction of familleCible.postes) {
-                    // Vérifier que poste est peuplé
-                    if (!posteRestriction.poste || !posteRestriction.poste._id) {
-                        console.warn('Poste non peuplé dans postes');
-                        continue;
-                    }
 
-                    // Cas 2a: Toutes les structures du poste
-                    if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                // Toute la famille — pas de restrictions sur les postes
+                if (!entry.postes || entry.postes.length === 0) {
+                    const postes = await PosteDeTravail.find({
+                        famillesMetier: entry.familleMetier._id
+                    }).select('_id').lean();
+
+                    if (postes.length > 0) {
                         const users = await Utilisateur.find({
-                            posteDeTravail: posteRestriction.poste._id,
+                            posteDeTravail: { $in: postes.map(p => p._id) },
                             actif: true
                         }).select('_id').lean();
-                        
                         users.forEach(u => userIds.add(u._id.toString()));
                     }
-                    // Cas 2b: Restrictions par structures
-                    else {
-                        for (const structureRestriction of posteRestriction.structures) {
-                            // Vérifier que structure est peuplée
-                            if (!structureRestriction.structure || !structureRestriction.structure._id) {
-                                console.warn('Structure non peuplée dans structures');
-                                continue;
-                            }
+                }
+                // Restrictions par postes
+                else {
+                    for (const posteRestriction of entry.postes) {
+                        if (!posteRestriction.poste?._id) {
+                            console.warn('Poste non peuplé dans postes');
+                            continue;
+                        }
 
-                            // Cas 2b-i: Tous les services de la structure
-                            if (!structureRestriction.services || structureRestriction.services.length === 0) {
-                                const users = await Utilisateur.find({
-                                    posteDeTravail: posteRestriction.poste._id,
-                                    structure: structureRestriction.structure._id,
-                                    actif: true
-                                }).select('_id').lean();
-                                users.forEach(u => userIds.add(u._id.toString()));
-                            }
-                            // Cas 2b-ii: Services spécifiques
-                            else {
-                                const serviceIds = structureRestriction.services
-                                    .filter(s => s.service && s.service._id)
-                                    .map(s => s.service._id);
-                                
-                                if (serviceIds.length > 0) {
+                        // Toutes les structures du poste
+                        if (!posteRestriction.structures || posteRestriction.structures.length === 0) {
+                            const users = await Utilisateur.find({
+                                posteDeTravail: posteRestriction.poste._id,
+                                actif: true
+                            }).select('_id').lean();
+                            users.forEach(u => userIds.add(u._id.toString()));
+                        }
+                        // Restrictions par structures
+                        else {
+                            for (const structureRestriction of posteRestriction.structures) {
+                                if (!structureRestriction.structure?._id) {
+                                    console.warn('Structure non peuplée dans structures');
+                                    continue;
+                                }
+
+                                // Tous les services de la structure
+                                if (!structureRestriction.services || structureRestriction.services.length === 0) {
                                     const users = await Utilisateur.find({
                                         posteDeTravail: posteRestriction.poste._id,
                                         structure: structureRestriction.structure._id,
-                                        service: { $in: serviceIds },
                                         actif: true
                                     }).select('_id').lean();
-                                    
                                     users.forEach(u => userIds.add(u._id.toString()));
+                                }
+                                // Services spécifiques
+                                else {
+                                    const serviceIds = structureRestriction.services
+                                        .filter(s => s.service?._id)
+                                        .map(s => s.service._id);
+
+                                    if (serviceIds.length > 0) {
+                                        const users = await Utilisateur.find({
+                                            posteDeTravail: posteRestriction.poste._id,
+                                            structure: structureRestriction.structure._id,
+                                            service: { $in: serviceIds },
+                                            actif: true
+                                        }).select('_id').lean();
+                                        users.forEach(u => userIds.add(u._id.toString()));
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            // ── Type structure directe ─────────────────────────────────────
+            else if (type === 'structure') {
+                for (const strItem of (entry.structures || [])) {
+                    if (!strItem.structure?._id) {
+                        console.warn('Structure non peuplée dans publicCible (structure directe)');
+                        continue;
+                    }
+
+                    // Tous les services de la structure
+                    if (!strItem.services || strItem.services.length === 0) {
+                        const users = await Utilisateur.find({
+                            structure: strItem.structure._id,
+                            actif: true
+                        }).select('_id').lean();
+                        users.forEach(u => userIds.add(u._id.toString()));
+                    }
+                    // Services spécifiques
+                    else {
+                        const serviceIds = strItem.services
+                            .filter(s => s.service?._id)
+                            .map(s => s.service._id);
+
+                        if (serviceIds.length > 0) {
+                            const users = await Utilisateur.find({
+                                structure: strItem.structure._id,
+                                service: { $in: serviceIds },
+                                actif: true
+                            }).select('_id').lean();
+                            users.forEach(u => userIds.add(u._id.toString()));
+                        }
+                    }
+                }
+            }
+
+            // ── Type service direct ────────────────────────────────────────
+            else if (type === 'service') {
+                const serviceIds = (entry.services || [])
+                    .filter(s => s.service?._id)
+                    .map(s => s.service._id);
+
+                if (serviceIds.length > 0) {
+                    const users = await Utilisateur.find({
+                        service: { $in: serviceIds },
+                        actif: true
+                    }).select('_id').lean();
+                    users.forEach(u => userIds.add(u._id.toString()));
+                }
+            }
+
+            else {
+                console.warn(`Type de public cible inconnu : ${type}`);
+            }
         }
 
-        // Conversion en tableau
         const userIdsArray = Array.from(userIds);
-        
+
         if (userIdsArray.length === 0) {
             return res.status(200).json({
                 success: true,
-                data: {
-                    utilisateurs: [],
-                    totalItems: 0,
-                    currentPage: pageNum,
-                    totalPages: 0,
-                    pageSize: limitNum,
-                },
+                data: { utilisateurs: [], totalItems: 0, currentPage: pageNum, totalPages: 0, pageSize: limitNum },
             });
         }
 
-        // Construction de la requête avec filtres
-        const filterQuery = { 
-            _id: { $in: userIdsArray },
-            actif: true
-        };
+        const filterQuery = { _id: { $in: userIdsArray }, actif: true };
 
-        // Filtrer par famille de métier
         if (familleMetier) {
             const postesInFamille = await PosteDeTravail.find({
                 famillesMetier: familleMetier
             }).select('_id').lean();
-            
-            if (postesInFamille.length > 0) {
-                const posteIdsInFamille = postesInFamille.map(p => p._id);
-                filterQuery.posteDeTravail = { $in: posteIdsInFamille };
-            } else {
-                // Aucun poste trouvé pour cette famille
+
+            if (postesInFamille.length === 0) {
                 return res.status(200).json({
                     success: true,
-                    data: {
-                        utilisateurs: [],
-                        totalItems: 0,
-                        currentPage: pageNum,
-                        totalPages: 0,
-                        pageSize: limitNum,
-                    },
+                    data: { utilisateurs: [], totalItems: 0, currentPage: pageNum, totalPages: 0, pageSize: limitNum },
                 });
             }
+            filterQuery.posteDeTravail = { $in: postesInFamille.map(p => p._id) };
         }
 
-        // Filtrer par poste
-        if (poste) {
-            filterQuery.posteDeTravail = poste;
-        }
+        if (poste) filterQuery.posteDeTravail = poste;
+        if (structure) filterQuery.structure = structure;
+        if (service) filterQuery.service = service;
 
-        // Filtrer par structure
-        if (structure) {
-            filterQuery.structure = structure;
-        }
-
-        // Filtrer par service
-        if (service) {
-            filterQuery.service = service;
-        }
-
-        // Filtrer par nom et/ou prénom
         if (search) {
             filterQuery.$or = [
                 { nom: { $regex: new RegExp(search, 'i') } },
                 { prenom: { $regex: new RegExp(search, 'i') } }
             ];
         } else {
-            if (nom) {
-                filterQuery.nom = { $regex: new RegExp(nom, 'i') };
-            }
-            if (prenom) {
-                filterQuery.prenom = { $regex: new RegExp(prenom, 'i') };
-            }
+            if (nom) filterQuery.nom = { $regex: new RegExp(nom, 'i') };
+            if (prenom) filterQuery.prenom = { $regex: new RegExp(prenom, 'i') };
         }
 
-        // Compter le total après filtrage
         const total = await Utilisateur.countDocuments(filterQuery);
 
-        // Récupération des utilisateurs avec pagination et population
         const users = await Utilisateur.find(filterQuery)
             .populate('posteDeTravail', 'nomFr nomEn code')
             .populate('structure', 'nomFr nomEn code')
@@ -1590,7 +1760,6 @@ export const getTargetedUsers = async (req, res) => {
             .sort({ nom: 1, prenom: 1 })
             .lean();
 
-        // Enrichir les données des utilisateurs
         const enrichedUsers = users.map(user => ({
             _id: user._id,
             matricule: user.matricule,

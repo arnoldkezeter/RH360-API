@@ -27,6 +27,7 @@ import supportFormationRoutes from './routes/supportFormationRoutes.js';
 import themeFormationRoutes from './routes/themeFormationRoutes.js';
 import lieuFormationRoutes from './routes/lieuFormationRoutes.js';
 import participantFormationRoutes from './routes/participantFormationRoutes.js';
+import groupeFormationRoutes from './routes/groupeFormationRoutes.js'
 import formateurRoutes from './routes/formateurRoutes.js';
 import formationRoutes from './routes/formationRoutes.js';
 import tacheGeneriqueRoutes from './routes/tacheGeneriqueRoutes.js';
@@ -114,7 +115,8 @@ app.use('/api/v1/utilisateurs', utilisateurRoutes);
 app.use('/api/v1/theme-formation/supports-formation', supportFormationRoutes);
 app.use('/api/v1/themes-formations', themeFormationRoutes);
 app.use('/api/v1/theme-formation/lieux-formation', lieuFormationRoutes);
-app.use('/api/v1/theme-formation/participants-formation', participantFormationRoutes);
+app.use('/api/v1/themes/:themeId/participants',    participantFormationRoutes);
+app.use('/api/v1/themes/:themeId/groupes',        groupeFormationRoutes);
 app.use('/api/v1/theme-formation/formateurs', formateurRoutes);
 app.use('/api/v1/theme-formation/objectifs', objectifThemeRoutes);
 app.use('/api/v1/formations', formationRoutes);

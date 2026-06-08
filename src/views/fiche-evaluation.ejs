@@ -404,7 +404,11 @@
     <!-- ==================== INTRODUCTION ==================== -->
     <div class="intro-text">
         <p><%= description %></p>
-        <p>Nous vous remercions de prendre quelques instants pour répondre aux questions ci-dessous.</p>
+        <p>
+            <%= lang === 'fr'
+                ? 'Nous vous remercions de prendre quelques instants pour répondre aux questions ci-dessous.'
+                : 'Thank you for taking a few moments to answer the questions below.' %>
+        </p>
     </div>
 
     <!-- ==================== RUBRIQUES ==================== -->
@@ -422,7 +426,9 @@
         const questions = rubrique.questions || [];
     %>
         <div class="rubrique">
-            <div class="rubrique-title">Rubrique <%= rubNumero %> : <%= rubTitre %></div>
+            <div class="rubrique-title">
+                <%= lang === 'fr' ? 'Rubrique' : 'Section' %> <%= rubNumero %> : <%= rubTitre %>
+            </div>
             <div class="rubrique-content">
 
                 <% if (estProfil) { %>
@@ -473,18 +479,22 @@
                         const question = questions[qIdx];
                         const qNumero = qIdx + 1;
                         const qLibelle = lang === 'fr' ? question.libelleFr : (question.libelleEn || question.libelleFr);
-                        const echelles = [...(question.echelles || [])].sort((a, b) => a.ordre - b.ordre);
                         const questionId = question._id ? question._id.toString() : question.code;
                         const qReponse = rubRepMap[questionId] || null;
                         const hasSousQ = question.sousQuestions && question.sousQuestions.length > 0;
+                        const echelles = [...(question.echelles || [])].sort((a, b) => a.ordre - b.ordre);
                         const hasEch = echelles.length > 0;
+
+                        // Grille = tableau avec lignes (sous-questions) et colonnes (échelles)
+                        // Couvre : avec_sous_questions, objectifs_comprehension, objectifs_atteinte
+                        const estGrille = hasSousQ && hasEch;
                     %>
                         <div class="question">
                             <div class="question-text">
                                 <%= rubNumero %>.<%= qNumero %>. <%= qLibelle %>
                             </div>
 
-                            <% if (hasSousQ && hasEch) { %>
+                            <% if (estGrille) { %>
                                 <!-- TABLEAU GRILLE -->
                                 <table class="grille-table">
                                     <thead>
@@ -496,9 +506,9 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <% for (const sq of question.sousQuestions) { 
+                                        <% for (const sq of question.sousQuestions) {
                                             const sqLib = lang === 'fr' ? sq.libelleFr : (sq.libelleEn || sq.libelleFr);
-                                            const sqRep = qReponse ? (qReponse.sousQuestions || []).find(sr => 
+                                            const sqRep = qReponse ? (qReponse.sousQuestions || []).find(sr =>
                                                 sr.sousQuestionId && sr.sousQuestionId.toString() === sq._id.toString()
                                             ) : null;
                                             const sqRepId = sqRep ? sqRep.reponseEchelleId.toString() : null;
@@ -516,11 +526,12 @@
                                 </table>
 
                             <% } else if (!hasSousQ && hasEch) { %>
-                                <!-- CHOIX SIMPLES : cercles avec retour à la ligne -->
+                                <!-- CHOIX SIMPLES : cercles -->
                                 <div class="echelle-list">
-                                    <% for (const e of echelles) { 
+                                    <% for (const e of echelles) {
                                         const eLib = lang === 'fr' ? e.nomFr : (e.nomEn || e.nomFr);
-                                        const estSel = qReponse && qReponse.reponseEchelleId && qReponse.reponseEchelleId.toString() === e._id.toString();
+                                        const estSel = qReponse && qReponse.reponseEchelleId &&
+                                                        qReponse.reponseEchelleId.toString() === e._id.toString();
                                     %>
                                         <div class="echelle-item">
                                             <div class="radio-circle <%= estSel ? 'selected' : '' %>"></div>
@@ -542,10 +553,12 @@
                                 </div>
                             <% } %>
 
-                            <!-- COMMENTAIRE GLOBAL -->
+                            <!-- COMMENTAIRE GLOBAL sur les questions avec échelles -->
                             <% if (question.commentaireGlobal && hasEch) { %>
                                 <div class="comment-section">
-                                    <span class="comment-label">Commentaires :</span>
+                                    <span class="comment-label">
+                                        <%= lang === 'fr' ? 'Commentaires :' : 'Comments:' %>
+                                    </span>
                                     <% if (qReponse && qReponse.commentaireGlobal) { %>
                                         <div class="comment-text"><%= qReponse.commentaireGlobal %></div>
                                     <% } else { %>

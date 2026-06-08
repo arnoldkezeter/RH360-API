@@ -4,57 +4,59 @@
     <meta charset="UTF-8">
     <title><%= documentTitle %></title>
     <style>
+        /* ═══════════════════════════════════════════
+           PAGE 1  —  marges normales, portrait A4
+        ═══════════════════════════════════════════ */
         @page {
             margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4;
         }
-        
-        body { 
-            font-family: 'Times New Roman', serif; 
-            margin: 0; 
+
+        /* ═══════════════════════════════════════════
+           PAGES ANNEXE  —  marges réduites, portrait
+        ═══════════════════════════════════════════ */
+        @page annexe {
+            margin: 1cm 1.2cm 1.5cm 1.2cm;
+            size: A4;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            margin: 0;
             padding: 0;
             font-size: 16px;
             line-height: 1.4;
             color: #000;
         }
 
-        /* HEADER */
+        /* ════════════════════════════════
+           HEADER
+        ════════════════════════════════ */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 40px;
         }
-        
+
         .header-left, .header-right {
             width: 40%;
             font-size: 10px;
             font-weight: bold;
             text-align: center;
         }
-        
+
         .header-center {
             width: 20%;
             text-align: center;
         }
-        
-        .header-center img {
-            max-width: 90px;
-        }
 
-        .separator {
-            margin: 3px 0;
-        }
+        .header-center img { max-width: 90px; }
 
-        .header-section {
-            margin-bottom: 2px;
-        }
-
-        /* TITRE */
-        .note-title {
-            text-align: center;
-            margin-bottom: 20px;
-        }
+        /* ════════════════════════════════
+           TITRE
+        ════════════════════════════════ */
+        .note-title { text-align: center; margin-bottom: 20px; }
 
         .document-title {
             font-size: 17px;
@@ -63,11 +65,9 @@
             line-height: 1.4;
         }
 
-        .document-title p {
-            margin: 5px 0;
-        }
-
-        /* CONTENU */
+        /* ════════════════════════════════
+           CONTENU
+        ════════════════════════════════ */
         .body-content {
             text-align: justify;
             line-height: 1.5;
@@ -79,17 +79,31 @@
             margin-bottom: 12px;
         }
 
-        /* COPIE */
+        /* ════════════════════════════════════════════════════════
+           WRAPPER PAGE 1
+           ──────────────────────────────────────────────────────
+           Contient tout le contenu de la page 1 : header, titre,
+           corps du texte, copie et QR code.
+           page-break-after:always garantit que tout ce bloc reste
+           sur la page 1 et que l'annexe commence toujours en page 2,
+           quelle que soit la longueur de la section "Copie".
+        ════════════════════════════════════════════════════════ */
+        #page1-wrapper {
+            page-break-after: always;
+        }
+
+        /* ════════════════════════════════
+           SECTION COPIE
+        ════════════════════════════════ */
         .copie-section {
             margin-top: 40px;
-            page-break-inside: avoid;
             font-size: 16px;
         }
 
         .copie-title {
             font-weight: bold;
             text-decoration: underline;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .copie-list {
@@ -97,18 +111,16 @@
             line-height: 1.6;
         }
 
-        /* QR CODE sous la section copie */
+        /* ════════════════════════════════
+           QR CODE
+        ════════════════════════════════ */
         .verification-section {
-            margin-top: 20px;
+            margin-top: 16px;
             width: 150px;
             text-align: center;
-            page-break-inside: avoid;
         }
 
-        .qr-code-container img {
-            width: 85px;
-            height: 85px;
-        }
+        .qr-code-container img { width: 85px; height: 85px; }
 
         .reference-systeme {
             font-size: 10px;
@@ -122,198 +134,229 @@
             margin-top: 3px;
         }
 
-        /* ANNEXE - Tableau des participants */
+        /* ════════════════════════════════
+           ANNEXE — Tableau des participants
+        ════════════════════════════════ */
         .annexe-section {
-            page-break-before: always;
-            margin: 20px 0;
+            page: annexe;
+            margin: 0;
+            padding: 10px 0;
         }
 
         .annexe-title {
             text-align: center;
-            font-size: 17px;
+            font-size: 15px;
             font-weight: bold;
             text-decoration: underline;
-            margin: 20px 0;
+            margin: 10px 0 14px 0;
             text-transform: uppercase;
         }
 
         .participants-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 0 0 10px 0;
+            table-layout: fixed;
         }
 
         .participants-table th {
             background-color: #2c3e50;
             color: white;
-            padding: 10px;
+            padding: 8px 6px;
             border: 1px solid #000;
             font-weight: bold;
             text-align: center;
-            font-size: 13px;
+            font-size: 12px;
             vertical-align: middle;
+            line-height: 1.3;
         }
 
         .participants-table td {
-            padding: 8px;
-            border: 1px solid #000;
-            font-size: 13px;
-            vertical-align: top; 
+            padding: 6px 7px;
+            border: 1px solid #333;
+            font-size: 12px;
+            vertical-align: middle;
+            /* Fond blanc explicite par défaut */
+            background-color: #ffffff;
         }
-        
-        .participants-table td.numero { text-align: center; font-weight: bold; }
-        .participants-table td.nom { text-align: left; padding-left: 15px; }
-        .participants-table td.fonction,
-        .participants-table td.service { text-align: left; padding-left: 10px; }
-        
-        .participants-table td.lieu-periode { 
+
+        .participants-table td.numero {
             text-align: center;
-            line-height: 1.2;
+            font-weight: bold;
         }
-        
+
+        .participants-table td.nom {
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        .participants-table td.fonction,
+        .participants-table td.service {
+            text-align: left;
+            padding-left: 8px;
+        }
+
+        /* Couleur de fond retirée sur les deux dernières colonnes (rowspan) */
+        .participants-table td.lieu-periode {
+            text-align: center;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        .participants-table td.formateurs-cell {
+            text-align: left;
+            padding-left: 8px;
+            vertical-align: middle;
+            font-size: 11px;
+        }
+
         .periode-text {
             display: block;
-            font-size: 12px;
+            font-size: 11px;
             margin-bottom: 3px;
+            color: #444;
         }
-        
+
         .lieu-text {
             display: block;
             font-weight: bold;
+            font-size: 12px;
         }
+
+        .formateur-item {
+            display: block;
+            line-height: 1.4;
+        }
+
+        /* ════════════════════════════════
+           UTILITAIRES
+        ════════════════════════════════ */
+        .highlight { font-weight: bold; }
 
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            
-            .page-break {
-                page-break-before: always;
-            }
-        }
-
-        .highlight {
-            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <!-- HEADER -->
-    <div class="header">
-        <div class="header-left">
-            REPUBLIQUE DU CAMEROUN<br>
-            Paix - Travail - Patrie<br>
-            ----------------------<br>
-            MINISTERE DES FINANCES<br>
-            ----------------------<br>
-            DIRECTION GENERALE DES IMPOTS<br>
-            ----------------------<br>
-            DIRECTION DES AFFAIRES GENERALES<br>
-            ----------------------<br>
-            CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
-            ----------------------
+
+    <div id="page1-wrapper">
+
+        <div class="header">
+            <div class="header-left">
+                REPUBLIQUE DU CAMEROUN<br>
+                Paix - Travail - Patrie<br>
+                ----------------------<br>
+                MINISTERE DES FINANCES<br>
+                ----------------------<br>
+                DIRECTION GENERALE DES IMPOTS<br>
+                ----------------------<br>
+                DIRECTION DES AFFAIRES GENERALES<br>
+                ----------------------<br>
+                CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+                ----------------------
+            </div>
+
+            <div class="header-center">
+                <% if (logoUrl) { %>
+                    <img src="<%= logoUrl %>" alt="Armoiries">
+                <% } %>
+            </div>
+
+            <div class="header-right">
+                REPUBLIC OF CAMEROON<br>
+                Peace - Work - Fatherland<br>
+                ----------------------<br>
+                MINISTRY OF FINANCE<br>
+                ----------------------<br>
+                DIRECTORATE GENERAL OF TAXATION<br>
+                ----------------------<br>
+                DEPARTMENT OF GENERAL AFFAIRS<br>
+                ----------------------<br>
+                TRAINING AND SKILLS PERFECTION UNIT<br>
+                ----------------------
+            </div>
         </div>
 
-        <div class="header-center">
-            <% if (logoUrl) { %>
-                <img src="<%= logoUrl %>" alt="Armoiries">
-            <% } %>
+        <div class="note-title">
+            <h3 class="document-title">
+                Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+                <%= noteTitle %>
+            </h3>
         </div>
 
-        <div class="header-right">
-            REPUBLIC OF CAMEROON<br>
-            Peace - Work - Fatherland<br>
-            ----------------------<br>
-            MINISTRY OF FINANCE<br>
-            ----------------------<br>
-            DIRECTORATE GENERAL OF TAXATION<br>
-            ----------------------<br>
-            DEPARTMENT OF GENERAL AFFAIRS<br>
-            ----------------------<br>
-            TRAINING AND SKILLS PERFECTION UNIT<br>
-            ----------------------
-        </div>
-    </div>
-
-    <!-- TITRE -->
-    <div class="note-title">
-        <h3 class="document-title">
-            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
-            <%= noteTitle %>
-        </h3>
-    </div>
-
-    <!-- CONTENU -->
-    <div class="body-content">
-        <p>
-            Les responsables et autres personnels des structures opérationnelles ci-après désignés, 
-            sont conviés à une session de formation sur <span class="highlight"><%= themeLibelle %></span> 
-            qui se déroulera du <span class="highlight"><%= dateDebut %></span> au 
-            <span class="highlight"><%= dateFin %></span> suivant le chronogramme et la répartition portés au tableau en annexe.
-        </p>
-
-        <p>
-            La participation à ces sessions est obligatoire, sauf circonstances exceptionnelles 
-            dûment justifiées.
-        </p>
-
-        <p>
-            Les responsables des structures de rattachement prendront toutes les dispositions nécessaires 
-            pour rendre disponibles aux dates et heures sus indiquées les personnels concernés par 
-            cette formation.
-        </p>
-
-        <p>
-            Le Directeur des Affaires Générales et le Directeur du Contentieux sont chargés, chacun 
-            en ce qui le concerne, de la mise en œuvre des termes de la présente note de service./-
-        </p>
-    </div>
-
-    <!-- SECTION COPIE -->
-    <div class="copie-section">
-        <div class="copie-title">Copie :</div>
-        <div class="copie-list">
-            <% if (copies && copies.length > 0) { %>
-                <% copies.forEach(function(copie) { %>
-                    <% if (copie.trim()) { %>
-                        - <%= copie.trim() %><br>
-                    <% } %>
-                <% }); %>
-            <% } else { %>
-                - Intéressé(e)s<br>
-                - Chefs de Service concernés<br>
-                - Archives/Chrono.
-            <% } %>
-        </div>
-    </div>
-
-    <!-- QR CODE sous la copie -->
-    <div class="verification-section">
-        <div class="qr-code-container">
-            <img src="<%= qrCodeUrl %>" alt="QR Code">
+        <div class="body-content">
+            <p>
+                Les responsables et autres personnels des structures ci-après désignés,
+                sont conviés à une session de formation sur
+                <span class="highlight"><%= articleTheme %> <%= themeLibelle %></span>
+                qui se déroulera du <span class="highlight"><%= dateDebut %></span> au
+                <span class="highlight"><%= dateFin %></span> suivant le chronogramme
+                et la répartition portés au tableau en annexe.
+            </p>
+            <p>
+                La participation à ces sessions est obligatoire, sauf circonstances exceptionnelles
+                dûment justifiées.
+            </p>
+            <p>
+                Les responsables des structures de rattachement prendront toutes les dispositions
+                nécessaires pour rendre disponibles aux dates et heures sus indiquées les personnels
+                concernés par cette formation.
+            </p>
+            <p>
+                La Directeurice des Affaires Générales est chargée de la mise en œuvre des termes
+                de la présente note de service.
+            </p>
         </div>
 
-        <div class="reference-systeme">
-            Réf. Système : <%= referenceSysteme %>
+        <div class="copie-section">
+            <div class="copie-title">Copie :</div>
+            <div class="copie-list">
+                <% if (copies && copies.length > 0) { %>
+                    <% copies.forEach(function(copie) { %>
+                        <% if (copie.trim()) { %>
+                            - <%= copie.trim() %><br>
+                        <% } %>
+                    <% }); %>
+                <% } else { %>
+                    - Intéressé(e)s<br>
+                    - Chefs de Service concernés<br>
+                    - Archives/Chrono.
+                <% } %>
+            </div>
         </div>
 
-        <div class="verification-text">
-            Scanner pour vérifier l'authenticité
+        <div class="verification-section">
+            <div class="qr-code-container">
+                <img src="<%= qrCodeUrl %>" alt="QR Code">
+            </div>
+            <div class="reference-systeme">Réf. Système : <%= referenceSysteme %></div>
+            <div class="verification-text">Scanner pour vérifier l'authenticité</div>
         </div>
-    </div>
 
-    <div class="annexe-section">
-        <h2 class="annexe-title">ANNEXE - <%= noteTitle %></h2>
+    </div><div class="annexe-section">
+        <h2 class="annexe-title">ANNEXE — <%= noteTitle %></h2>
 
         <table class="participants-table">
+            <colgroup>
+                <col style="width: 4%;">
+                <col style="width: 20%;">
+                <col style="width: 18%;">
+                <col style="width: 18%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="width: 5%;">N°</th>
-                    <th style="width: 28%;">Nom & Prénoms</th>
-                    <th style="width: 25%;">Fonction</th>
-                    <th style="width: 25%;">Service</th>
-                    <th style="width: 17%;">Lieu et Période de formation</th> 
+                    <th>N°</th>
+                    <th>Nom &amp; Prénoms</th>
+                    <th>Fonction</th>
+                    <th>Service</th>
+                    <th>Formateur(s)</th>
+                    <th>Lieu et Période de formation</th>
                 </tr>
             </thead>
             <tbody>
@@ -323,8 +366,17 @@
                         <td class="nom"><%= participant.nom %></td>
                         <td class="fonction"><%= participant.fonction || '-' %></td>
                         <td class="service"><%= participant.service %></td>
-                        
+
                         <% if (participant.afficherLieuPeriode) { %>
+                            <td class="formateurs-cell" rowspan="<%= participant.rowspan %>">
+                                <% if (participant.formateurs && participant.formateurs.length > 0) { %>
+                                    <% participant.formateurs.forEach(function(f) { %>
+                                        <span class="formateur-item">• <%= f %></span>
+                                    <% }); %>
+                                <% } else { %>
+                                    <span style="color:#999;font-style:italic;">—</span>
+                                <% } %>
+                            </td>
                             <td class="lieu-periode" rowspan="<%= participant.rowspan %>">
                                 <span class="periode-text"><%= participant.periode %></span>
                                 <span class="lieu-text"><%= participant.lieu %></span>
@@ -334,9 +386,60 @@
                 <% }); %>
             </tbody>
         </table>
-        <p style="text-align: center; font-size: 12px; margin-top: 5px;">
-            Total des participants: <span class="highlight"><%= nombreParticipants %></span>
+
+        <p style="text-align:center; font-size:12px; margin-top:5px;">
+            Total des participants : <span class="highlight"><%= nombreParticipants %></span>
         </p>
     </div>
+
+    <script>
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * Bordure basse forcée sur les td[rowspan] coupés par un saut de page
+     * ═══════════════════════════════════════════════════════════════════
+     */
+    (function fixerBorduresRowspan() {
+        const PX_PAR_MM    = 96 / 25.4;
+        const PAGE_H_PX    = 297 * PX_PAR_MM;
+        const MARGE_HAUT   = 10  * PX_PAR_MM;
+        const MARGE_BAS    = 15  * PX_PAR_MM;
+        const ZONE_UTILE   = PAGE_H_PX - MARGE_HAUT - MARGE_BAS;
+
+        const annexe = document.querySelector('.annexe-section');
+        if (!annexe) return;
+        const offsetAnnexe = annexe.getBoundingClientRect().top + window.scrollY;
+
+        document.querySelectorAll('.participants-table td[rowspan]').forEach(function(td) {
+            const rs = parseInt(td.getAttribute('rowspan'), 10);
+            if (!rs || rs <= 1) return;
+
+            // Application systématique de la bordure basse pour parer aux défauts du rowspan
+            td.style.setProperty('border-bottom', '1px solid #333', 'important');
+
+            const rect       = td.getBoundingClientRect();
+            const topRel     = (rect.top  + window.scrollY) - offsetAnnexe;
+            const botRel     = (rect.bottom + window.scrollY) - offsetAnnexe;
+            const pageDebut  = Math.floor(topRel / ZONE_UTILE);
+            const pageFin    = Math.floor((botRel - 1) / ZONE_UTILE);
+
+            if (pageFin <= pageDebut) return;
+
+            const shadows = [];
+            for (let p = pageDebut; p < pageFin; p++) {
+                const coupure = (p + 1) * ZONE_UTILE - topRel;
+                const offsetY = -(rect.height - coupure);
+                shadows.push('inset 0 ' + offsetY + 'px 0 1px #333');
+            }
+
+            if (shadows.length) {
+                const existant = td.style.boxShadow;
+                td.style.boxShadow = existant
+                    ? existant + ', ' + shadows.join(', ')
+                    : shadows.join(', ');
+            }
+        });
+    })();
+    </script>
+
 </body>
 </html>

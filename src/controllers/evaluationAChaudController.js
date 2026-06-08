@@ -227,7 +227,7 @@ export const getFilteredEvaluation = async (req, res) => {
             .skip((page - 1) * limit)
             .limit(limit)
             .lean();
-        console.log(evaluations)
+        
 
         return res.status(200).json({
             success: true,
@@ -697,6 +697,8 @@ export const updateEvaluationConfig = async (req, res) => {
         await config.save();
 
         // Incrémenter la version de l'évaluation
+        const rubriques = await buildRubriques(evaluation._id, []);
+        evaluation.rubriques = rubriques;
         evaluation.version = (evaluation.version || 1) + 1;
         await evaluation.save();
 
@@ -706,6 +708,7 @@ export const updateEvaluationConfig = async (req, res) => {
             data: config
         });
     } catch (err) {
+        console.log(err);
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: err.message });
     }
 };
@@ -920,7 +923,7 @@ async function generateQRCode(evaluationId, reponseId = null) {
  * Génère le PDF de la fiche d'évaluation
  */
 export const exportFichePDF = async (req, res) => {
-    const lang = req.headers['accept-language'] || 'fr';
+    const lang = req.query.lang || req.headers['accept-language'] || 'fr';
     const { evaluationId } = req.params;
     const { reponseId } = req.query;
 
@@ -929,7 +932,7 @@ export const exportFichePDF = async (req, res) => {
     }
 
     try {
-        // 1. Récupérer l'évaluation — les echelles sont déjà snapshotées dans chaque question
+        // 1. Récupérer l'évaluation de base
         const evaluation = await EvaluationAChaud.findById(evaluationId)
             .populate('theme', 'nomFr nomEn')
             .populate('creePar', 'nom prenom')
@@ -939,7 +942,16 @@ export const exportFichePDF = async (req, res) => {
             return res.status(404).json({ success: false, message: t('evaluation_non_trouvee', lang) });
         }
 
-        // 2. Récupérer la réponse et l'utilisateur si demandé
+        // 2. Reconstruire les rubriques à la volée depuis TemplateConfig
+        //    (garantit que les échelles et personnalisations sont à jour)
+        const rubriquesReconstruites = await buildRubriques(evaluationId, []);
+        evaluation.rubriques = rubriquesReconstruites;
+        console.log(rubriquesReconstruites)
+
+        // 3. Récupérer la TemplateConfig pour les métadonnées éventuelles
+        const templateConfig = await TemplateConfig.findOne({ evaluationId }).lean();
+
+        // 4. Récupérer la réponse et l'utilisateur si demandé
         let reponse     = null;
         let utilisateur = null;
 
@@ -950,41 +962,78 @@ export const exportFichePDF = async (req, res) => {
             if (reponse?.utilisateur) utilisateur = reponse.utilisateur;
         }
 
-        // 3. Construire la map des réponses  rubriqueId -> questionId -> réponse
-        const reponseMap = {};
+        // 5. Construire la map des réponses : rubriqueId -> questionId -> réponse
+        //    Attention : après buildRubriques, les _id des rubriques/questions sont
+        //    de nouveaux ObjectId — il faut faire la correspondance par CODE, pas par _id
+        const reponseMapParCode = {};
         for (const rr of reponse?.rubriques || []) {
             const rid = rr.rubriqueId?.toString();
             if (!rid) continue;
-            reponseMap[rid] = {};
+            reponseMapParCode[rid] = {};
             for (const qr of rr.questions || []) {
                 const qid = qr.questionId?.toString();
                 if (!qid) continue;
-                reponseMap[rid][qid] = qr;
+                reponseMapParCode[rid][qid] = qr;
             }
         }
 
-        // 4. QR code + logo
+        // 6. Construire une map code -> _id pour les rubriques reconstruites
+        //    afin que le template EJS puisse trouver les réponses
+        //    On enrichit evaluation.rubriques avec les _id sauvegardés en base
+        const rubriquesEnBase = (await EvaluationAChaud.findById(evaluationId).lean())?.rubriques || [];
+        const rubriqueCodeToIdEnBase = {};
+        for (const r of rubriquesEnBase) {
+            rubriqueCodeToIdEnBase[r.code] = r._id?.toString();
+        }
+
+        // Construire la reponseMap finale : utilise les _id en base pour matcher les réponses
+        const reponseMap = {};
+        for (const rubrique of evaluation.rubriques) {
+            const idEnBase = rubriqueCodeToIdEnBase[rubrique.code];
+            if (!idEnBase || !reponseMapParCode[idEnBase]) continue;
+
+            const rubriqueIdReconstruit = rubrique._id?.toString();
+            reponseMap[rubriqueIdReconstruit] = {};
+
+            // Même logique pour les questions : matcher par code
+            const questionsEnBase = rubriquesEnBase.find(r => r.code === rubrique.code)?.questions || [];
+            const questionCodeToIdEnBase = {};
+            for (const q of questionsEnBase) {
+                questionCodeToIdEnBase[q.code] = q._id?.toString();
+            }
+
+            for (const question of rubrique.questions) {
+                const qIdEnBase = questionCodeToIdEnBase[question.code];
+                if (!qIdEnBase) continue;
+                const qReponse = reponseMapParCode[idEnBase]?.[qIdEnBase];
+                if (qReponse) {
+                    reponseMap[rubriqueIdReconstruit][question._id?.toString()] = qReponse;
+                }
+            }
+        }
+
+        // 7. QR code + logo
         const { qrCodeDataUrl } = await generateQRCode(evaluationId, reponseId);
         const logoUrl = getLogoBase64(__dirname);
-        const createur = `${evaluation.creePar.nom} ${evaluation.creePar.prenom || ''}`.trim();
 
-        // 5. Données du template — evaluation.rubriques[].questions[].echelles est déjà peuplé
+        // 8. Données du template
         const templateData = {
             lang,
-            evaluation,   // ✅ plus besoin d'evaluationEnrichie
-            description:  lang === 'fr' ? evaluation.descriptionFr : (evaluation.descriptionEn || evaluation.descriptionFr),
+            evaluation,
+            description:      lang === 'fr' ? evaluation.descriptionFr : (evaluation.descriptionEn || evaluation.descriptionFr),
             reponse,
             utilisateur,
             reponseMap,
-            estVierge:    !reponse,
+            estVierge:        !reponse,
             logoUrl,
-            qrCodeUrl:    qrCodeDataUrl,
+            qrCodeUrl:        qrCodeDataUrl,
             referenceSysteme: evaluation.reference || `EVAL-${evaluation._id.toString().slice(-8).toUpperCase()}`,
             dateGeneration:   new Date().toLocaleDateString('fr-FR'),
-            createur:      evaluation.creePar?`${evaluation.creePar.nom} ${evaluation.creePar.prenom || ''}`.trim():""
+            createur:         evaluation.creePar ? `${evaluation.creePar.nom} ${evaluation.creePar.prenom || ''}`.trim() : '',
+            templateConfig,   // disponible dans le template EJS si besoin
         };
 
-        // 6. Générer et envoyer le PDF
+        // 9. Générer et envoyer le PDF
         const pdfBuffer = await renderPDF('fiche-evaluation', templateData);
 
         const nomFichier = reponse

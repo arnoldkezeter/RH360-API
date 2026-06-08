@@ -444,3 +444,73 @@ export const getFormateursDropdown = async (req, res) => {
     });
   }
 };
+
+// Rechercher des formateurs globalement ou par thème spécifique
+export const rechercherFormateurs = async (req, res) => {
+  const lang = req.headers['accept-language'] || 'fr';
+  // Ajout de themeId dans la déstructuration de req.query
+  const { query, interne, themeId } = req.query; 
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+
+  try {
+    let filter = {};
+
+    // 1. Validation du themeId s'il est fourni
+    if (themeId && themeId.trim() !== '') {
+      if (!mongoose.Types.ObjectId.isValid(themeId)) {
+        return res.status(400).json({
+          success: false,
+          message: t('identifiant_invalide', lang),
+        });
+      }
+      filter.theme = themeId; // Ajout au filtre Mongoose
+    }
+
+    // 2. Filtre par nom / prenom / email via le modèle Utilisateur
+    if (query && query.trim() !== '') {
+      const utilisateursRecherche = await Utilisateur.find({
+        $or: [
+          { nom: { $regex: new RegExp(query.trim(), 'i') } },
+          { prenom: { $regex: new RegExp(query.trim(), 'i') } },
+          { email: { $regex: new RegExp(query.trim(), 'i') } },
+        ],
+      }).select('_id');
+
+      filter.utilisateur = { $in: utilisateursRecherche.map((u) => u._id) };
+    }
+
+    // 3. Filtre par statut interne/externe si précisé
+    if (interne !== undefined && interne !== '') {
+      filter.interne = interne === 'true';
+    }
+
+    // 4. Exécution de la requête avec pagination
+    const total = await Formateur.countDocuments(filter);
+
+    const formateurs = await Formateur.find(filter)
+      .populate('utilisateur')
+      .populate('theme')
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        formateurs,
+        totalItems: total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        pageSize: limit, // Pratique pour le frontend
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: t('erreur_serveur', lang),
+      error: error.message,
+    });
+  }
+};

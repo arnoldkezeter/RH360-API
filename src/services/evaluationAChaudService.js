@@ -2,21 +2,34 @@
 import mongoose from 'mongoose';
 import EvaluationAChaudReponse from '../models/EvaluationAChaudReponse.js';
 import EvaluationAChaud from '../models/EvaluationAChaud.js';
-import TypeEchelleReponse from '../models/TypeEchelleDeReponse.js';
 import EchelleReponse from '../models/EchelleDeReponse.js';
 import TemplateConfig from '../models/TemplateConfig.js';
-import {getRubriquesStatiquesCompletes} from './rubriqueStatiqueService.js';
+import { getRubriquesStatiquesCompletes } from './rubriqueStatiqueService.js';
 import { Objectif } from '../models/Objectif.js';
+import TypeEchelleReponse from '../models/TypeEchelleDeReponse.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 1. CONSTRUCTION DES RUBRIQUES (préremplissage à la création/modification)
+// UTILITAIRE : extraire un ID string de façon sûre
+// Gère les cas : ObjectId, objet populé { _id }, string, null/undefined
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function extractId(val) {
+    if (!val) return null;
+    // Objet populé Mongoose : { _id: ObjectId, nomFr: '...', ... }
+    if (typeof val === 'object' && val._id) return val._id.toString();
+    // ObjectId Mongoose ou string
+    return val.toString();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1. CONSTRUCTION DES RUBRIQUES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function chargerEchellesParType() {
-    const types   = await TypeEchelleReponse.find({}).lean();
+    const types    = await TypeEchelleReponse.find({}).lean();
     const echelles = await EchelleReponse.find({}).sort({ ordre: 1 }).lean();
 
-    // typeId -> [{_id, nomFr, nomEn, ordre}]
+    // typeId (string) -> [{_id, nomFr, nomEn, ordre}]
     const echellesByTypeId = {};
     for (const e of echelles) {
         const tid = e.typeEchelle.toString();
@@ -33,333 +46,358 @@ async function chargerEchellesParType() {
     for (const t of types) {
         const tid = t._id.toString();
         const echellesCompletes = echellesByTypeId[tid] || [];
-        // Indexé par _id du type
+        // Indexé par _id du type (string)
         result.set(tid, echellesCompletes);
-        // Indexé par nomFr (pour compatibilité avec le reste du service)
+        // Indexé par nomFr normalisé (pour fallback éventuel)
         result.set(t.nomFr.toLowerCase().trim(), echellesCompletes);
     }
     return result;
 }
 
+/**
+ * Résout les échelles d'une question à partir de son typeEchelle.
+ * Robuste : fonctionne que typeEchelle soit un ObjectId, un objet populé ou une string.
+ */
+function resolveEchelles(typeEchelle, echellesMap) {
+    const id = extractId(typeEchelle);
+    if (!id) return [];
+    return echellesMap.get(id) || [];
+}
+
 async function getObjectifsActifs(themeId, config) {
     if (!themeId) return [];
-    
+
     const objectifsBase = await Objectif.find({ theme: themeId })
         .sort({ createdAt: 1 })
         .lean();
-    
+
     const objectifsBaseFormates = objectifsBase.map(obj => ({
         id: obj._id,
         libelleFr: obj.nomFr,
         libelleEn: obj.nomEn,
         estPersonnalise: false,
-        ordre: obj.ordre || 0
+        ordre: obj.ordre || 0,
     }));
-    
-    const objectifsPersonnalises = config?.objectifsConfig?.objectifsPersonnalises || [];
-    const objectifsSupprimes = config?.objectifsConfig?.objectifsSupprimes?.map(id => id.toString()) || [];
-    const objectifsPersonnalisesSupprimes = config?.objectifsConfig?.objectifsPersonnalisesSupprimes || [];
-    
-    const objectifsBaseActifs = objectifsBaseFormates.filter(
-        obj => !objectifsSupprimes.includes(obj.id.toString())
-    );
-    
-    const objectifsPersonnalisesActifs = objectifsPersonnalises.filter(
-        obj => !objectifsPersonnalisesSupprimes.includes(obj.id)
-    );
-    
+
+    const objectifsPersonnalises             = config?.objectifsConfig?.objectifsPersonnalises || [];
+    const objectifsSupprimes                 = config?.objectifsConfig?.objectifsSupprimes?.map(id => id.toString()) || [];
+    const objectifsPersonnalisesSupprimes    = config?.objectifsConfig?.objectifsPersonnalisesSupprimes || [];
+
+    const objectifsBaseActifs         = objectifsBaseFormates.filter(obj => !objectifsSupprimes.includes(obj.id.toString()));
+    const objectifsPersonnalisesActifs = objectifsPersonnalises.filter(obj => !objectifsPersonnalisesSupprimes.includes(obj.id));
+
     const tousObjectifs = [...objectifsBaseActifs, ...objectifsPersonnalisesActifs];
     tousObjectifs.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
-    
+
     return tousObjectifs;
 }
 
 /**
- * Construit les questions d'une rubrique en tenant compte de la configuration
- */
-
-/**
- * Construit les questions d'une rubrique en tenant compte de la configuration
+ * Construit les questions d'une rubrique en tenant compte de la configuration.
+ * Correction clé : utilise resolveEchelles() au lieu de echellesMap.get(q.typeEchelle.toString())
  */
 async function buildRubriqueQuestions(rubriqueStatique, rubriqueConfig, echellesMap) {
     const questions = [];
-    
+
     if (!rubriqueConfig) {
-        // Pas de configuration, utiliser les questions statiques telles quelles
+        // Pas de configuration : questions statiques telles quelles
         for (const q of rubriqueStatique.questions) {
             questions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: q.code,
-                libelleFr: q.libelleFr,
-                libelleEn: q.libelleEn,
-                type: q.type,
+                _id:              new mongoose.Types.ObjectId(),
+                code:             q.code,
+                libelleFr:        q.libelleFr,
+                libelleEn:        q.libelleEn || '',
+                type:             q.type,
                 commentaireGlobal: q.commentaireGlobal,
-                ordre: q.ordre,
-                typeEchelle: q.typeEchelle,
-                echelles: q.typeEchelle ? (echellesMap.get(q.typeEchelle.toString()) || []) : [],
-                sousQuestions: q.sousQuestions?.map(sq => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: sq.id,
-                    libelleFr: sq.libelleFr,
-                    libelleEn: sq.libelleEn,
-                    ordre: sq.ordre,
-                    commentaireObligatoire: sq.commentaireObligatoire
-                })) || []
+                ordre:            q.ordre,
+                typeEchelle:      extractId(q.typeEchelle) ? new mongoose.Types.ObjectId(extractId(q.typeEchelle)) : null,
+                echelles:         resolveEchelles(q.typeEchelle, echellesMap),  // ← correction
+                echellesPersonnalisees: [],
+                sousQuestions:    (q.sousQuestions || []).map(sq => ({
+                    _id:                  new mongoose.Types.ObjectId(),
+                    code:                 sq.id || sq.code,
+                    libelleFr:            sq.libelleFr,
+                    libelleEn:            sq.libelleEn || '',
+                    ordre:                sq.ordre,
+                    commentaireObligatoire: sq.commentaireObligatoire || false,
+                })),
             });
         }
         return questions;
     }
-    
-    const questionsSupprimees = rubriqueConfig.questionsSupprimees || [];
-    const questionsModifiees = rubriqueConfig.questionsModifiees || [];
+
+    const questionsSupprimees    = rubriqueConfig.questionsSupprimees    || [];
     const questionsPersonnalisees = rubriqueConfig.questionsPersonnalisees || [];
-    
-    // 1. Créer une Map de TOUTES les questions personnalisées (clé = id de la question originale)
-    const customQuestionsMap = new Map(); // key: originalId, value: la question personnalisée
-    
+
+    // Map des versions personnalisées (clé = code question originale)
+    const customQuestionsMap = new Map();
     for (const qp of questionsPersonnalisees) {
-        // Vérifier si c'est une modification de question statique (id commence par custom_)
         if (qp.id && qp.id.startsWith('custom_')) {
-            // Extraire l'ID original (ex: custom_profil_structure_1234567890 -> profil_structure)
-            const originalId = qp.id.replace('custom_', '').split('_')[0] + '_' + qp.id.replace('custom_', '').split('_')[1];
+            const parts = qp.id.replace('custom_', '').split('_');
+            const originalId = parts[0] + '_' + parts[1];
             customQuestionsMap.set(originalId, qp);
         }
     }
-    
-    // 2. Ajouter les questions statiques (originales ou remplacées par custom_)
+
+    // Questions statiques (originales ou remplacées)
     for (const q of rubriqueStatique.questions) {
-        // Vérifier si la question a été supprimée
-        if (questionsSupprimees.includes(q.code)) continue;
-        
-        // Vérifier si une version personnalisée existe (via custom_)
         const customVersion = customQuestionsMap.get(q.code);
-        
+
+        // Supprimée sans remplacement custom → skip
+        if (questionsSupprimees.includes(q.code) && !customVersion) continue;
+
         if (customVersion) {
-            // ✅ Utiliser la version personnalisée (remplace l'originale)
             questions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: customVersion.id,
-                libelleFr: customVersion.libelleFr,
-                libelleEn: customVersion.libelleEn || '',
-                type: customVersion.typeQuestion || 'simple',
+                _id:              new mongoose.Types.ObjectId(),
+                code:             customVersion.id,
+                libelleFr:        customVersion.libelleFr,
+                libelleEn:        customVersion.libelleEn || '',
+                type:             customVersion.typeQuestion || 'simple',
                 commentaireGlobal: customVersion.commentaireObligatoire || false,
-                ordre: customVersion.ordre || q.ordre,
-                typeEchelle: customVersion.typeEchelleId,
-                echelles: customVersion.typeEchelleId ? (echellesMap.get(customVersion.typeEchelleId.toString()) || []) : [],
-                sousQuestions: customVersion.sousQuestions?.map(sq => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: sq.id,
-                    libelleFr: sq.libelleFr,
-                    libelleEn: sq.libelleEn,
-                    ordre: sq.ordre,
-                    commentaireObligatoire: sq.commentaireObligatoire
-                })) || []
+                ordre:            customVersion.ordre || q.ordre,
+                typeEchelle:      extractId(customVersion.typeEchelleId) ? new mongoose.Types.ObjectId(extractId(customVersion.typeEchelleId)) : null,
+                echelles:         resolveEchelles(customVersion.typeEchelleId, echellesMap),  // ← correction
+                echellesPersonnalisees: [],
+                sousQuestions:    (customVersion.sousQuestions || []).map(sq => ({
+                    _id:                  new mongoose.Types.ObjectId(),
+                    code:                 sq.id || sq.code,
+                    libelleFr:            sq.libelleFr,
+                    libelleEn:            sq.libelleEn || '',
+                    ordre:                sq.ordre,
+                    commentaireObligatoire: sq.commentaireObligatoire || false,
+                })),
             });
         } else {
-            // ✅ Version originale (non modifiée)
             questions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: q.code,
-                libelleFr: q.libelleFr,
-                libelleEn: q.libelleEn,
-                type: q.type,
+                _id:              new mongoose.Types.ObjectId(),
+                code:             q.code,
+                libelleFr:        q.libelleFr,
+                libelleEn:        q.libelleEn || '',
+                type:             q.type,
                 commentaireGlobal: q.commentaireGlobal,
-                ordre: q.ordre,
-                typeEchelle: q.typeEchelle,
-                echelles: q.typeEchelle ? (echellesMap.get(q.typeEchelle.toString()) || []) : [],
-                sousQuestions: q.sousQuestions?.map(sq => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: sq.id,
-                    libelleFr: sq.libelleFr,
-                    libelleEn: sq.libelleEn,
-                    ordre: sq.ordre,
-                    commentaireObligatoire: sq.commentaireObligatoire
-                })) || []
+                ordre:            q.ordre,
+                typeEchelle:      extractId(q.typeEchelle) ? new mongoose.Types.ObjectId(extractId(q.typeEchelle)) : null,
+                echelles:         resolveEchelles(q.typeEchelle, echellesMap),  // ← correction
+                echellesPersonnalisees: [],
+                sousQuestions:    (q.sousQuestions || []).map(sq => ({
+                    _id:                  new mongoose.Types.ObjectId(),
+                    code:                 sq.id || sq.code,
+                    libelleFr:            sq.libelleFr,
+                    libelleEn:            sq.libelleEn || '',
+                    ordre:                sq.ordre,
+                    commentaireObligatoire: sq.commentaireObligatoire || false,
+                })),
             });
         }
     }
-    
-    // 3. Ajouter les questions personnalisées (uniquement les NOUVELLES questions, pas les custom_)
+
+    // Nouvelles questions personnalisées (pas de prefix custom_)
     for (const qp of questionsPersonnalisees) {
-        // Ignorer les questions custom_ (déjà traitées)
         if (qp.id && qp.id.startsWith('custom_')) continue;
-        
+
         questions.push({
-            _id: new mongoose.Types.ObjectId(),
-            code: qp.id,
-            libelleFr: qp.libelleFr,
-            libelleEn: qp.libelleEn || '',
-            type: qp.typeQuestion || 'simple',
+            _id:              new mongoose.Types.ObjectId(),
+            code:             qp.id,
+            libelleFr:        qp.libelleFr,
+            libelleEn:        qp.libelleEn || '',
+            type:             qp.typeQuestion || 'simple',
             commentaireGlobal: qp.commentaireObligatoire || false,
-            ordre: qp.ordre || 999,
-            typeEchelle: qp.typeEchelleId,
-            echelles: qp.typeEchelleId ? (echellesMap.get(qp.typeEchelleId.toString()) || []) : [],
-            sousQuestions: qp.sousQuestions?.map(sq => ({
-                _id: new mongoose.Types.ObjectId(),
-                code: sq.id,
-                libelleFr: sq.libelleFr,
-                libelleEn: sq.libelleEn,
-                ordre: sq.ordre,
-                commentaireObligatoire: sq.commentaireObligatoire
-            })) || []
+            ordre:            qp.ordre || 999,
+            typeEchelle:      extractId(qp.typeEchelleId) ? new mongoose.Types.ObjectId(extractId(qp.typeEchelleId)) : null,
+            echelles:         resolveEchelles(qp.typeEchelleId, echellesMap),  // ← correction
+            echellesPersonnalisees: [],
+            sousQuestions:    (qp.sousQuestions || []).map(sq => ({
+                _id:                  new mongoose.Types.ObjectId(),
+                code:                 sq.id || sq.code,
+                libelleFr:            sq.libelleFr,
+                libelleEn:            sq.libelleEn || '',
+                ordre:                sq.ordre,
+                commentaireObligatoire: sq.commentaireObligatoire || false,
+            })),
         });
     }
-    
-    // 4. Trier par ordre
+
     questions.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
-    
     return questions;
 }
 
 /**
- * Construit le tableau complet rubriques[] avec les vraies echelles de la base.
- * - Rubriques 1-4 sont préremplies (modifiables comme n'importe quelle rubrique)
- * - Rubriques 3.2 et 3.3 sont générées depuis objectifs[]
- * - Rubriques personnalisées ajoutées à partir de l'ordre 5
+ * Construit le tableau complet rubriques[].
  */
 export async function buildRubriques(evaluationId, rubriquesPersonnalisees = []) {
-    // 1. Récupérer l'évaluation
     const evaluation = await EvaluationAChaud.findById(evaluationId).populate('theme').lean();
     if (!evaluation) throw new Error('Évaluation non trouvée');
     const themeId = evaluation.theme?._id || evaluation.theme;
-    
-    // 2. Récupérer les rubriques statiques
+
     const rubriquesStatiques = await getRubriquesStatiquesCompletes();
-    
-    // 3. Récupérer la configuration
-    const config = await TemplateConfig.findOne({ evaluationId }).lean();
-    
-    // 4. Récupérer les échelles
-    const echellesMap = await chargerEchellesParType();
-    
-    // 5. Récupérer les objectifs actifs
-    const objectifsActifs = await getObjectifsActifs(themeId, config);
-    
+    const config             = await TemplateConfig.findOne({ evaluationId }).lean();
+    const echellesMap        = await chargerEchellesParType();
+    const objectifsActifs    = await getObjectifsActifs(themeId, config);
+
+    // Debug : log pour vérifier que les échelles sont bien chargées
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[buildRubriques] echellesMap size: ${echellesMap.size}`);
+        console.log(`[buildRubriques] objectifsActifs count: ${objectifsActifs.length}`);
+    }
+
     const rubriquesFinales = [];
-    
-    // 6. Parcourir les rubriques statiques
+
     for (const rubriqueStatique of rubriquesStatiques) {
         const rubriqueConfig = config?.rubriquesConfig?.find(
             r => r.rubriqueReference === rubriqueStatique.code
         );
-        
+
         if (rubriqueConfig?.estActive === false) continue;
-        
-        // Construire les questions de la rubrique
+
         const questions = await buildRubriqueQuestions(rubriqueStatique, rubriqueConfig, echellesMap);
-        
-        // Section 3.2 et 3.3 pour CONTENU_PEDAGOGIQUE
+
+        // Questions 3.2 et 3.3 pour CONTENU_PEDAGOGIQUE
         if (rubriqueStatique.code === 'CONTENU_PEDAGOGIQUE' && objectifsActifs.length > 0) {
-            const typeComprehension = await TypeEchelleReponse.findOne({ 
-                nomFr: { $regex: new RegExp('^Echelle compréhension$', 'i') }
-            }).lean();
+
+            // Vérifier qu'elles ne sont pas déjà présentes (via questions statiques)
+            const dejaComprehension = questions.some(q => q.code === 'objectifs_comprehension');
+            const dejaAtteinte      = questions.some(q => q.code === 'objectifs_atteinte');
+
+            // Récupérer les typeEchelle IDs depuis les questions statiques existantes
+            // plutôt que par findOne sur nomFr (fragile aux variations typographiques).
+            // On cherche une question statique de référence qui utilise le bon type.
+            // - Pour comprehension : question dédiée dans QuestionStatique (code objectifs_comprehension)
+            //   ou à défaut on cherche dans tous les types disponibles.
+            // - Pour atteinte : même typeEchelle que contenu_attentes / app_occasion
+            //   (Echelle d'accord simplifiée = "68874a025cca419d04c10fdd").
             
-            const typeAccord = await TypeEchelleReponse.findOne({ 
-                nomFr: { $regex: new RegExp("^Echelle d’accord simplifiée$", 'i') }
-            }).lean();
-            
-            const comprehensionEchelles = typeComprehension ? (echellesMap.get(typeComprehension._id.toString()) || []) : [];
-            const accordEchelles = typeAccord ? (echellesMap.get(typeAccord._id.toString()) || []) : [];
-            
-            // 3.2 - Compréhension
-            questions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: 'objectifs_comprehension',
-                libelleFr: "S'agissant spécifiquement des objectifs de la formation, quel est votre degré de compréhension :",
-                libelleEn: 'Regarding the specific training objectives, what is your level of understanding:',
-                type: 'objectifs_comprehension',
-                commentaireGlobal: false,
-                ordre: 2,
-                typeEchelle: typeComprehension?._id || null,
-                echelles: comprehensionEchelles,
-                sousQuestions: objectifsActifs.map((obj, idx) => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: obj.id,
-                    libelleFr: obj.libelleFr,
-                    libelleEn: obj.libelleEn || obj.libelleFr,
-                    ordre: idx + 1,
-                    commentaireObligatoire: false
-                }))
-            });
-            
-            // 3.3 - Atteinte
-            questions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: 'objectifs_atteinte',
-                libelleFr: 'Au terme de la formation, pensez-vous que les objectifs ont été atteints :',
-                libelleEn: 'At the end of the training, do you think the objectives were achieved:',
-                type: 'objectifs_atteinte',
-                commentaireGlobal: false,
-                ordre: 3,
-                typeEchelle: typeAccord?._id || null,
-                echelles: accordEchelles,
-                sousQuestions: objectifsActifs.map((obj, idx) => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: obj.id,
-                    libelleFr: `Objectif n°${idx + 1} : ${obj.libelleFr}`,
-                    libelleEn: obj.libelleEn ? `Objective n°${idx + 1}: ${obj.libelleEn}` : `Objective n°${idx + 1}: ${obj.libelleFr}`,
-                    ordre: idx + 1,
-                    commentaireObligatoire: false
-                }))
-            });
+            // Stratégie : parcourir toutes les questions de la rubrique statique pour
+            // trouver les typeEchelle de référence déjà résolus.
+            const qRefComprehension = rubriqueStatique.questions.find(
+                q => q.code === 'objectifs_comprehension'
+            );
+            const qRefAtteinte = rubriqueStatique.questions.find(
+                q => q.code === 'objectifs_atteinte'
+            );
+
+            // Fallback : chercher un typeEchelle connu via une autre question statique
+            // qui utilise l'échelle d'accord (ex: contenu_attentes)
+            const qRefAccord = rubriqueStatique.questions.find(
+                q => q.code === 'contenu_attentes' && q.typeEchelle
+            );
+
+            if (!dejaComprehension) {
+                // Résolution du typeEchelle pour la compréhension
+                const typeEchelleComprehensionId = extractId(qRefComprehension?.typeEchelle) || null;
+                const comprehensionEchelles = resolveEchelles(
+                    qRefComprehension?.typeEchelle || null,
+                    echellesMap
+                );
+
+                questions.push({
+                    _id:              new mongoose.Types.ObjectId(),
+                    code:             'objectifs_comprehension',
+                    libelleFr:        "S'agissant spécifiquement des objectifs de la formation, quel est votre degré de compréhension :",
+                    libelleEn:        'Regarding the specific training objectives, what is your level of understanding:',
+                    type:             'objectifs_comprehension',
+                    commentaireGlobal: false,
+                    ordre:            2,
+                    typeEchelle:      typeEchelleComprehensionId ? new mongoose.Types.ObjectId(typeEchelleComprehensionId) : null,
+                    echelles:         comprehensionEchelles,
+                    echellesPersonnalisees: [],
+                    sousQuestions:    objectifsActifs.map((obj, idx) => ({
+                        _id:                  new mongoose.Types.ObjectId(),
+                        code:                 obj.id.toString(),
+                        libelleFr:            obj.libelleFr,
+                        libelleEn:            obj.libelleEn || obj.libelleFr,
+                        ordre:                idx + 1,
+                        commentaireObligatoire: false,
+                    })),
+                });
+            }
+
+            if (!dejaAtteinte) {
+                // Résolution du typeEchelle pour l'atteinte :
+                // priorité à la question statique objectifs_atteinte,
+                // sinon fallback sur contenu_attentes (même type d'échelle d'accord)
+                const typeEchelleAtteinteRef = qRefAtteinte?.typeEchelle || qRefAccord?.typeEchelle || null;
+                const typeEchelleAtteinteId  = extractId(typeEchelleAtteinteRef);
+                const accordEchelles         = resolveEchelles(typeEchelleAtteinteRef, echellesMap);
+
+                questions.push({
+                    _id:              new mongoose.Types.ObjectId(),
+                    code:             'objectifs_atteinte',
+                    libelleFr:        'Au terme de la formation, pensez-vous que les objectifs ont été atteints :',
+                    libelleEn:        'At the end of the training, do you think the objectives were achieved:',
+                    type:             'objectifs_atteinte',
+                    commentaireGlobal: false,
+                    ordre:            3,
+                    typeEchelle:      typeEchelleAtteinteId ? new mongoose.Types.ObjectId(typeEchelleAtteinteId) : null,
+                    echelles:         accordEchelles,
+                    echellesPersonnalisees: [],
+                    sousQuestions:    objectifsActifs.map((obj, idx) => ({
+                        _id:                  new mongoose.Types.ObjectId(),
+                        code:                 obj.id.toString(),
+                        libelleFr:            `Objectif n°${idx + 1} : ${obj.libelleFr}`,
+                        libelleEn:            obj.libelleEn
+                            ? `Objective n°${idx + 1}: ${obj.libelleEn}`
+                            : `Objective n°${idx + 1}: ${obj.libelleFr}`,
+                        ordre:                idx + 1,
+                        commentaireObligatoire: false,
+                    })),
+                });
+            }
         }
-        
-        // Trier les questions
+
         questions.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
-        
+
         rubriquesFinales.push({
-            _id: new mongoose.Types.ObjectId(),
-            code: rubriqueStatique.code,
+            _id:    new mongoose.Types.ObjectId(),
+            code:   rubriqueStatique.code,
             titreFr: rubriqueConfig?.titreFr || rubriqueStatique.titreFr,
             titreEn: rubriqueConfig?.titreEn || rubriqueStatique.titreEn,
-            ordre: rubriqueConfig?.ordre || rubriqueStatique.ordre,
-            questions
+            ordre:   rubriqueConfig?.ordre   || rubriqueStatique.ordre,
+            questions,
         });
     }
-    
-    // 7. Ajouter les rubriques personnalisées (ordre >= 5)
+
+    // Rubriques personnalisées (ordre >= 5)
     const persoTriees = [...rubriquesPersonnalisees].sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
     for (let i = 0; i < persoTriees.length; i++) {
         const rp = persoTriees[i];
-        const rubriqueQuestions = [];  // ✅ Déclaration correcte
-        
+        const rubriqueQuestions = [];
+
         for (const q of rp.questions || []) {
             rubriqueQuestions.push({
-                _id: new mongoose.Types.ObjectId(),
-                code: q.id || `perso_${Date.now()}_${i}`,
-                libelleFr: q.libelleFr,
-                libelleEn: q.libelleEn || '',
-                type: q.typeQuestion || 'simple',
+                _id:              new mongoose.Types.ObjectId(),
+                code:             q.id || `perso_${Date.now()}_${i}`,
+                libelleFr:        q.libelleFr,
+                libelleEn:        q.libelleEn || '',
+                type:             q.typeQuestion || 'simple',
                 commentaireGlobal: q.commentaireGlobal || false,
-                ordre: q.ordre || 0,
-                typeEchelle: q.typeEchelleId,
-                echelles: q.typeEchelleId ? (echellesMap.get(q.typeEchelleId.toString()) || []) : [],
-                sousQuestions: (q.sousQuestions || []).map(sq => ({
-                    _id: new mongoose.Types.ObjectId(),
-                    code: sq.id,
-                    libelleFr: sq.libelleFr,
-                    libelleEn: sq.libelleEn,
-                    ordre: sq.ordre,
-                    commentaireObligatoire: sq.commentaireObligatoire || false
-                }))
+                ordre:            q.ordre || 0,
+                typeEchelle:      extractId(q.typeEchelleId) ? new mongoose.Types.ObjectId(extractId(q.typeEchelleId)) : null,
+                echelles:         resolveEchelles(q.typeEchelleId, echellesMap),  // ← correction
+                echellesPersonnalisees: [],
+                sousQuestions:    (q.sousQuestions || []).map(sq => ({
+                    _id:                  new mongoose.Types.ObjectId(),
+                    code:                 sq.id || sq.code,
+                    libelleFr:            sq.libelleFr,
+                    libelleEn:            sq.libelleEn || '',
+                    ordre:                sq.ordre,
+                    commentaireObligatoire: sq.commentaireObligatoire || false,
+                })),
             });
         }
-        
-        rubriqueQuestions.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));  // ✅ Correction ici
-        
+
+        rubriqueQuestions.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+
         rubriquesFinales.push({
-            _id: new mongoose.Types.ObjectId(),
-            code: `perso_${i}`,
+            _id:    new mongoose.Types.ObjectId(),
+            code:   `perso_${i}`,
             titreFr: rp.titreFr,
             titreEn: rp.titreEn || '',
-            ordre: 5 + i,
-            questions: rubriqueQuestions
+            ordre:   5 + i,
+            questions: rubriqueQuestions,
         });
     }
-    
-    // Trier les rubriques par ordre
+
     rubriquesFinales.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
-    
     return rubriquesFinales;
 }
 
@@ -369,14 +407,12 @@ export async function buildRubriques(evaluationId, rubriquesPersonnalisees = [])
 
 export function calculerProgression(rubriquesReponse, evaluationModel) {
     let totalQuestions = 0;
-    let totalRepondu = 0;
+    let totalRepondu   = 0;
 
     for (const rubrique of evaluationModel.rubriques || []) {
         for (const question of rubrique.questions || []) {
             if (question.sousQuestions?.length > 0) {
                 totalQuestions += question.sousQuestions.length;
-            } else if (question.echelles?.length > 0) {
-                totalQuestions += 1;
             } else {
                 totalQuestions += 1;
             }
@@ -386,11 +422,10 @@ export function calculerProgression(rubriquesReponse, evaluationModel) {
     for (const rubriqueRep of rubriquesReponse || []) {
         for (const questionRep of rubriqueRep.questions || []) {
             if (questionRep.sousQuestions?.length > 0) {
-                const repondues = questionRep.sousQuestions.filter(sq => sq.reponseEchelleId).length;
-                totalRepondu += repondues;
+                totalRepondu += questionRep.sousQuestions.filter(sq => sq.reponseEchelleId).length;
             } else if (questionRep.reponseEchelleId) {
                 totalRepondu += 1;
-            } else if (questionRep.commentaireGlobal && questionRep.commentaireGlobal.trim() !== '') {
+            } else if (questionRep.commentaireGlobal?.trim()) {
                 totalRepondu += 1;
             }
         }
@@ -400,7 +435,7 @@ export function calculerProgression(rubriquesReponse, evaluationModel) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. FORMATAGE DES RUBRIQUES (body → ObjectIds pour persistance)
+// 3. FORMATAGE DES RUBRIQUES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function formatRubriques(rubriques = []) {
@@ -412,16 +447,16 @@ export function formatRubriques(rubriques = []) {
                 .filter(q => q.questionId)
                 .map(question => {
                     const qData = {
-                        questionId: new mongoose.Types.ObjectId(question.questionId),
+                        questionId:       new mongoose.Types.ObjectId(question.questionId),
                         commentaireGlobal: question.commentaireGlobal || '',
                     };
                     if (question.sousQuestions?.length > 0) {
                         qData.sousQuestions = question.sousQuestions
                             .filter(sq => sq.sousQuestionId && sq.reponseEchelleId)
                             .map(sq => ({
-                                sousQuestionId: new mongoose.Types.ObjectId(sq.sousQuestionId),
+                                sousQuestionId:   new mongoose.Types.ObjectId(sq.sousQuestionId),
                                 reponseEchelleId: new mongoose.Types.ObjectId(sq.reponseEchelleId),
-                                commentaire: sq.commentaire || '',
+                                commentaire:      sq.commentaire || '',
                             }));
                     } else if (question.reponseEchelleId) {
                         qData.reponseEchelleId = new mongoose.Types.ObjectId(question.reponseEchelleId);
@@ -444,10 +479,6 @@ export function findQuestionInEvaluation(evaluation, questionId) {
     return null;
 }
 
-/**
- * Pipeline de base réutilisable.
- * CORRECTION : filtre sur statut:'soumis' et utilise sousQuestions.reponseEchelleId
- */
 export function getBasePipelineForStats(evaluationId) {
     return [
         { $match: { modele: new mongoose.Types.ObjectId(evaluationId), statut: 'soumis' } },
@@ -457,7 +488,7 @@ export function getBasePipelineForStats(evaluationId) {
             $addFields: {
                 reponseEchelleIds: {
                     $cond: {
-                        if: { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
+                        if:   { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
                         then: '$rubriques.questions.sousQuestions.reponseEchelleId',
                         else: ['$rubriques.questions.reponseEchelleId'],
                     },
@@ -469,15 +500,15 @@ export function getBasePipelineForStats(evaluationId) {
         { $match: { reponseEchelleIds: { $not: { $in: [null, [null]] } } } },
         {
             $lookup: {
-                from: 'echellereponses',
-                localField: 'reponseEchelleIds',
+                from:         'echellereponses',
+                localField:   'reponseEchelleIds',
                 foreignField: '_id',
-                as: 'echellesReponse',
+                as:           'echellesReponse',
             },
         },
         {
             $addFields: {
-                valeurNumerique: { $avg: '$echellesReponse.ordre' },
+                valeurNumerique:  { $avg: '$echellesReponse.ordre' },
                 ordresNumeriques: '$echellesReponse.ordre',
             },
         },
@@ -485,10 +516,6 @@ export function getBasePipelineForStats(evaluationId) {
     ];
 }
 
-/**
- * Pipeline détaillé pour les sous-questions.
- * CORRECTION : sousQuestions.sousQuestionId et sousQuestions.reponseEchelleId
- */
 export function getSousQuestionsPipeline(evaluationId) {
     return [
         { $match: { modele: new mongoose.Types.ObjectId(evaluationId), statut: 'soumis' } },
@@ -497,24 +524,24 @@ export function getSousQuestionsPipeline(evaluationId) {
         { $unwind: '$rubriques.questions.sousQuestions' },
         {
             $lookup: {
-                from: 'echellereponses',
-                localField: 'rubriques.questions.sousQuestions.reponseEchelleId',
+                from:         'echellereponses',
+                localField:   'rubriques.questions.sousQuestions.reponseEchelleId',
                 foreignField: '_id',
-                as: 'echelleReponse',
+                as:           'echelleReponse',
             },
         },
         { $unwind: '$echelleReponse' },
         {
             $group: {
                 _id: {
-                    questionId: '$rubriques.questions.questionId',
-                    sousQuestionId: '$rubriques.questions.sousQuestions.sousQuestionId',
+                    questionId:    '$rubriques.questions.questionId',
+                    sousQuestionId:'$rubriques.questions.sousQuestions.sousQuestionId',
                 },
                 moyenne: { $avg: '$echelleReponse.ordre' },
-                min: { $min: '$echelleReponse.ordre' },
-                max: { $max: '$echelleReponse.ordre' },
-                count: { $sum: 1 },
-                ordres: { $push: '$echelleReponse.ordre' },
+                min:     { $min: '$echelleReponse.ordre' },
+                max:     { $max: '$echelleReponse.ordre' },
+                count:   { $sum: 1 },
+                ordres:  { $push: '$echelleReponse.ordre' },
             },
         },
     ];
@@ -522,7 +549,7 @@ export function getSousQuestionsPipeline(evaluationId) {
 
 export async function getQuestionStats(evaluationId, questionId, lang) {
     const evaluation = await EvaluationAChaud.findById(evaluationId).lean();
-    const question = findQuestionInEvaluation(evaluation, questionId);
+    const question   = findQuestionInEvaluation(evaluation, questionId);
     if (!question) throw new Error('Question non trouvée');
 
     const repartitionBrute = await EvaluationAChaudReponse.aggregate([
@@ -534,7 +561,7 @@ export async function getQuestionStats(evaluationId, questionId, lang) {
             $addFields: {
                 reponsesPourStats: {
                     $cond: {
-                        if: { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
+                        if:   { $gt: [{ $size: { $ifNull: ['$rubriques.questions.sousQuestions', []] } }, 0] },
                         then: '$rubriques.questions.sousQuestions',
                         else: [{ reponseEchelleId: '$rubriques.questions.reponseEchelleId' }],
                     },
@@ -558,14 +585,18 @@ export async function getQuestionStats(evaluationId, questionId, lang) {
         .sort((a, b) => a.ordre - b.ordre)
         .map((echelle, index) => {
             const item = repartitionBrute.find(r => r.ordre === echelle.ordre);
-            return { echelle: lang === 'fr' ? echelle.nomFr : echelle.nomEn, valeur: item?.count || 0, couleur: couleurs[index] || '#6b7280' };
+            return {
+                echelle: lang === 'fr' ? echelle.nomFr : (echelle.nomEn || echelle.nomFr),
+                valeur:  item?.count || 0,
+                couleur: couleurs[index] || '#6b7280',
+            };
         });
 
     const sousQuestionsStats = await getSousQuestionsStats(evaluationId, questionId, question, lang);
 
     return {
         id:            questionId,
-        libelle:       lang === 'fr' ? question.libelleFr : question.libelleEn,
+        libelle:       lang === 'fr' ? question.libelleFr : (question.libelleEn || question.libelleFr),
         moyenne:       parseFloat(moyenne.toFixed(2)),
         totalReponses,
         repartition:   repartitionFormatee,
@@ -594,15 +625,19 @@ export async function getSousQuestionsStats(evaluationId, questionId, question, 
     ]);
 
     return question.sousQuestions.map(sousQuestion => {
-        const reponsesSubQ = statsRaw.filter(s => s._id.sousQuestionId?.toString() === sousQuestion._id.toString());
+        const reponsesSubQ = statsRaw.filter(
+            s => s._id.sousQuestionId?.toString() === sousQuestion._id.toString()
+        );
         let totalReponses = 0, somme = 0;
         for (const reponse of reponsesSubQ) {
-            const echelleItem = (question.echelles || []).find(e => e._id.toString() === reponse._id.reponseEchelleId?.toString());
+            const echelleItem = (question.echelles || []).find(
+                e => e._id.toString() === reponse._id.reponseEchelleId?.toString()
+            );
             if (echelleItem) { totalReponses += reponse.count; somme += echelleItem.ordre * reponse.count; }
         }
         return {
             sousQuestionId: sousQuestion._id,
-            libelle:        lang === 'fr' ? sousQuestion.libelleFr : sousQuestion.libelleEn,
+            libelle:        lang === 'fr' ? sousQuestion.libelleFr : (sousQuestion.libelleEn || sousQuestion.libelleFr),
             moyenne:        totalReponses > 0 ? parseFloat((somme / totalReponses).toFixed(2)) : 0,
             totalReponses,
         };
@@ -645,19 +680,19 @@ export async function getAdvancedEvaluationStats(evaluationId) {
     ]);
 
     let totalReponsesGlobal = 0, sommeMoyennes = 0;
-    let distributionGlobale = {};
-    const rubriquesMap = {}, statsParQuestionFinal = [];
+    const distributionGlobale = {}, rubriquesMap = {}, statsParQuestionFinal = [];
 
     for (const q of statsParQuestion) {
         const dist = q.valeurs.reduce((acc, v) => { acc[v] = (acc[v] || 0) + 1; return acc; }, {});
-        const countLow = dist[q.minimum] || 0, countHigh = dist[q.maximum] || 0;
+        const countLow  = dist[q.minimum] || 0;
+        const countHigh = dist[q.maximum] || 0;
 
         statsParQuestionFinal.push({
-            questionId: q._id,
-            moyenne:    parseFloat(q.moyenne.toFixed(2)),
-            nbReponses: q.count,
+            questionId:   q._id,
+            moyenne:      parseFloat(q.moyenne.toFixed(2)),
+            nbReponses:   q.count,
             distribution: dist,
-            tendance: countHigh > countLow ? 'positive' : countLow > countHigh ? 'négative' : 'neutre',
+            tendance:     countHigh > countLow ? 'positive' : countLow > countHigh ? 'négative' : 'neutre',
         });
 
         totalReponsesGlobal += q.count;
@@ -714,7 +749,6 @@ export async function getAdvancedEvaluationStats(evaluationId) {
     };
 }
 
-// CORRECTION : filtre sur modele (pas formation)
 export async function getStatsGroupedByField(evaluationId, field) {
     try {
         const stats = await EvaluationAChaudReponse.aggregate([
@@ -732,9 +766,9 @@ export async function getStatsGroupedByField(evaluationId, field) {
                                         $switch: {
                                             branches: [
                                                 { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 25] }, then: 'Moins de 25' },
-                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 35] }, then: '26-35'       },
-                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 45] }, then: '36-45'       },
-                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 55] }, then: '46-55'       },
+                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 35] }, then: '26-35' },
+                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 45] }, then: '36-45' },
+                                                { case: { $lte: [{ $subtract: [{ $year: new Date() }, { $year: '$utilisateur.dateNaissance' }] }, 55] }, then: '46-55' },
                                             ],
                                             default: 'Plus de 55',
                                         },
@@ -780,7 +814,6 @@ export async function getStatsGroupedByField(evaluationId, field) {
     }
 }
 
-// CORRECTION : utilise EvaluationAChaudReponse + filtre statut (pas ReponseEvaluation)
 export async function getEvolutionMensuelle(nombreMois, themeId) {
     const evolution = [], maintenant = new Date();
     for (let i = nombreMois - 1; i >= 0; i--) {
@@ -798,15 +831,14 @@ export async function getEvolutionMensuelle(nombreMois, themeId) {
 
         const result = await EvaluationAChaudReponse.aggregate(pipeline);
         evolution.push({
-            mois:         debut.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
-            totalReponses:result[0]?.total || 0,
-            periode:      { debut: debut.toISOString(), fin: fin.toISOString() },
+            mois:          debut.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
+            totalReponses: result[0]?.total || 0,
+            periode:       { debut: debut.toISOString(), fin: fin.toISOString() },
         });
     }
     return evolution;
 }
 
-// CORRECTION : lookup sur evaluationachaudreponses (pas reponseevaluations)
 export async function getTopEvaluations(matchCondition, lang, limit) {
     return EvaluationAChaud.aggregate([
         { $match: matchCondition },
@@ -834,17 +866,6 @@ export function formatToCSV(donnees, evaluation, lang) {
 // 5. EXPORT GOOGLE FORMS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Construit la définition JSON compatible API Google Forms v1.
- * Retourne { form, requests } :
- *   - form     → POST /v1/forms  (titre + description)
- *   - requests → PATCH /v1/forms/{id}:batchUpdate  (toutes les questions)
- *
- * Types Google Forms utilisés :
- *   - Sous-questions + échelles → GRID (questionGroupItem)
- *   - Question simple + échelles → RADIO
- *   - Texte libre (echelles vide) → PARAGRAPH
- */
 export function buildGoogleFormDefinition(evaluation, lang) {
     const titre = lang === 'fr' ? evaluation.titreFr : (evaluation.titreEn || evaluation.titreFr);
     const desc  = lang === 'fr' ? (evaluation.descriptionFr || '') : (evaluation.descriptionEn || '');
@@ -856,7 +877,6 @@ export function buildGoogleFormDefinition(evaluation, lang) {
     for (const rubrique of evaluation.rubriques || []) {
         const rubTitre = lang === 'fr' ? rubrique.titreFr : (rubrique.titreEn || rubrique.titreFr);
 
-        // Section break par rubrique
         requests.push({
             createItem: {
                 item: { title: `Rubrique ${rubrique.ordre} — ${rubTitre}`, pageBreakItem: {} },
@@ -869,14 +889,13 @@ export function buildGoogleFormDefinition(evaluation, lang) {
             const echelles = [...(question.echelles || [])].sort((a, b) => b.ordre - a.ordre);
 
             if (question.sousQuestions?.length > 0 && echelles.length > 0) {
-                // Grille (GRID)
                 requests.push({
                     createItem: {
                         item: {
                             title: qLibelle,
                             questionGroupItem: {
                                 questions: question.sousQuestions.map(sq => ({
-                                    required: false,
+                                    required:    false,
                                     rowQuestion: { title: lang === 'fr' ? sq.libelleFr : (sq.libelleEn || sq.libelleFr) },
                                 })),
                                 grid: {
@@ -892,7 +911,6 @@ export function buildGoogleFormDefinition(evaluation, lang) {
                     },
                 });
             } else if (echelles.length > 0) {
-                // Choix unique (RADIO)
                 requests.push({
                     createItem: {
                         item: {
@@ -912,11 +930,10 @@ export function buildGoogleFormDefinition(evaluation, lang) {
                     },
                 });
             } else {
-                // Texte libre (PARAGRAPH)
                 requests.push({
                     createItem: {
                         item: {
-                            title: qLibelle,
+                            title:        qLibelle,
                             questionItem: { question: { required: false, textQuestion: { paragraph: true } } },
                         },
                         location: { index: insertIndex++ },
@@ -924,12 +941,11 @@ export function buildGoogleFormDefinition(evaluation, lang) {
                 });
             }
 
-            // Champ commentaire additionnel si commentaireGlobal = true
             if (question.commentaireGlobal) {
                 requests.push({
                     createItem: {
                         item: {
-                            title: `Commentaires — ${qLibelle}`,
+                            title:        `Commentaires — ${qLibelle}`,
                             questionItem: { question: { required: false, textQuestion: { paragraph: true } } },
                         },
                         location: { index: insertIndex++ },

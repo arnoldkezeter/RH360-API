@@ -5,12 +5,13 @@ import {
   getFormateursByTheme,
   modifierFormateur,
   getFormateursDropdown,
+  rechercherFormateurs,
 } from '../controllers/formateurController.js';
 import { authentificate } from '../middlewares/auth.js';
 
 
 const router = express.Router();
-
+router.get('/recherche', authentificate, rechercherFormateurs);
 
 router.post('/:themeId/formateur', authentificate, ajouterFormateur);
 router.put('/:themeId/formateur/:formateurId', authentificate, modifierFormateur);

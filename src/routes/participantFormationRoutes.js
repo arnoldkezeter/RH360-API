@@ -1,16 +1,21 @@
+// routes/participantFormationRoutes.js — nettoyé
 import express from 'express';
+import {
+    genererParticipants,
+    decomposerEnGroupes,
+    ajouterParticipant,
+    supprimerParticipant,
+    getParticipants,
+    rechercherUtilisateurAjoutable,
+} from '../controllers/participantFormationController.js';
 
-import { authentificate } from '../middlewares/auth.js';
-import { ajouterParticipant, getParticipantFormation, rechercherParticipantTheme, supprimerParticipant } from '../controllers/participantFormationController.js';
+const router = express.Router({ mergeParams: true });
 
-
-const router = express.Router();
-
-
-router.post('/:themeId/participant', authentificate, ajouterParticipant);
-router.delete('/:themeId/participant/:participantId', authentificate, supprimerParticipant);
-router.get('/filtre/:themeId', authentificate, getParticipantFormation);
-router.get('/search/:themeId', authentificate, rechercherParticipantTheme);
-
+router.post('/generer',                         genererParticipants);
+router.post('/decomposer',                      decomposerEnGroupes);
+router.get('/rechercher',                       rechercherUtilisateurAjoutable);
+router.get('/',                                 getParticipants);
+router.post('/',                                ajouterParticipant);
+router.delete('/:participantFormationId',       supprimerParticipant);
 
 export default router;

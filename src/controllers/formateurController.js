@@ -27,21 +27,12 @@ export const ajouterFormateur = async (req, res) => {
       message: t('identifiant_invalide', lang),
     });
   }
-
-  // Interne : utilisateurId obligatoire
-  if (interne && (!utilisateurId || !mongoose.Types.ObjectId.isValid(utilisateurId))) {
-    return res.status(400).json({
-      success: false,
-      message: t('champs_obligatoires', lang),
-    });
-  }
-
-  // Externe sans utilisateurId : nom, prenom, email, genre obligatoires
-  if (!interne && !utilisateurId && (!nom || !prenom || !email || !genre)) {
-    return res.status(400).json({
-      success: false,
-      message: t('champs_obligatoires', lang),
-    });
+  
+  if (!utilisateurId && (!nom || !email || !genre)) {
+      return res.status(400).json({
+          success: false,
+          message: t('champs_obligatoires', lang),
+      });
   }
 
   try {
@@ -55,46 +46,26 @@ export const ajouterFormateur = async (req, res) => {
 
     let utilisateur;
 
-    if (interne) {
-      // ── Cas interne : utilisateur existant obligatoire ──────────────────
-      utilisateur = await Utilisateur.findById(utilisateurId);
-      if (!utilisateur) {
-        return res.status(404).json({
-          success: false,
-          message: t('ressource_non_trouvee', lang),
-        });
-      }
-
-    } else if (utilisateurId && mongoose.Types.ObjectId.isValid(utilisateurId)) {
-      // ── Cas externe : utilisateur existant sélectionné ──────────────────
-      utilisateur = await Utilisateur.findById(utilisateurId);
-      if (!utilisateur) {
-        return res.status(404).json({
-          success: false,
-          message: t('ressource_non_trouvee', lang),
-        });
-      }
-
+    // REMPLACER les 3 branches if/else if/else PAR :
+    if (utilisateurId && mongoose.Types.ObjectId.isValid(utilisateurId)) {
+        // Utilisateur existant sélectionné (interne ou externe connu)
+        utilisateur = await Utilisateur.findById(utilisateurId);
+        if (!utilisateur) {
+            return res.status(404).json({ success: false, message: t('ressource_non_trouvee', lang) });
+        }
     } else {
-      // ── Cas externe : nouvel utilisateur à créer ─────────────────────────
-      // Vérifier si l'email est déjà pris
-      const emailExistant = await Utilisateur.findOne({ email });
-      if (emailExistant) {
-        return res.status(400).json({
-          success: false,
-          message: t('email_existant', lang),
+        // Nouvel utilisateur à créer (interne ou externe inconnu)
+        const emailExistant = await Utilisateur.findOne({ email });
+        if (emailExistant) {
+            return res.status(400).json({ success: false, message: t('email_existant', lang) });
+        }
+        const password = generateRandomPassword();
+        utilisateur = await Utilisateur.create({
+            nom, prenom, email, genre,
+            motDePasse: password,
+            estExterneAutoCreated: true,
+            roles: [],
         });
-      }
-      const password = generateRandomPassword();
-      utilisateur = await Utilisateur.create({
-        nom,
-        prenom,
-        email,
-        genre,
-        motDePasse:password,
-        estExterneAutoCreated: true, 
-        roles: [],
-      });
     }
 
     // Vérifier doublon formateur
@@ -148,19 +119,11 @@ export const modifierFormateur = async (req, res) => {
     });
   }
 
-  // Même règle de validation que pour l'ajout
-  if (interne && (!utilisateurId || !mongoose.Types.ObjectId.isValid(utilisateurId))) {
-    return res.status(400).json({
-      success: false,
-      message: t('champs_obligatoires', lang),
-    });
-  }
-
-  if (!interne && !utilisateurId && (!nom || !prenom || !email || !genre)) {
-    return res.status(400).json({
-      success: false,
-      message: t('champs_obligatoires', lang),
-    });
+  if (!utilisateurId && (!nom || !email || !genre)) {
+      return res.status(400).json({
+          success: false,
+          message: t('champs_obligatoires', lang),
+      });
   }
 
   try {
@@ -175,90 +138,55 @@ export const modifierFormateur = async (req, res) => {
     const oldUserId = formateur.utilisateur?.toString();
     let utilisateur;
 
-    if (interne) {
-      // ── Cas interne ──────────────────────────────────────────────────────
+    if (utilisateurId && mongoose.Types.ObjectId.isValid(utilisateurId)) {
       utilisateur = await Utilisateur.findById(utilisateurId);
       if (!utilisateur) {
-        return res.status(404).json({
-          success: false,
-          message: t('utilisateur_non_trouve', lang),
-        });
+          return res.status(404).json({ success: false, message: t('utilisateur_non_trouve', lang) });
       }
-
-    } else if (utilisateurId && mongoose.Types.ObjectId.isValid(utilisateurId)) {
-      // ── Cas externe : utilisateur existant sélectionné ──────────────────
-      utilisateur = await Utilisateur.findById(utilisateurId);
-      if (!utilisateur) {
-        return res.status(404).json({
-          success: false,
-          message: t('utilisateur_non_trouve', lang),
-        });
-      }
-
       // Mettre à jour ses infos si fournies
       if (nom || prenom || email || genre) {
-        if (email && email !== utilisateur.email) {
-          const emailExistant = await Utilisateur.findOne({ email, _id: { $ne: utilisateur._id } });
-          if (emailExistant) {
-            return res.status(400).json({
-              success: false,
-              message: t('email_existant', lang),
-            });
+          if (email && email !== utilisateur.email) {
+              const emailExistant = await Utilisateur.findOne({ email, _id: { $ne: utilisateur._id } });
+              if (emailExistant) {
+                  return res.status(400).json({ success: false, message: t('email_existant', lang) });
+              }
           }
-        }
-        if (nom)    utilisateur.nom    = nom;
-        if (prenom) utilisateur.prenom = prenom;
-        if (email)  utilisateur.email  = email;
-        if (genre)  utilisateur.genre  = genre;
-        await utilisateur.save();
+          if (nom)    utilisateur.nom    = nom;
+          if (prenom) utilisateur.prenom = prenom;
+          if (email)  utilisateur.email  = email;
+          if (genre)  utilisateur.genre  = genre;
+          await utilisateur.save();
       }
-
     } else {
-      // ── Cas externe : on réutilise l'ancien utilisateur auto-créé
-      //    ou on en crée un nouveau ─────────────────────────────────────────
-      const ancienUtilisateur = oldUserId
-        ? await Utilisateur.findById(oldUserId)
-        : null;
+        // Pas d'utilisateurId : réutiliser l'auto-créé ou en créer un nouveau
+        const ancienUtilisateur = oldUserId ? await Utilisateur.findById(oldUserId) : null;
 
-      if (ancienUtilisateur?.estExterneAutoCreated) {
-        // Mettre à jour l'utilisateur auto-créé existant
-        if (email && email !== ancienUtilisateur.email) {
-          const emailExistant = await Utilisateur.findOne({
-            email,
-            _id: { $ne: ancienUtilisateur._id },
-          });
-          if (emailExistant) {
-            return res.status(400).json({
-              success: false,
-              message: t('email_existant', lang),
+        if (ancienUtilisateur?.estExterneAutoCreated) {
+            if (email && email !== ancienUtilisateur.email) {
+                const emailExistant = await Utilisateur.findOne({ email, _id: { $ne: ancienUtilisateur._id } });
+                if (emailExistant) {
+                    return res.status(400).json({ success: false, message: t('email_existant', lang) });
+                }
+            }
+            if (nom)    ancienUtilisateur.nom    = nom;
+            if (prenom) ancienUtilisateur.prenom = prenom;
+            if (email)  ancienUtilisateur.email  = email;
+            if (genre)  ancienUtilisateur.genre  = genre;
+            await ancienUtilisateur.save();
+            utilisateur = ancienUtilisateur;
+        } else {
+            const emailExistant = await Utilisateur.findOne({ email });
+            if (emailExistant) {
+                return res.status(400).json({ success: false, message: t('email_existant', lang) });
+            }
+            const password = generateRandomPassword();
+            utilisateur = await Utilisateur.create({
+                nom, prenom, email, genre,
+                motDePasse: password,
+                estExterneAutoCreated: true,
+                roles: [],
             });
-          }
         }
-        if (nom)    ancienUtilisateur.nom    = nom;
-        if (prenom) ancienUtilisateur.prenom = prenom;
-        if (email)  ancienUtilisateur.email  = email;
-        if (genre)  ancienUtilisateur.genre  = genre;
-        await ancienUtilisateur.save();
-        utilisateur = ancienUtilisateur;
-
-      } else {
-        // Créer un nouvel utilisateur externe
-        const emailExistant = await Utilisateur.findOne({ email });
-        if (emailExistant) {
-          return res.status(400).json({
-            success: false,
-            message: t('email_existant', lang),
-          });
-        }
-        utilisateur = await Utilisateur.create({
-          nom,
-          prenom,
-          email,
-          genre,
-          estExterneAutoCreated: true,
-          roles: [],
-        });
-      }
     }
 
     const newUserId = utilisateur._id.toString();

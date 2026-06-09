@@ -8,6 +8,11 @@
             margin: 1.5cm 2.5cm 1.5cm 2.5cm;
             size: A4;
         }
+
+        @page annexe {
+            margin: 1cm 1.2cm 1.5cm 1.2cm;
+            size: A4;
+        }
         
         body { 
             font-family: 'Times New Roman', serif; 
@@ -16,6 +21,10 @@
             font-size: 16px;
             line-height: 1.4;
             color: #000;
+        }
+
+        #page1-wrapper {
+            page-break-after: always;
         }
 
         /* HEADER */
@@ -85,6 +94,10 @@
             margin-bottom: 12px;
         }
 
+        .description{
+            text-indent: 1.2cm;
+        }
+
         .formateurs-intro {
             text-indent: 1.2cm;
             margin-bottom: 10px;
@@ -143,6 +156,127 @@
             margin-top: 3px;
         }
 
+        /* ════════════════════════════════
+           ANNEXE — Tableau des participants
+        ════════════════════════════════ */
+
+        .annexe-section {
+            page: annexe;
+            margin: 0;
+            padding: 10px 0;
+        }
+
+        .annexe-title {
+            text-align: center;
+            font-size: 15px;
+            font-weight: bold;
+            text-decoration: underline;
+            margin: 10px 0 14px 0;
+            text-transform: uppercase;
+        }
+
+        .participants-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0 0 10px 0;
+            table-layout: fixed;
+        }
+
+        .participants-table th {
+            background-color: #2c3e50;
+            color: white;
+            padding: 8px 6px;
+            border: 1px solid #000;
+            font-weight: bold;
+            text-align: center;
+            font-size: 12px;
+            vertical-align: middle;
+            line-height: 1.3;
+        }
+
+        .participants-table td {
+            padding: 6px 7px;
+            border: 1px solid #333;
+            font-size: 12px;
+            vertical-align: middle;
+            /* Fond blanc explicite par défaut */
+            background-color: #ffffff;
+        }
+
+        .participants-table td.numero {
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .participants-table td.nom {
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        .participants-table td.fonction,
+        .participants-table td.service {
+            text-align: left;
+            padding-left: 8px;
+        }
+
+        /* Couleur de fond retirée sur les deux dernières colonnes (rowspan) */
+        .participants-table td.lieu-periode {
+            text-align: center;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        .participants-table td.formateurs-cell {
+            text-align: left;
+            padding-left: 8px;
+            vertical-align: middle;
+            font-size: 11px;
+        }
+
+        .periode-text {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #444;
+        }
+
+        .lieu-text {
+            display: block;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .formateur-item {
+            display: block;
+            line-height: 1.4;
+        }
+
+        /* Cellules "fusionnées" visuellement sans rowspan */
+        .participants-table td.formateurs-cell,
+        .participants-table td.lieu-periode {
+            background-color: #ffffff !important;
+            border-top: none;
+            border-bottom: none;
+        }
+
+        /* Première ligne du groupe : bordure haute */
+        .participants-table tr.groupe-debut td.formateurs-cell,
+        .participants-table tr.groupe-debut td.lieu-periode {
+            border-top: 1px solid #333;
+        }
+
+        /* Dernière ligne du groupe : bordure basse */
+        .participants-table tr.groupe-fin td.formateurs-cell,
+        .participants-table tr.groupe-fin td.lieu-periode {
+            border-bottom: 1px solid #333;
+        }
+
+        /* Contenu visible uniquement sur la première ligne */
+        .participants-table tr:not(.groupe-debut) td.formateurs-cell span,
+        .participants-table tr:not(.groupe-debut) td.lieu-periode span {
+            visibility: hidden;
+        }
+
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
@@ -156,118 +290,170 @@
     </style>
 </head>
 <body>
-    <!-- HEADER -->
-    <div class="header">
-        <div class="header-left">
-            REPUBLIQUE DU CAMEROUN<br>
-            Paix - Travail - Patrie<br>
-            ----------------------<br>
-            MINISTERE DES FINANCES<br>
-            ----------------------<br>
-            DIRECTION GENERALE DES IMPOTS<br>
-            ----------------------<br>
-            DIRECTION DES AFFAIRES GENERALES<br>
-            ----------------------<br>
-            CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
-            ----------------------
+    <div id="page1-wrapper">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-left">
+                REPUBLIQUE DU CAMEROUN<br>
+                Paix - Travail - Patrie<br>
+                ----------------------<br>
+                MINISTERE DES FINANCES<br>
+                ----------------------<br>
+                DIRECTION GENERALE DES IMPOTS<br>
+                ----------------------<br>
+                DIRECTION DES AFFAIRES GENERALES<br>
+                ----------------------<br>
+                CELLULE DU PERFECTIONNEMENT ET DE LA FORMATION CONTINUE<br>
+                ----------------------
+            </div>
+
+            <div class="header-center">
+                <% if (logoUrl) { %>
+                    <img src="<%= logoUrl %>" alt="Armoiries">
+                <% } %>
+            </div>
+
+            <div class="header-right">
+                REPUBLIC OF CAMEROON<br>
+                Peace - Work - Fatherland<br>
+                ----------------------<br>
+                MINISTRY OF FINANCE<br>
+                ----------------------<br>
+                DIRECTORATE GENERAL OF TAXATION<br>
+                ----------------------<br>
+                DEPARTMENT OF GENERAL AFFAIRS<br>
+                ----------------------<br>
+                TRAINING AND SKILLS PERFECTION UNIT<br>
+                ----------------------
+            </div>
         </div>
 
-        <div class="header-center">
-            <% if (logoUrl) { %>
-                <img src="<%= logoUrl %>" alt="Armoiries">
-            <% } %>
+        <!-- TITRE -->
+        <div class="note-title">
+            <h3 class="document-title">
+                Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
+                <%= noteTitle %>
+            </h3>
         </div>
 
-        <div class="header-right">
-            REPUBLIC OF CAMEROON<br>
-            Peace - Work - Fatherland<br>
-            ----------------------<br>
-            MINISTRY OF FINANCE<br>
-            ----------------------<br>
-            DIRECTORATE GENERAL OF TAXATION<br>
-            ----------------------<br>
-            DEPARTMENT OF GENERAL AFFAIRS<br>
-            ----------------------<br>
-            TRAINING AND SKILLS PERFECTION UNIT<br>
-            ----------------------
-        </div>
-    </div>
+        <div class="body-content">
+            <p class="description">
+                Les formateurs internes de la Direction Générale des impôts ci-après désignés sont
+                chargés de l'animation pédagogique des différents modules de la formation sur
+                <span class="highlight"><%= articleTheme %> <%= themeLibelle %></span>
+                qui se déroulera du <span class="highlight"><%= dateDebut %></span> au
+                <span class="highlight"><%= dateFin %></span> suivant le chronogramme
+                et la répartition portés au tableau en annexe.
+            </p>
+            <p class="formateurs-intro">
+                Il s'agit de Mesdames et Messieurs :
+            </p>
 
-    <!-- TITRE -->
-    <div class="note-title">
-        <h3 class="document-title">
-            Note de service N°_____________ MINFI/DGI/DAG/CPFC du _____________<br>
-            <%= noteTitle %>
-        </h3>
-    </div>
-
-    <% if (description) { %>
-    <div class="description">
-        <%= description %>
-    </div>
-    <% } %>
-
-    <div class="body-content">
-        <p class="formateurs-intro">
-            Il s'agit de Mesdames et Messieurs :
-        </p>
-
-        <div class="formateurs-list">
-            <% formateurs.forEach(function(formateur) { %>
-                <div class="formateur-item">
-                    <%= formateur.numero %>. <span class="highlight"><%= formateur.nomComplet %></span>
-                </div>
-            <% }); %>
-        </div>
-
-        <p style="text-indent: 1.2cm;">
-            La présence effective des personnels conviés est impérative, sauf circonstance exceptionnelle 
-            dûment justifiée.
-        </p>
-
-        <p style="text-indent: 1.2cm;">
-            Les chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
-            disponibles aux date et heure sus indiquées, les personnels placés sous leur responsabilité 
-            et concernés par cette formation.
-        </p>
-
-        <p style="text-indent: 1.2cm;">
-            Le Directeur des Affaires Générales est chargé de la mise en œuvre des dispositions de la 
-            présente note de service.
-        </p>
-    </div>
-
-    <!-- SECTION COPIE -->
-    <div class="copie-section">
-        <div class="copie-title">Copie :</div>
-        <div class="copie-list">
-            <% if (copies && copies.length > 0) { %>
-                <% copies.forEach(function(copie) { %>
-                    <% if (copie.trim()) { %>
-                        - <%= copie.trim() %><br>
-                    <% } %>
+            <div class="formateurs-list">
+                <% formateurs.forEach(function(formateur) { %>
+                    <div class="formateur-item">
+                        <%= formateur.numero %>. <span class="highlight"><%= formateur.nomComplet %></span>
+                    </div>
                 <% }); %>
-            <% } else { %>
-                - Intéressé(e)s<br>
-                - Chefs de Service concernés<br>
-                - Archives/Chrono.
-            <% } %>
+            </div>
+
+            <p style="text-indent: 1.2cm;">
+                Les Chefs de structure de rattachement prendront toutes les dispositions utiles pour rendre 
+                disponibles aux date et heure sus indiquées, les formateurs placés sous leur responsabilité 
+                et concernés par cette formation.
+            </p>
+
+            <p style="text-indent: 1.2cm;">
+                La Directrice des Affaires Générales est chargée de la mise en œuvre des dispositions de la 
+                présente note de service.
+            </p>
+        </div>
+
+        <!-- SECTION COPIE -->
+        <div class="copie-section">
+            <div class="copie-title">Copie :</div>
+            <div class="copie-list">
+                <% if (copies && copies.length > 0) { %>
+                    <% copies.forEach(function(copie) { %>
+                        <% if (copie.trim()) { %>
+                            - <%= copie.trim() %><br>
+                        <% } %>
+                    <% }); %>
+                <% } else { %>
+                    - Intéressé(e)s<br>
+                    - Chefs de Service concernés<br>
+                    - Archives/Chrono.
+                <% } %>
+            </div>
+        </div>
+
+        <!-- QR CODE sous la copie -->
+        <div class="verification-section">
+            <div class="qr-code-container">
+                <img src="<%= qrCodeUrl %>" alt="QR Code">
+            </div>
+
+            <div class="reference-systeme">
+                Réf. Système : <%= referenceSysteme %>
+            </div>
+
+            <div class="verification-text">
+                Scanner pour vérifier l'authenticité
+            </div>
         </div>
     </div>
+    <div class="annexe-section">
+        <h2 class="annexe-title">ANNEXE — <%= noteTitle %></h2>
 
-    <!-- QR CODE sous la copie -->
-    <div class="verification-section">
-        <div class="qr-code-container">
-            <img src="<%= qrCodeUrl %>" alt="QR Code">
-        </div>
+        <table class="participants-table">
+            <colgroup>
+                <col style="width: 4%;">
+                <col style="width: 20%;">
+                <col style="width: 18%;">
+                <col style="width: 18%;">
+                <col style="width: 22%;">
+                <col style="width: 18%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>N°</th>
+                    <th>Nom &amp; Prénoms</th>
+                    <th>Fonction</th>
+                    <th>Service</th>
+                    <th>Formateur(s)</th>
+                    <th>Lieu et Période de formation</th>
+                </tr>
+            </thead>
+            <tbody>
+            <% participants.forEach(function(participant) { %>
+            <tr class="<%= participant.classeGroupe %>">
+            <td class="numero"><%= participant.numero %></td>
+            <td class="nom"><%= participant.nom %></td>
+            <td class="fonction"><%= participant.fonction || '-' %></td>
+            <td class="service"><%= participant.service %></td>
 
-        <div class="reference-systeme">
-            Réf. Système : <%= referenceSysteme %>
-        </div>
+            <td class="formateurs-cell">
+                <% if (participant.formateurs && participant.formateurs.length > 0) { %>
+                    <% participant.formateurs.forEach(function(f) { %>
+                        <span class="formateur-item">• <%= f %></span>
+                    <% }); %>
+                <% } else { %>
+                    <span style="color:#999;font-style:italic;">—</span>
+                <% } %>
+            </td>
 
-        <div class="verification-text">
-            Scanner pour vérifier l'authenticité
-        </div>
+            <td class="lieu-periode">
+                <span class="periode-text"><%= participant.periode %></span>
+                <span class="lieu-text"><%= participant.lieu %></span>
+            </td>
+            </tr>
+            <% }); %>
+            </tbody>
+        </table>
+
+        <p style="text-align:center; font-size:12px; margin-top:5px;">
+            Total des participants : <span class="highlight"><%= nombreParticipants %></span>
+        </p>
     </div>
 </body>
 </html>

@@ -170,7 +170,7 @@
     </style>
 </head>
 <body>
-    <% lieux.forEach(function(lieu, indexLieu) { %>
+    <% groupes.forEach(function(groupe, indexLieu) { %>
         <div class="page-container">
             <!-- HEADER -->
             <div class="header">
@@ -215,8 +215,11 @@
             <div class="lieu-content">
                 <div class="lieu-header">
                     <div class="lieu-nom">Formation : <%= themeLibelle %></div>
-                    <div class="lieu-nom">Lieu : <%= lieu.lieu %></div>
-                    <div class="lieu-periode"><%= lieu.periode %></div>
+                    <div class="lieu-nom">Cohorte <%= groupe.numeroGroupe %> — Lieu : <%= groupe.lieu %></div>
+                    <div class="lieu-periode"><%= groupe.periode %></div>
+                    <!-- <% if (groupe.formateurs && groupe.formateurs.length > 0) { %>
+                        <div class="lieu-nom">Formateur(s) : <%= groupe.formateurs.map(f => `${f.utilisateur?.nom || ''} ${f.utilisateur?.prenom || ''}`.trim()).join(', ') %></div>
+                    <% } %> -->
                     <div class="lieu-nom">Journée du <%= journee %></div>
                 </div>
 
@@ -233,7 +236,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% lieu.participants.forEach(function(participant) { %>
+                        <% groupe.participants.forEach(function(participant) { %>
                             <tr>
                                 <td class="numero"><%= participant.numero %></td>
                                 <td class="matricule"><%= participant.matricule %></td>
@@ -248,7 +251,7 @@
                 </table>
 
                 <div class="stats">
-                    Total participants : <%= lieu.nombreParticipants %>
+                    Total participants : <%= groupe.nombreParticipants %>
                 </div>
             </div>
         </div>

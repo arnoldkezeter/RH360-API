@@ -25,6 +25,8 @@ import { validerReferencePDF } from '../utils/pdfHelper.js';
 import Depense from '../models/Depense.js';
 import { capitalizeTitle, formatWithArticle, getArticle, getArticleDe } from '../utils/wordHelper.js';
 import logger from '../utils/logger.js';
+import { GroupeFormation } from '../models/GroupeFormation.js';
+import { ParticipantFormation } from '../models/ParticipantFormation.js';
 // import { getDocument } from 'pdfjs-dist';
 
 
@@ -1670,8 +1672,6 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
             theme,
             titreFr,
             titreEn,
-            descriptionFr,
-            descriptionEn,
             copieA,
             creePar,
             tacheFormationId 
@@ -1698,7 +1698,7 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
 
         // Vérifier que le thème existe
         const themeData = await ThemeFormation.findById(theme)
-            .select('libelleFr libelleEn dateDebut dateFin lieu')
+            .select('titreFr titreEn dateDebut dateFin lieu')
             .lean();
 
         if (!themeData) {
@@ -1747,8 +1747,6 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
             // Mettre à jour la note existante (sans modifier la référence)
             noteExistante.titreFr = titreFr || "CONVOCATION";
             noteExistante.titreEn = titreEn || "CONVOCATION";
-            noteExistante.descriptionFr = descriptionFr;
-            noteExistante.descriptionEn = descriptionEn;
             noteExistante.copieA = copieA;
             noteExistante.creePar = creePar;
             noteExistante.valideParDG = false;
@@ -1766,8 +1764,6 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
                 sousTypeConvocation: 'formateurs', // ✅ Nouveau champ
                 titreFr: titreFr || "CONVOCATION",
                 titreEn: titreEn || "CONVOCATION",
-                descriptionFr,
-                descriptionEn,
                 copieA,
                 creePar,
                 valideParDG: false
@@ -1833,64 +1829,202 @@ export const creerNoteServiceConvocationFormateurs = async (req, res) => {
  */
 const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang, createur) => {
     try {
-        // Générer l'URL de vérification
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
-        
-        // Générer le QR code
+
         const qrCodeDataUrl = await QRCode.toDataURL(urlVerification, {
             errorCorrectionLevel: 'H',
             type: 'image/png',
             width: 100,
             margin: 1,
-            color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-            }
+            color: { dark: '#000000', light: '#FFFFFF' }
         });
 
-        // Préparer la liste des formateurs
-        const formateursListe = formateurs.map((formateur, index) => {
-            const utilisateur = formateur.utilisateur;
-            const nomComplet = `${utilisateur.nom} ${utilisateur.prenom || ''}`.trim();
-            
+        // ── Libellé et article du thème ──────────────────────────────────────
+        const themeLibelle = lang === 'fr'
+            ? (themeData.titreFr || themeData.libelleFr || '')
+            : (themeData.titreEn || themeData.libelleEn || '');
+
+        const articleTheme = (() => {
+            const full = getArticle(themeLibelle || '');
+            const map = {
+                'au':      'le',
+                'à la':    'la',
+                "à l'":    "l'",
+                'aux':     'les',
+                'à la/au': 'la/le',
+            };
+            return map[full] ?? 'la';
+        })();
+
+        // ── Dates depuis le thème ou les groupes en fallback ─────────────────
+        const fmtDate = (d) => d
+            ? new Date(d).toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'numeric', year: 'numeric'
+              })
+            : '______________';
+
+        let dateDebutStr = fmtDate(themeData.dateDebut);
+        let dateFinStr   = fmtDate(themeData.dateFin);
+
+        const themeId = note.theme?._id ?? note.theme;
+
+        if (!themeData.dateDebut || !themeData.dateFin) {
+            const groupesDates = await GroupeFormation.find({
+                theme: themeId,
+                statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+            })
+            .select('dateDebut dateFin')
+            .sort({ dateDebut: 1 })
+            .lean();
+
+            if (groupesDates.length > 0) {
+                dateDebutStr = fmtDate(groupesDates[0].dateDebut);
+                dateFinStr   = fmtDate(groupesDates[groupesDates.length - 1].dateFin);
+            }
+        }
+
+        // ── Formateurs ───────────────────────────────────────────────────────
+        const formateursListe = formateurs.map((formateur, index) => ({
+            numero:     index + 1,
+            nomComplet: `${formateur.utilisateur.nom} ${formateur.utilisateur.prenom || ''}`.trim(),
+        }));
+
+        // ── Participants depuis les groupes (pour l'annexe) ──────────────────
+        const groupes = await GroupeFormation.find({
+            theme: themeId,
+            statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+        })
+        .populate({
+            path: 'formateurs',
+            populate: { path: 'utilisateur', select: 'nom prenom' }
+        })
+        .lean();
+
+        const groupeIds = groupes.map(g => g._id);
+        const groupeMap = new Map(groupes.map(g => [g._id.toString(), g]));
+
+        const participantFormations = await ParticipantFormation.find({
+            theme: themeId,
+            groupe: { $in: groupeIds },
+            statut: { $in: ['AFFECTE', 'PRESENT'] }
+        })
+        .populate({
+            path: 'participant',
+            select: 'nom prenom posteDeTravail structure service',
+            populate: [
+                { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                { path: 'structure',      select: 'nomFr nomEn' },
+                { path: 'service',        select: 'nomFr nomEn' },
+            ]
+        })
+        .lean();
+
+        // ── Enrichir chaque participant avec les infos de son groupe ─────────
+        const formatDate = (date) => {
+            if (!date) return '';
+            return new Date(date).toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'numeric', year: 'numeric'
+            });
+        };
+
+        const participantsEnrichis = participantFormations.map(pf => {
+            const groupe    = groupeMap.get(pf.groupe.toString());
+            const utilisateur = pf.participant;
+
+            let structureNom = 'Service non spécifié';
+            if (utilisateur.structure) {
+                structureNom = (lang === 'fr'
+                    ? utilisateur.structure.nomFr
+                    : utilisateur.structure.nomEn) || structureNom;
+            } else if (utilisateur.service) {
+                structureNom = (lang === 'fr'
+                    ? utilisateur.service.nomFr
+                    : utilisateur.service.nomEn) || structureNom;
+            }
+
+            const poste = utilisateur.posteDeTravail
+                ? (lang === 'fr'
+                    ? utilisateur.posteDeTravail.nomFr
+                    : utilisateur.posteDeTravail.nomEn) || ''
+                : '';
+
+            const dateDebut = formatDate(groupe?.dateDebut);
+            const dateFin   = formatDate(groupe?.dateFin);
+            const periode   = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
+
+            const formateursNoms = (groupe.formateurs || []).map(f =>
+                `${f.utilisateur?.nom || ''} ${f.utilisateur?.prenom ? f.utilisateur.prenom + ' ' : ''}`.trim()
+            );
+
             return {
-                numero: index + 1,
-                nomComplet,
+                nomComplet:    `${utilisateur.nom} ${utilisateur.prenom || ''}`.trim(),
+                poste,
+                structureNom,
+                lieu:          groupe?.lieu || '',
+                periode,
+                formateursNoms,
+                groupeId:      pf.groupe.toString(),
             };
         });
 
+        // ── Trier : groupeId d'abord, puis structure, puis nom ───────────────
+        participantsEnrichis.sort((a, b) => {
+            const cmpGroupe = a.groupeId.localeCompare(b.groupeId);
+            if (cmpGroupe !== 0) return cmpGroupe;
+            const cmpStructure = a.structureNom.localeCompare(b.structureNom);
+            if (cmpStructure !== 0) return cmpStructure;
+            return a.nomComplet.localeCompare(b.nomComplet);
+        });
+
+        // ── Calculer classeGroupe (debut/fin) sans rowspan ───────────────────
+        let numeroGlobal = 1;
+        const participantsFormates = participantsEnrichis.map((p, index, arr) => {
+            const estPremier = index === 0 || arr[index - 1].groupeId !== p.groupeId;
+            const estDernier = index === arr.length - 1 || arr[index + 1].groupeId !== p.groupeId;
+
+            return {
+                numero:      numeroGlobal++,
+                nom:         p.nomComplet,
+                fonction:    p.poste,
+                service:     p.structureNom,
+                lieu:        p.lieu,
+                periode:     p.periode,
+                formateurs:  estPremier ? p.formateursNoms : [],
+                classeGroupe: [
+                    estPremier ? 'groupe-debut' : '',
+                    estDernier ? 'groupe-fin'   : '',
+                ].filter(Boolean).join(' '),
+            };
+        });
+
+        // ── Template data ────────────────────────────────────────────────────
         const templateData = {
-            documentTitle: 'Note de Service - Convocation des Formateurs',
-            logoUrl: getLogoBase64(__dirname),
-
-            // QR Code et référence
-            qrCodeUrl: qrCodeDataUrl,
-            urlVerification: urlVerification,
-            referenceSysteme: note.reference || 'REF-XXX',
-
+            documentTitle:     'Note de Service - Convocation des Formateurs',
+            logoUrl:            getLogoBase64(__dirname),
+            qrCodeUrl:          qrCodeDataUrl,
+            urlVerification,
+            referenceSysteme:   note.reference || 'REF-XXX',
             noteTitle: lang === 'fr'
                 ? (note.titreFr || "CONVOCATION")
                 : (note.titreEn || "CONVOCATION"),
-            description: lang === 'fr' ? note.descriptionFr : note.descriptionEn,
-
-            formateurs: formateursListe,
-
+            articleTheme,
+            themeLibelle,
+            dateDebut:          dateDebutStr,
+            dateFin:            dateFinStr,
+            formateurs:         formateursListe,
+            participants:       participantsFormates,
+            nombreParticipants: participantsFormates.length,
             copies: note.copieA
-                ? note.copieA.split(/[;,]/)
-                    .map(e => e.trim())
-                    .filter(e => e.length > 0)
+                ? note.copieA.split(/[;,]/).map(e => e.trim()).filter(e => e.length > 0)
                 : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
-
-            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
-
+            createurNom: createur
+                ? `${createur.nom} ${createur.prenom || ''}`.trim()
+                : 'Système',
             dateTime: new Date().toLocaleDateString('fr-FR', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
-            })
+                day: '2-digit', month: 'long', year: 'numeric',
+                hour: 'numeric', minute: 'numeric',
+            }),
         };
 
         const templatePath = path.join(__dirname, '../views/note-service-convocation-formateurs.ejs');
@@ -1899,47 +2033,30 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
         const browser = await puppeteer.launch({
             headless: 'new',
             args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu'
+                '--no-sandbox', '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas',
+                '--no-first-run', '--no-zygote', '--disable-gpu'
             ]
         });
 
         const page = await browser.newPage();
-
-        await page.setContent(html, {
-            waitUntil: 'networkidle0',
-            timeout: 30000
-        });
+        await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
 
         const pdfBuffer = await page.pdf({
-            format: 'A4',
+            format:          'A4',
             printBackground: true,
-            margin: {
-                top: '20px',
-                right: '20px',
-                bottom: '60px',
-                left: '20px'
-            },
+            margin: { top: '20px', right: '20px', bottom: '60px', left: '20px' },
             displayHeaderFooter: true,
             headerTemplate: '<div></div>',
             footerTemplate: `
-                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
-                    <div style="text-align: left; flex: 1;">
-                        Généré par ${templateData.createurNom}
-                    </div>
-                    <div style="text-align: center; flex: 1;">
-                        Le ${templateData.dateTime}
-                    </div>
-                    <div style="text-align: right; flex: 1;">
+                <div style="font-size:10px;width:100%;margin:0 20px;display:flex;
+                            justify-content:space-between;align-items:center;color:#666;">
+                    <div style="text-align:left;flex:1;">Généré par ${templateData.createurNom}</div>
+                    <div style="text-align:center;flex:1;">Le ${templateData.dateTime}</div>
+                    <div style="text-align:right;flex:1;">
                         Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
                     </div>
-                </div>
-            `
+                </div>`
         });
 
         await browser.close();
@@ -1947,7 +2064,7 @@ const genererPDFConvocationFormateurs = async (note, themeData, formateurs, lang
 
     } catch (error) {
         logger.error('Note exception:', error);
-        console.error('Erreur lors de la génération du PDF de convocation:', error);
+        console.error('Erreur lors de la génération du PDF de convocation formateurs:', error);
         throw error;
     }
 };
@@ -1998,23 +2115,12 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
     session.startTransaction();
 
     try {
-        const {
-            theme,
-            titreFr,
-            titreEn,
-            copieA,
-            creePar,
-            tacheFormationId
-        } = req.body;
-        
-        // Validation (inchangée)
+        const { theme, titreFr, titreEn, copieA, creePar, tacheFormationId } = req.body;
+
         if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
             await session.abortTransaction();
             session.endSession();
-            return res.status(400).json({
-                success: false,
-                message: t('theme_requis_ou_invalide', lang)
-            });
+            return res.status(400).json({ success: false, message: t('theme_requis_ou_invalide', lang) });
         }
 
         const themeData = await ThemeFormation.findById(theme)
@@ -2022,142 +2128,97 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
             .lean();
 
         if (!themeData) {
-            console.log("theme ", themeData)
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: t('theme_non_trouve', lang) });
+        }
+
+        // ── Récupérer tous les groupes PLANIFIÉS du thème avec leurs formateurs ──
+        const groupes = await GroupeFormation.find({
+            theme,
+            statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+        })
+        .populate({
+            path: 'formateurs',
+            populate: { path: 'utilisateur', select: 'nom prenom' }
+        })
+        .lean();
+
+        if (!groupes || groupes.length === 0) {
             await session.abortTransaction();
             session.endSession();
             return res.status(404).json({
                 success: false,
-                message: t('theme_non_trouve', lang)
+                message: t('aucun_groupe_planifie_trouve', lang)
             });
         }
 
-        // Récupérer tous les lieux de formation pour ce thème
-        const lieuxFormation = await LieuFormation.find({ theme: theme })
-             .populate({
-                path: 'cohortes',
-                select: '_id nomFr nomEn'
-            });
+        // ── Récupérer tous les participants AFFECTÉS à ces groupes ──
+        const groupeIds = groupes.map(g => g._id);
 
-        if (!lieuxFormation || lieuxFormation.length === 0) {
+        const participantFormations = await ParticipantFormation.find({
+            theme,
+            groupe: { $in: groupeIds },
+            statut: { $in: ['AFFECTE', 'PRESENT'] }
+        })
+        .populate({
+            path: 'participant',
+            select: 'nom prenom posteDeTravail structure service',
+            populate: [
+                { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                { path: 'structure', select: 'nomFr nomEn' },
+                { path: 'service', select: 'nomFr nomEn' },
+            ]
+        })
+        .lean();
+
+        if (participantFormations.length === 0) {
             await session.abortTransaction();
             session.endSession();
-            return res.status(404).json({
-                success: false,
-                message: t('aucun_lieu_formation_trouve', lang)
-            });
+            return res.status(404).json({ success: false, message: t('aucun_participant_trouve', lang) });
         }
 
-        // --- LOGIQUE DE CONSOLIDATION DES PARTICIPANTS ---
+        // ── Construire la map groupeId → groupe (pour accès rapide) ──
+        const groupeMap = new Map(groupes.map(g => [g._id.toString(), g]));
 
-        const participantsMap = new Map();
-        
-        // 1. RESOLUTION DES UTILISATEURS CIBLÉS PAR LES RESTRICTIONS DGI (LieuxFormation)
-        
-        // 🚨 MISE À JOUR DU POPULATE POUR ASSURER L'ACCÈS À utilisateur.posteDeTravail.famillesMetier
-        const allUsers = await Utilisateur.find({ actif: true }) // Utilisation du champ 'actif' du modèle Utilisateur
-            .select('_id nom prenom posteDeTravail structure service')
-            .populate({
-                path: 'posteDeTravail',
-                select: 'famillesMetier nomFr nomEn' // Indispensable pour la vérification du ciblage
-            })
-            .populate({
-                path: 'structure',
-                select: 'nomFr nomEn'
-            })
-            .lean(); 
-
-        // Filtrer les utilisateurs selon les restrictions de tous les Lieux du Thème
-        const checkPromises = allUsers.map(user => checkUserTargeting(user, lieuxFormation));
-        const targetedParticipantsResults = await Promise.all(checkPromises);
-
-        // Ajouter les participants ciblés à la Map
-        targetedParticipantsResults.filter(p => p !== null).forEach(participant => {
-            participantsMap.set(participant.utilisateur._id.toString(), participant);
-        });
-
-        // 2. AJOUT DES UTILISATEURS DES COHORTES (inchangé)
-        
-        const toutesLesCohortes = lieuxFormation.flatMap(lieu =>
-            lieu.cohortes.map(c => c._id)
-        );
-
-        if (toutesLesCohortes.length > 0) {
-            const cohortesUtilisateurs = await CohorteUtilisateur.find({
-                cohorte: { $in: toutesLesCohortes }
-            })
-            .populate({
-                path: 'utilisateur',
-                select: '_id nom prenom posteDeTravail service',
-                populate: [
-                    {
-                        path: 'posteDeTravail',
-                        select: 'nomFr nomEn' // Peuplement du Poste de Travail
+        // ── Enrichir chaque participantFormation avec les infos de son groupe ──
+        const tousLesParticipants = participantFormations.map(pf => {
+            const groupe = groupeMap.get(pf.groupe.toString());
+            return {
+                utilisateur: pf.participant,
+                lieu:      groupe?.lieu      || '',
+                groupeId:     pf.groupe.toString(),
+                dateDebut: groupe?.dateDebut || null,
+                dateFin:   groupe?.dateFin   || null,
+                formateurs: groupe?.formateurs?.map(f => ({
+                    _id: f._id,
+                    utilisateur: {
+                        nom: f.utilisateur?.nom,
+                        prenom: f.utilisateur?.prenom,
                     },
-                    {
-                        path: 'structure',
-                        select: 'nomFr nomEn' // Peuplement du Service
-                    }
-                ]
-            })
-            .lean();
-
-            for (const cu of cohortesUtilisateurs) {
-                if (!cu.utilisateur) continue;
-                const userId = cu.utilisateur._id.toString();
-
-                if (participantsMap.has(userId)) continue;
-
-                const lieuAssocie = lieuxFormation.find(lieu =>
-                    lieu.cohortes.some(c => c._id.equals(cu.cohorte))
-                );
-
-                if (!lieuAssocie) continue;
-
-                participantsMap.set(userId, {
-                    utilisateur: cu.utilisateur,
-                    lieu: lieuAssocie.lieu,
-                    dateDebut: lieuAssocie.dateDebut,
-                    dateFin: lieuAssocie.dateFin,
-                    source: "cohorte"
-                });
-            }
-        }
-
-        const tousLesParticipants = Array.from(participantsMap.values());
-
-        if (tousLesParticipants.length === 0) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(404).json({
-                success: false,
-                message: t('aucun_participant_trouve', lang)
-            });
-        }
-        
-        // --- FIN DE LA LOGIQUE DE CONSOLIDATION ---
-        
-        // Le reste de la logique (Créateur, NoteService, Tâche, PDF) est inchangé.
+                })) || [],  // tableau d'objets { nom, prenom }
+            };
+        });
 
         let createur = null;
         if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
-            createur = await Utilisateur.findById(creePar)
-                .select('nom prenom')
-                .lean();
+            createur = await Utilisateur.findById(creePar).select('nom prenom').lean();
         }
 
-        let noteExistante = await NoteService.findOne({ 
-            theme: theme, 
+        // ── Note de service (upsert) ──
+        let noteExistante = await NoteService.findOne({
+            theme,
             typeNote: 'convocation',
             sousTypeNote: 'participants'
         });
-        
+
         let noteEnregistree;
 
         if (noteExistante) {
-            noteExistante.titreFr = titreFr || "CONVOCATION À LA FORMATION";
-            noteExistante.titreEn = titreEn || "TRAINING CONVOCATION";
-            noteExistante.copieA = copieA;
-            noteExistante.creePar = creePar;
+            noteExistante.titreFr     = titreFr || "CONVOCATION À LA FORMATION";
+            noteExistante.titreEn     = titreEn || "TRAINING CONVOCATION";
+            noteExistante.copieA      = copieA;
+            noteExistante.creePar     = creePar;
             noteExistante.valideParDG = false;
             noteEnregistree = await noteExistante.save({ session });
         } else {
@@ -2177,7 +2238,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         }
 
         if (tacheFormationId) {
-             mettreAJourTache({
+            mettreAJourTache({
                 tacheFormationId,
                 statut: "EN_ATTENTE",
                 donnees: `Note de convocation générée : ${noteEnregistree._id}`,
@@ -2213,7 +2274,6 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
         logger.error('Note exception:', error);
         await session.abortTransaction();
         session.endSession();
-
         return res.status(500).json({
             success: false,
             message: t('erreur_serveur', lang),
@@ -2239,7 +2299,7 @@ export const creerNoteServiceConvocationParticipants = async (req, res) => {
  */
 const genererPDFConvocationParticipants = async (note, themeData, participants, lang, createur) => {
     try {
-        // ── 1. QR Code ──────────────────────────────────────────────────────────
+        // ── 1. QR Code ───────────────────────────────────────────────────────────
         const baseUrl = process.env.BASE_URL || 'https://votredomaine.com';
         const urlVerification = `${baseUrl}/notes-service/verifier/${note._id}`;
 
@@ -2251,20 +2311,11 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
             color: { dark: '#000000', light: '#FFFFFF' }
         });
 
-        // ── 2. Article pour le thème (« sur LA formation », « sur LE thème », …) ─
+        // ── 2. Article pour le thème ─────────────────────────────────────────────
         const themeLibelle = lang === 'fr' ? themeData.titreFr : themeData.titreEn;
 
-        // getArticle() est importée depuis votre module utilitaire.
-        // Elle retourne 'au', 'à la', "à l'", 'aux' ou 'à la/au'.
-        // Ici on veut uniquement « la » / « le » / « l' » / « les » (sans la préposition « à »).
         const articleTheme = (() => {
             const full = getArticle(themeLibelle || '');
-            // Retirer la préposition « à » initiale pour obtenir l'article seul.
-            // 'au'      → 'le'
-            // 'à la'    → 'la'
-            // "à l'"    → "l'"
-            // 'aux'     → 'les'
-            // 'à la/au' → 'la/le'   (cas de secours)
             const map = {
                 'au':      'le',
                 'à la':    'la',
@@ -2275,269 +2326,175 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
             return map[full] ?? 'la';
         })();
 
-        // ── 3. Récupérer les formateurs par lieu de formation ───────────────────
-        // On construit une Map  lieu (string normalisé) → [noms formateurs]
-        // à partir des données disponibles dans la base.
-        //
-        // LieuFormation contient un tableau `formateurs` de refs vers Formateur.
-        // On re-populle les lieuxFormation avec les noms pour éviter de multiplier
-        // les requêtes dans la boucle qui suit.
-        const lieuxFormation = await LieuFormation.find({ theme: note.theme._id ?? note.theme })
-            .populate({
-                path: 'formateurs',
-                populate: {
-                    path: 'utilisateur',
-                    select: 'nom prenom'
-                }
-            })
-            .lean();
-
-        /**
-         * Construit la clé de regroupement normalisée pour un lieu+période.
-         * @param {string} lieu
-         * @param {string} periode
-         * @returns {string}
-         */
-        const buildKey = (lieu, periode) =>
-            `${(lieu || '').trim().toLowerCase()}_${(periode || '').trim().toLowerCase()}`;
-
-        /**
-         * Retourne la liste des noms de formateurs associés à un lieu donné.
-         * On cherche le LieuFormation dont le champ `lieu` correspond (insensible à la casse).
-         * @param {string} lieu - Valeur du champ `lieu` du participant
-         * @returns {string[]}
-         */
-        const getFormateursForLieu = (lieu) => {
-            const lieuNorm = (lieu || '').trim().toLowerCase();
-            const lieuDoc = lieuxFormation.find(
-                lf => (lf.lieu || '').trim().toLowerCase() === lieuNorm
-            );
-            if (!lieuDoc || !lieuDoc.formateurs || lieuDoc.formateurs.length === 0) {
-                return [];
-            }
-            return lieuDoc.formateurs
-                .filter(f => f.utilisateur)
-                .map(f => {
-                    const u = f.utilisateur;
-                    return `${u.prenom ? u.prenom + ' ' : ''}${u.nom}`.trim();
-                });
+        // ── 3. Helpers ───────────────────────────────────────────────────────────
+        const formatDate = (date) => {
+            if (!date) return '';
+            return new Date(date).toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'numeric', year: 'numeric'
+            });
         };
 
-        // ── 4. Grouper les participants par service ─────────────────────────────
-        const participantsParService = {};
+        const buildGroupKey = (lieu, periode) =>
+            `${(lieu || '').trim().toLowerCase()}||${(periode || '').trim().toLowerCase()}`;
 
-        participants.forEach(participant => {
+        // ── 4. Enrichir chaque participant ───────────────────────────────────────
+        // `participant.formateurs` est déjà un tableau d'objets { nom, prenom }
+        // provenant du populate GroupeFormation.formateurs
+        const participantsEnrichis = participants.map(participant => {
             const utilisateur = participant.utilisateur;
 
-            const structureId = utilisateur.structure?._id?.toString()
-                             || utilisateur.service?._id?.toString()
-                             || 'sans_service';
-
-            let structureNom;
+            let structureNom = 'Service non spécifié';
             if (utilisateur.structure) {
                 structureNom = (lang === 'fr'
                     ? utilisateur.structure.nomFr
-                    : utilisateur.structure.nomEn) || 'Nom de Structure Manquant';
+                    : utilisateur.structure.nomEn) || structureNom;
             } else if (utilisateur.service) {
                 structureNom = (lang === 'fr'
                     ? utilisateur.service.nomFr
-                    : utilisateur.service.nomEn) || 'Nom de Service Manquant';
-            } else {
-                structureNom = 'Service non spécifié';
+                    : utilisateur.service.nomEn) || structureNom;
             }
-
-            if (!participantsParService[structureId]) {
-                participantsParService[structureId] = { structureNom, participants: [] };
-            }
-
-            // Formatage des dates
-            const dateOptions = { day: '2-digit', month: 'numeric', year: 'numeric' };
-
-            const dateDebut = participant.dateDebut
-                ? new Date(participant.dateDebut).toLocaleDateString('fr-FR', dateOptions)
-                : '';
-
-            const dateFin = participant.dateFin
-                ? new Date(participant.dateFin).toLocaleDateString('fr-FR', dateOptions)
-                : '';
-
-            const periode = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
 
             const poste = utilisateur.posteDeTravail
                 ? (lang === 'fr'
                     ? utilisateur.posteDeTravail.nomFr
-                    : utilisateur.posteDeTravail.nomEn)
+                    : utilisateur.posteDeTravail.nomEn) || ''
                 : '';
 
-            participantsParService[structureId].participants.push({
-                nom:     utilisateur.nom,
-                prenom:  utilisateur.prenom || '',
+            const dateDebut = formatDate(participant.dateDebut);
+            const dateFin   = formatDate(participant.dateFin);
+            const periode   = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
+
+            const formateursNoms = (participant.formateurs || []).map(f =>
+                `${f.utilisateur?.nom || ''} ${f.utilisateur?.prenom ? f.utilisateur.prenom + ' ' : ''}`.trim()
+            );
+
+            return {
+                nomComplet:    `${utilisateur.nom} ${utilisateur.prenom || ''}`.trim(),
                 poste,
-                lieu:    participant.lieu,
-                periode
-            });
+                structureNom,
+                lieu:          participant.lieu || '',
+                periode,
+                formateursNoms,
+                groupeId:      participant.groupeId, // ← clé de groupement fiable
+            };
         });
 
-        // Tri alphabétique des services
-        const servicesOrdonnes = Object.values(participantsParService).sort((a, b) =>
-            a.structureNom.localeCompare(b.structureNom)
-        );
+        // ── 5. Trier ─────────────────────────────────────────────────────────────
+        participantsEnrichis.sort((a, b) => {
+            // 1. Groupe (garantit la contiguïté des lignes pour le rowspan)
+            const cmpGroupe = a.groupeId.localeCompare(b.groupeId);
+            if (cmpGroupe !== 0) return cmpGroupe;
 
-        // ── 5. Formatage final avec rowspan sur lieu+période ────────────────────
+            // 2. Structure à l'intérieur du groupe
+            const cmpStructure = a.structureNom.localeCompare(b.structureNom);
+            if (cmpStructure !== 0) return cmpStructure;
+
+            // 3. Nom du participant
+            return a.nomComplet.localeCompare(b.nomComplet);
+        });
+
+        // ── 6. Rowspan ───────────────────────────────────────────────────────────
+        const groupCounts = new Map();
+        participantsEnrichis.forEach(p => {
+            groupCounts.set(p.groupeId, (groupCounts.get(p.groupeId) || 0) + 1);
+        });
+
+        const groupSeen = new Set();
         let numeroGlobal = 1;
-        const participantsFormates = [];
 
-        servicesOrdonnes.forEach(service => {
+        const participantsFormates = participantsEnrichis.map((p, index, arr) => {
+            const estPremier = !groupSeen.has(p.groupeId);
+            if (estPremier) groupSeen.add(p.groupeId);
 
-            // Regrouper par clé normalisée lieu+période
-            const groupesParLieuPeriode = {};
+            // Détecter la dernière ligne du groupe
+            const suivant = arr[index + 1];
+            const estDernier = !suivant || suivant.groupeId !== p.groupeId;
 
-            service.participants.forEach(p => {
-                const key = buildKey(p.lieu, p.periode);
-                if (!groupesParLieuPeriode[key]) {
-                    groupesParLieuPeriode[key] = [];
-                }
-                groupesParLieuPeriode[key].push(p);
-            });
-
-            // Pour chaque groupe, calculer le rowspan et pré-charger les formateurs
-            Object.values(groupesParLieuPeriode).forEach(groupe => {
-                const rowspan    = groupe.length;
-                // Les formateurs sont identiques pour tout le groupe (même lieu)
-                const formateurs = getFormateursForLieu(groupe[0].lieu);
-
-                groupe.forEach((participant, index) => {
-                    const estPremiereLigne = index === 0;
-
-                    participantsFormates.push({
-                        numero:   numeroGlobal++,
-                        nom:      `${participant.nom} ${participant.prenom}`.trim(),
-                        fonction: participant.poste,
-                        service:  service.structureNom,
-
-                        // Données de la cellule fusionnée
-                        lieu:     participant.lieu,
-                        periode:  participant.periode,
-                        formateurs,         // tableau de noms (identique dans le groupe)
-
-                        // Contrôle du rowspan dans le template
-                        rowspan:             estPremiereLigne ? rowspan : 0,
-                        afficherLieuPeriode: estPremiereLigne,
-                    });
-                });
-            });
+            return {
+                numero:              numeroGlobal++,
+                nom:                 p.nomComplet,
+                fonction:            p.poste,
+                service:             p.structureNom,
+                lieu:                p.lieu,
+                periode:             p.periode,
+                formateurs:          estPremier ? p.formateursNoms : [],
+                afficherLieuPeriode: false,          // plus de rowspan
+                classeGroupe: [
+                    estPremier  ? 'groupe-debut' : '',
+                    estDernier  ? 'groupe-fin'   : '',
+                ].filter(Boolean).join(' '),
+            };
         });
 
-        // ── 6. Dates globales du thème ──────────────────────────────────────────
-        const dateOptionsTheme = { day: '2-digit', month: 'numeric', year: 'numeric' };
-
-        const dateDebutTheme = themeData.dateDebut
-            ? new Date(themeData.dateDebut).toLocaleDateString('fr-FR', dateOptionsTheme)
+        // ── 7. Dates globales du thème ───────────────────────────────────────────
+        const fmtDate = (d) => d
+            ? new Date(d).toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'numeric', year: 'numeric'
+              })
             : '______________';
 
-        const dateFinTheme = themeData.dateFin
-            ? new Date(themeData.dateFin).toLocaleDateString('fr-FR', dateOptionsTheme)
-            : '______________';
+        const dateDebutTheme = fmtDate(themeData.dateDebut);
+        const dateFinTheme   = fmtDate(themeData.dateFin);
 
-        // ── 7. Données du template ──────────────────────────────────────────────
+        // ── 8. Données du template ───────────────────────────────────────────────
         const templateData = {
-            documentTitle: 'Note de Service - Convocation des Participants',
-            logoUrl:        getLogoBase64(__dirname),
-
-            qrCodeUrl:        qrCodeDataUrl,
-            urlVerification:  urlVerification,
-            referenceSysteme: note.reference || 'REF-XXX',
-
+            documentTitle:     'Note de Service - Convocation des Participants',
+            logoUrl:            getLogoBase64(__dirname),
+            qrCodeUrl:          qrCodeDataUrl,
+            urlVerification,
+            referenceSysteme:   note.reference || 'REF-XXX',
             noteTitle: lang === 'fr'
                 ? (note.titreFr || "CONVOCATION À LA FORMATION")
                 : (note.titreEn || "TRAINING CONVOCATION"),
-
-            // Article + libellé du thème pour la phrase d'introduction
             articleTheme,
             themeLibelle,
-
-            dateDebut: dateDebutTheme,
-            dateFin:   dateFinTheme,
-
-            participants:        participantsFormates,
-            nombreParticipants:  participantsFormates.length,
-
+            dateDebut:          dateDebutTheme,
+            dateFin:            dateFinTheme,
+            participants:       participantsFormates,
+            nombreParticipants: participantsFormates.length,
             copies: note.copieA
                 ? note.copieA.split(/[;,]/).map(e => e.trim()).filter(e => e.length > 0)
                 : ['Intéressé(e)s', 'Chefs de Service concernés', 'Archives/Chrono'],
-
             createurNom: createur
                 ? `${createur.nom} ${createur.prenom || ''}`.trim()
                 : 'Système',
-
             dateTime: new Date().toLocaleDateString('fr-FR', {
-                day:    '2-digit',
-                month:  'long',
-                year:   'numeric',
-                hour:   'numeric',
-                minute: 'numeric',
+                day: '2-digit', month: 'long', year: 'numeric',
+                hour: 'numeric', minute: 'numeric',
             }),
         };
 
-        // ── 8. Rendu EJS → HTML ─────────────────────────────────────────────────
+        // ── 9. Rendu EJS → HTML ──────────────────────────────────────────────────
         const templatePath = path.join(
             __dirname,
             '../views/note-service-convocation-participants.ejs'
         );
         const html = await ejs.renderFile(templatePath, templateData);
 
-        // ── 9. Génération PDF via Puppeteer ─────────────────────────────────────
+        // ── 10. Génération PDF via Puppeteer ─────────────────────────────────────
         const browser = await puppeteer.launch({
             headless: 'new',
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle0' });
-
-        // S'assurer que les scripts inline du template (padding-bottom du flux
-        // et box-shadow des rowspan) sont bien exécutés et que le layout
-        // est stable avant d'appeler page.pdf().
-        await page.evaluate(() => {
-            // Force un reflow complet pour que getBoundingClientRect()
-            // retourne les valeurs définitives utilisées par les scripts inline.
-            document.body.getBoundingClientRect();
-        });
+      
 
         const pdfBuffer = await page.pdf({
             format:          'A4',
             printBackground: true,
-            // Les marges de la page principale sont définies dans @page {} du CSS.
-            // On passe des marges minimales ici pour ne pas doubler.
-            margin: {
-                top:    '0px',
-                right:  '0px',
-                bottom: '50px',   // espace pour le footer
-                left:   '0px',
-            },
+            margin: { top: '0px', right: '0px', bottom: '50px', left: '0px' },
             displayHeaderFooter: true,
             headerTemplate: '<div></div>',
             footerTemplate: `
-                <div style="
-                    font-size: 10px;
-                    width: 100%;
-                    margin: 0 20px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    color: #666;
-                ">
-                    <div style="text-align:left; flex:1;">
-                        Généré par ${templateData.createurNom}
+                <div style="font-size:10px;width:100%;margin:0 20px;display:flex;
+                            justify-content:space-between;align-items:center;color:#666;">
+                    <div style="text-align:left;flex:1;">Généré par ${templateData.createurNom}</div>
+                    <div style="text-align:center;flex:1;">Le ${templateData.dateTime}</div>
+                    <div style="text-align:right;flex:1;">
+                        Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
                     </div>
-                    <div style="text-align:center; flex:1;">
-                        Le ${templateData.dateTime}
-                    </div>
-                    <div style="text-align:right; flex:1;">
-                        Page <span class="pageNumber"></span>
-                        sur <span class="totalPages"></span>
-                    </div>
-                </div>
-            `,
+                </div>`,
         });
 
         await browser.close();
@@ -2545,10 +2502,7 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
 
     } catch (error) {
         logger.error('Note exception:', error);
-        console.error(
-            'Erreur lors de la génération du PDF de convocation participants:',
-            error
-        );
+        console.error('Erreur lors de la génération du PDF de convocation participants:', error);
         throw error;
     }
 };
@@ -2561,52 +2515,22 @@ const genererPDFConvocationParticipants = async (note, themeData, participants, 
  * @param {object} res - Objet réponse
  */
 export const genererFichesPresenceParticipants = async (req, res) => {
-    // Récupération de l'ID du lieu si présent dans les paramètres
-    const lieuId = req.params.lieuId;
-    
     const lang = req.headers['accept-language'] || 'fr';
     const session = await mongoose.startSession();
     session.startTransaction();
+
     try {
         const { titreFr, titreEn, theme, creePar, tacheFormationId, copieA } = req.body;
 
-        let query = {};
-        let singleLieu = false;
-        // 1. Définition de la requête de base (Lieu(x) ciblé(s))
-        if (lieuId && mongoose.Types.ObjectId.isValid(lieuId)) {
-            query = { _id: lieuId };
-            singleLieu = true;
-            
-            if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
-                const lieuData = await LieuFormation.findById(lieuId).select('theme').lean();
-                if (!lieuData) {
-                    return res.status(404).json({
-                        success: false,
-                        message: t('lieu_formation_non_trouve', lang)
-                    });
-                }
-                req.body.theme = lieuData.theme;
-            }
-        } else {
-            if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
-                return res.status(400).json({
-                    success: false,
-                    message: t('ref_theme_requis', lang)
-                });
-            }
-            query = { theme: theme };
-        }
-        
-        const finalThemeId = req.body.theme;
-        if (!finalThemeId) {
-             return res.status(400).json({
+        if (!theme || !mongoose.Types.ObjectId.isValid(theme)) {
+            return res.status(400).json({
                 success: false,
                 message: t('ref_theme_requis', lang)
             });
         }
 
-        // 2. Récupérer le thème (pour les titres)
-        const themeData = await ThemeFormation.findById(finalThemeId)
+        // 1. Récupérer le thème
+        const themeData = await ThemeFormation.findById(theme)
             .select('titreFr titreEn')
             .lean();
 
@@ -2617,87 +2541,92 @@ export const genererFichesPresenceParticipants = async (req, res) => {
             });
         }
 
-        // 3. Récupérer les lieux de formation
-        const lieuxFormation = await LieuFormation.find(query)
-            .populate({
-                path: 'cohortes',
-                select: '_id'
-            })
-            .sort({ lieu: 1 });
+        // 2. Récupérer les groupes PLANIFIÉS/EN_COURS avec leurs formateurs
+        const groupes = await GroupeFormation.find({
+            theme,
+            statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+        })
+        .populate({
+            path: 'formateurs',
+            populate: { path: 'utilisateur', select: 'nom prenom' }
+        })
+        .sort({ numeroGroupe: 1 })
+        .lean();
 
-        if (!lieuxFormation || lieuxFormation.length === 0) {
-            const message = singleLieu 
-                ? t('lieu_formation_non_trouve', lang) 
-                : t('aucun_lieu_formation_trouve', lang);
-                
+        if (!groupes || groupes.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: message
+                message: t('aucun_groupe_planifie_trouve', lang)
             });
         }
 
-        // 4. Résolution des participants pour chaque lieu (Participants ciblés + Cohortes)
-        const lieuxAvecParticipants = await Promise.all(
-            lieuxFormation.map(async (lieu) => {
-                
-                // Utiliser une Map pour stocker les utilisateurs et gérer la déduplication
-                const participantsMap = new Map();
-                
-                // A. Résoudre les participants ciblés (nouvelle logique : famille, poste, structure, service)
-                const targetedUsers = await lieu.resolveTargetedUsers();
-                targetedUsers.forEach(user => {
-                    participantsMap.set(user._id.toString(), user);
-                });
-                
-                // B. Récupérer les utilisateurs des cohortes de ce lieu (ancienne logique)
-                if (lieu.cohortes && lieu.cohortes.length > 0) {
-                    const cohorteIds = lieu.cohortes.map(c => c._id);
-                    
-                    // Récupérer les CohorteUtilisateur pour ce lieu
-                    const cohortesUtilisateurs = await CohorteUtilisateur.find({
-                        cohorte: { $in: cohorteIds }
-                    })
-                    .populate({
-                        path: 'utilisateur',
-                        select: '_id nom prenom' // Seul l'ID est nécessaire pour la déduplication
-                    })
-                    .lean();
+        // 3. Récupérer tous les participants affectés en une seule requête
+        const groupeIds = groupes.map(g => g._id);
 
-                    // Ajouter les utilisateurs des cohortes à la Map (la déduplication est gérée)
-                    cohortesUtilisateurs.forEach(cu => {
-                        if (cu.utilisateur) {
-                            participantsMap.set(cu.utilisateur._id.toString(), cu.utilisateur);
-                        }
-                    });
-                }
-                
-                // C. Récupérer les détails complets (avec population) des participants uniques
-                const uniqueUserIds = Array.from(participantsMap.keys());
+        const participantFormations = await ParticipantFormation.find({
+            theme,
+            groupe: { $in: groupeIds },
+            statut: { $in: ['AFFECTE', 'PRESENT'] }
+        })
+        .populate({
+            path: 'participant',
+            select: 'nom prenom matricule telephone grade posteDeTravail',
+            populate: [
+                { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                { path: 'grade',          select: 'nomFr nomEn' },
+            ]
+        })
+        .lean();
 
-                const participantsDetails = await Utilisateur.find({ _id: { $in: uniqueUserIds } })
-                    .select('nom prenom matricule telephone grade posteDeTravail')
-                    .populate({ path: 'posteDeTravail', select: 'nomFr nomEn' })
-                    .populate({ path: 'grade', select: 'nomFr nomEn' })
-                    .lean(); 
+        // 4. Grouper les participants par groupeId
+        const participantsParGroupe = new Map();
+        participantFormations.forEach(pf => {
+            const key = pf.groupe.toString();
+            if (!participantsParGroupe.has(key)) participantsParGroupe.set(key, []);
+            participantsParGroupe.get(key).push(pf.participant);
+        });
+
+        // 5. Construire la liste des groupes avec leurs participants
+        const formatDate = (d) => d
+            ? new Date(d).toLocaleDateString('fr-FR', {
+                day: '2-digit', month: 'numeric', year: 'numeric'
+              })
+            : '';
+
+        const groupesAvecParticipants = groupes
+            .map(groupe => {
+                const participants = participantsParGroupe.get(groupe._id.toString()) || [];
+                if (participants.length === 0) return null;
+
+                const dateDebut = formatDate(groupe.dateDebut);
+                const dateFin   = formatDate(groupe.dateFin);
+                const periode   = (dateDebut && dateFin)
+                    ? `Du ${dateDebut} au ${dateFin}`
+                    : '';
 
                 return {
-                    lieu: lieu.lieu,
-                    dateDebut: lieu.dateDebut,
-                    dateFin: lieu.dateFin,
-                    participants: participantsDetails
+                    numeroGroupe: groupe.numeroGroupe,
+                    lieu:         groupe.lieu || '',
+                    periode,
+                    dateDebut:    groupe.dateDebut,
+                    dateFin:      groupe.dateFin,
+                    formateurs:   (groupe.formateurs || []).map(f =>
+                        `${f.prenom ? f.prenom + ' ' : ''}${f.nom}`.trim()
+                    ),
+                    participants,
+                    nombreParticipants: participants.length,
                 };
             })
-        );
-        // 5. Filtrer les lieux sans participants
-        const lieuxValides = lieuxAvecParticipants.filter(lieu => lieu.participants.length > 0);
-        if (lieuxValides.length === 0) {
+            .filter(Boolean);
+
+        if (groupesAvecParticipants.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: t('aucun_participant_trouve', lang)
             });
         }
 
-        // 6. Récupérer les infos du créateur
+        // 6. Créateur
         let createur = null;
         if (creePar && mongoose.Types.ObjectId.isValid(creePar)) {
             createur = await Utilisateur.findById(creePar)
@@ -2705,67 +2634,63 @@ export const genererFichesPresenceParticipants = async (req, res) => {
                 .lean();
         }
 
-        // 7. Gestion de l'enregistrement de la note de service
-        let noteExistante = await NoteService.findOne({ 
-            theme: finalThemeId, 
+        // 7. Upsert note de service
+        let noteExistante = await NoteService.findOne({
+            theme,
             typeNote: 'fiche_presence',
             sousTypeNote: 'participants'
         });
-        
+
         let noteEnregistree;
 
         if (noteExistante) {
-            noteExistante.titreFr = titreFr || "FICHE DE PRESENCE";
-            noteExistante.titreEn = titreEn || "PRESENCE FILE";
-            noteExistante.copieA = copieA;
-            noteExistante.creePar = creePar;
+            noteExistante.titreFr     = titreFr || "FICHE DE PRESENCE";
+            noteExistante.titreEn     = titreEn || "PRESENCE FILE";
+            noteExistante.copieA      = copieA;
+            noteExistante.creePar     = creePar;
             noteExistante.valideParDG = false;
-            
             noteEnregistree = await noteExistante.save({ session });
         } else {
             const reference = await genererReference();
-
             noteEnregistree = new NoteService({
                 reference,
-                theme: finalThemeId,
-                typeNote: 'fiche_presence',
-                sousTypeConvocation:"participants",
+                theme,
+                typeNote:           'fiche_presence',
+                sousTypeConvocation: 'participants',
                 titreFr: titreFr || "FICHE DE PRESENCE - PARTICIPANTS",
                 titreEn: titreEn || "PRESENCE FILE - PARTICIPANTS",
-                copieA: copieA,
+                copieA,
                 creePar,
                 valideParDG: false
             });
-
             noteEnregistree = await noteEnregistree.save({ session });
         }
 
-        // 8. Mise à jour de la tâche de formation (si fournie)
+        // 8. Mise à jour tâche
         if (tacheFormationId) {
-             mettreAJourTache({
+            mettreAJourTache({
                 tacheFormationId,
                 statut: "EN_ATTENTE",
-                donnees: `Note de convocation générée : ${noteEnregistree._id}`,
+                donnees: `Fiche de présence générée : ${noteEnregistree._id}`,
                 lang,
                 executePar: creePar,
                 session
             });
         }
-        
+
         // 9. Générer le PDF
         const pdfBuffer = await genererPDFFichesPresence(
             themeData,
-            lieuxValides,
+            groupesAvecParticipants,
             lang,
             createur
         );
 
         const nomFichier = `fiches-presence-${themeData.titreFr.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}.pdf`;
 
-        // 10. Valider la transaction et envoyer
         await session.commitTransaction();
         session.endSession();
-        
+
         res.set({
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="${nomFichier}"`,
@@ -2797,28 +2722,21 @@ export const genererFichesPresenceParticipants = async (req, res) => {
  * @param {object} createur - Données de l'utilisateur ayant créé la note
  * @returns {Promise<Buffer>} Le buffer du fichier PDF
  */
-const genererPDFFichesPresence = async (themeData, lieuxAvecParticipants, lang, createur) => {
-    
+const genererPDFFichesPresence = async (themeData, groupesAvecParticipants, lang, createur) => {
     try {
-      
-        // Date actuelle pour la journée
         const journee = new Date().toLocaleDateString('fr-FR', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
+            day: '2-digit', month: 'long', year: 'numeric'
         });
-
-        // Préparer les données pour chaque lieu
-        const lieuxFormates = lieuxAvecParticipants.map(lieu => {
-            // Trier les participants par nom
-            const participantsTries = lieu.participants.sort((a, b) => 
+        
+        // Formater les participants de chaque groupe
+        const groupesFormates = groupesAvecParticipants.map(groupe => {
+            const participantsTries = [...groupe.participants].sort((a, b) =>
                 a.nom.localeCompare(b.nom)
             );
 
-            // Formater les participants
             const participantsFormates = participantsTries.map((participant, index) => ({
-                numero: index + 1,
-                matricule: participant.matricule || '-',
+                numero:     index + 1,
+                matricule:  participant.matricule || '-',
                 nomComplet: `${participant.nom} ${participant.prenom || ''}`.trim(),
                 grade: participant.grade
                     ? (lang === 'fr' ? participant.grade.nomFr : participant.grade.nomEn)
@@ -2829,109 +2747,67 @@ const genererPDFFichesPresence = async (themeData, lieuxAvecParticipants, lang, 
                 telephone: participant.telephone || '-'
             }));
 
-            // Formater les dates
-            const dateDebut = lieu.dateDebut
-                ? new Date(lieu.dateDebut).toLocaleDateString('fr-FR', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric'
-                })
-                : '';
-
-            const dateFin = lieu.dateFin
-                ? new Date(lieu.dateFin).toLocaleDateString('fr-FR', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric'
-                })
-                : '';
-
-            const periode = (dateDebut && dateFin) ? `Du ${dateDebut} au ${dateFin}` : '';
-            
-
             return {
-                lieu: lieu.lieu,
-                periode,
-                participants: participantsFormates,
-                nombreParticipants: participantsFormates.length
+                numeroGroupe:       groupe.numeroGroupe,
+                lieu:               groupe.lieu,
+                periode:            groupe.periode, // déjà formatée dans genererPDFFichePresence
+                formateurs: groupe?.formateurs?.map(f => ({
+                    _id: f._id,
+                    utilisateur: {
+                        nom: f.utilisateur?.nom,
+                        prenom: f.utilisateur?.prenom,
+                    },
+                })) || [],
+                participants:       participantsFormates,
+                nombreParticipants: participantsFormates.length,
             };
         });
 
-        // Préparer les données pour le template
         const templateData = {
             documentTitle: 'Fiches de Présence - Formation',
-            logoUrl: getLogoBase64(__dirname),
-            journee: journee,
-            themeLibelle: lang === 'fr' ? themeData.titreFr : themeData.titreEn,
-            lieux: lieuxFormates,
-            createurNom: createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
+            logoUrl:       getLogoBase64(__dirname),
+            journee,
+            themeLibelle:  lang === 'fr' ? themeData.titreFr : themeData.titreEn,
+            groupes:       groupesFormates,
+            createurNom:   createur ? `${createur.nom} ${createur.prenom || ''}`.trim() : 'Système',
             dateTime: new Date().toLocaleDateString('fr-FR', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
+                day: '2-digit', month: 'long', year: 'numeric',
+                hour: 'numeric', minute: 'numeric',
             })
         };
 
-        // Log des données du template final (sans le logo Base64)
-        const logData = { ...templateData };
-        delete logData.logoUrl;
-        
-        // Charger le template
         const templatePath = path.join(__dirname, '../views/fiches-presence-participants.ejs');
         const html = await ejs.renderFile(templatePath, templateData);
 
-        // Log de la taille du HTML (pour vérifier si l'EJS a réussi)
-
-        // Générer le PDF
         const browser = await puppeteer.launch({
             headless: 'new',
             args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu'
+                '--no-sandbox', '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas',
+                '--no-first-run', '--no-zygote', '--disable-gpu'
             ]
         });
 
         const page = await browser.newPage();
-
-        await page.setContent(html, {
-            waitUntil: 'networkidle0',
-            timeout: 30000
-        });
+        await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
 
         const pdfBuffer = await page.pdf({
-            format: 'A4',
-            landscape: true,
+            format:          'A4',
+            landscape:       true,
             printBackground: true,
-            margin: {
-                top: '20px',
-                right: '20px',
-                bottom: '60px',
-                left: '20px'
-            },
+            margin: { top: '20px', right: '20px', bottom: '60px', left: '20px' },
             displayHeaderFooter: true,
             headerTemplate: '<div></div>',
             footerTemplate: `
-                <div style="font-size: 10px; width: 100%; margin: 0 20px; display: flex; justify-content: space-between; align-items: center; color: #666;">
-                    <div style="text-align: left; flex: 1;">
-                        Généré par ${templateData.createurNom}
-                    </div>
-                    <div style="text-align: center; flex: 1;">
-                        Le ${templateData.dateTime}
-                    </div>
-                    <div style="text-align: right; flex: 1;">
+                <div style="font-size:10px;width:100%;margin:0 20px;display:flex;
+                            justify-content:space-between;align-items:center;color:#666;">
+                    <div style="text-align:left;flex:1;">Généré par ${templateData.createurNom}</div>
+                    <div style="text-align:center;flex:1;">Le ${templateData.dateTime}</div>
+                    <div style="text-align:right;flex:1;">
                         Page <span class="pageNumber"></span> sur <span class="totalPages"></span>
                     </div>
-                </div>
-            `
+                </div>`
         });
-
 
         await browser.close();
         return pdfBuffer;
@@ -2975,17 +2851,13 @@ export const genererFichesPresenceFormateurs = async (req, res) => {
 
         // Récupérer tous les formateurs pour ce thème
         const formateursData = await Formateur.find({ theme: theme })
-            .populate({
+           .populate({
                 path: 'utilisateur',
-                select: 'nom prenom matricule telephone grade posteDeTravail',
-                populate: {
-                    path: 'posteDeTravail',
-                    select: 'nomFr nomEn'
-                },
-                populate: {
-                    path: 'grade',
-                    select: 'nomFr nomEn'
-                }
+                select: 'nom prenom matricule telephone grade posteDeTravail email',
+                populate: [
+                    { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                    { path: 'grade',         select: 'nomFr nomEn' }
+                ]
             })
             .lean();
 
@@ -3141,11 +3013,11 @@ const genererPDFFichesPresenceFormateurs = async (
             nomComplet: formateur.utilisateur
                 ? `${formateur.utilisateur.nom} ${formateur.utilisateur.prenom || ''}`.trim()
                 : '-',
-            grade: formateur.grade
-                    ? (lang === 'fr' ? formateur.grade.nomFr : formateur.grade.nomEn)
+            grade: formateur.utilisateur.grade
+                    ? (lang === 'fr' ? formateur.utilisateur.grade.nomFr : formateur.utilisateur.grade.nomEn)
                     : '-',
-            fonction: formateur.posteDeTravail
-                ? (lang === 'fr' ? formateur.posteDeTravail.nomFr : formateur.posteDeTravail.nomEn)
+            fonction: formateur.utilisateur.posteDeTravail
+                ? (lang === 'fr' ? formateur.utilisateur.posteDeTravail.nomFr : formateur.utilisateur.posteDeTravail.nomEn)
                 : '-',
             telephone: formateur.utilisateur?.telephone || '-',
             email: formateur.utilisateur?.email || '-'
@@ -3899,25 +3771,18 @@ const genererPDFConvocation = async (note, lang) => {
         .lean();
 
     // CONVOCATION FORMATEURS
+    // CONVOCATION FORMATEURS
     if (note.sousTypeConvocation === 'formateurs') {
         const formateurs = await Formateur.find({ theme: note.theme._id })
-            .populate({
-                path: 'utilisateur',
-                select: 'nom prenom',
-            })
+            .populate({ path: 'utilisateur', select: 'nom prenom' })
             .lean();
 
+        // ── titreFr/titreEn en priorité, libelleFr/libelleEn en fallback ──
         const themeData = await ThemeFormation.findById(note.theme._id)
-            .select('libelleFr libelleEn dateDebut dateFin lieu')
+            .select('titreFr titreEn libelleFr libelleEn dateDebut dateFin')
             .lean();
 
-        return await genererPDFConvocationFormateurs(
-            note,
-            themeData,
-            formateurs,
-            lang,
-            createur
-        );
+        return await genererPDFConvocationFormateurs(note, themeData, formateurs, lang, createur);
     }
     // CONVOCATION PARTICIPANTS
     else if (note.sousTypeConvocation === 'participants') {
@@ -3925,78 +3790,55 @@ const genererPDFConvocation = async (note, lang) => {
             .select('titreFr titreEn dateDebut dateFin')
             .lean();
 
-        // Récupérer les lieux de formation
-        const lieuxFormation = await LieuFormation.find({ theme: note.theme._id })
-            .populate({
-                path: 'cohortes',
-                select: '_id'
-            });
+        // ── Récupérer les groupes PLANIFIÉS/EN_COURS avec leurs formateurs ──
+        const groupes = await GroupeFormation.find({
+            theme: note.theme._id,
+            statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+        })
+        .populate({
+            path: 'formateurs',
+            populate: { path: 'utilisateur', select: 'nom prenom' }
+        })
+        .lean();
 
-        // Résoudre les participants
-        const participantsMap = new Map();
-
-        // Participants ciblés
-        const allUsers = await Utilisateur.find({ actif: true })
-            .select('_id nom prenom posteDeTravail structure service')
-            .populate({
-                path: 'posteDeTravail',
-                select: 'famillesMetier nomFr nomEn'
-            })
-            .populate({
-                path: 'structure',
-                select: 'nomFr nomEn'
-            })
-            .lean();
-
-        const checkPromises = allUsers.map(user => checkUserTargeting(user, lieuxFormation));
-        const targetedParticipantsResults = await Promise.all(checkPromises);
-
-        targetedParticipantsResults.filter(p => p !== null).forEach(participant => {
-            participantsMap.set(participant.utilisateur._id.toString(), participant);
-        });
-
-        // Participants des cohortes
-        const toutesLesCohortes = lieuxFormation.flatMap(lieu =>
-            lieu.cohortes.map(c => c._id)
-        );
-
-        if (toutesLesCohortes.length > 0) {
-            const cohortesUtilisateurs = await CohorteUtilisateur.find({
-                cohorte: { $in: toutesLesCohortes }
-            })
-            .populate({
-                path: 'utilisateur',
-                select: '_id nom prenom posteDeTravail service',
-                populate: [
-                    { path: 'posteDeTravail', select: 'nomFr nomEn' },
-                    { path: 'structure', select: 'nomFr nomEn' }
-                ]
-            })
-            .lean();
-
-            for (const cu of cohortesUtilisateurs) {
-                if (!cu.utilisateur) continue;
-                const userId = cu.utilisateur._id.toString();
-
-                if (participantsMap.has(userId)) continue;
-
-                const lieuAssocie = lieuxFormation.find(lieu =>
-                    lieu.cohortes.some(c => c._id.equals(cu.cohorte))
-                );
-
-                if (!lieuAssocie) continue;
-
-                participantsMap.set(userId, {
-                    utilisateur: cu.utilisateur,
-                    lieu: lieuAssocie.lieu,
-                    dateDebut: lieuAssocie.dateDebut,
-                    dateFin: lieuAssocie.dateFin,
-                    source: "cohorte"
-                });
-            }
+        if (!groupes || groupes.length === 0) {
+            throw new Error('Aucun groupe planifié trouvé pour ce thème');
         }
 
-        const tousLesParticipants = Array.from(participantsMap.values());
+        // ── Récupérer les participants affectés à ces groupes ──
+        const groupeIds = groupes.map(g => g._id);
+
+        const participantFormations = await ParticipantFormation.find({
+            theme: note.theme._id,
+            groupe: { $in: groupeIds },
+            statut: { $in: ['AFFECTE', 'PRESENT'] }
+        })
+        .populate({
+            path: 'participant',
+            select: 'nom prenom posteDeTravail structure service',
+            populate: [
+                { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                { path: 'structure',      select: 'nomFr nomEn' },
+                { path: 'service',        select: 'nomFr nomEn' },
+            ]
+        })
+        .lean();
+
+        // ── Construire la map groupeId → groupe ──
+        const groupeMap = new Map(groupes.map(g => [g._id.toString(), g]));
+
+        // ── Enrichir chaque participant avec les infos de son groupe ──
+        const tousLesParticipants = participantFormations.map(pf => {
+            const groupe = groupeMap.get(pf.groupe.toString());
+            return {
+                utilisateur: pf.participant,
+                groupeId:    pf.groupe.toString(),
+                lieu:        groupe?.lieu      || '',
+                dateDebut:   groupe?.dateDebut || null,
+                dateFin:     groupe?.dateFin   || null,
+                formateurs:  groupe?.formateurs || [],
+            };
+        });
 
         return await genererPDFConvocationParticipants(
             note,
@@ -4036,17 +3878,18 @@ const genererPDFFichePresence = async (note, lang) => {
             })
             .lean();
 
-        const lieuxFormation = await LieuFormation.find({ theme: note.theme._id })
+        // Dates globales : min(dateDebut) et max(dateFin) des groupes du thème
+        const groupes = await GroupeFormation.find({ theme: note.theme._id })
             .select('dateDebut dateFin')
             .sort({ dateDebut: 1 })
             .lean();
 
         let dateDebut = null;
-        let dateFin = null;
+        let dateFin   = null;
 
-        if (lieuxFormation && lieuxFormation.length > 0) {
-            dateDebut = lieuxFormation[0].dateDebut;
-            dateFin = lieuxFormation[lieuxFormation.length - 1].dateFin;
+        if (groupes && groupes.length > 0) {
+            dateDebut = groupes[0].dateDebut;
+            dateFin   = groupes[groupes.length - 1].dateFin;
         }
 
         return await genererPDFFichesPresenceFormateurs(
@@ -4058,65 +3901,91 @@ const genererPDFFichePresence = async (note, lang) => {
             createur
         );
     }
-    // FICHE PARTICIPANTS
+    // FICHE PARTICIPANTS — une fiche par groupe
     else if (note.sousTypeConvocation === 'participants') {
-        const lieuxFormation = await LieuFormation.find({ theme: note.theme._id })
-            .populate({
-                path: 'cohortes',
-                select: '_id'
-            })
-            .sort({ lieu: 1 });
 
-        const lieuxAvecParticipants = await Promise.all(
-            lieuxFormation.map(async (lieu) => {
-                const participantsMap = new Map();
-                
-                const targetedUsers = await lieu.resolveTargetedUsers();
-                targetedUsers.forEach(user => {
-                    participantsMap.set(user._id.toString(), user);
-                });
-                
-                if (lieu.cohortes && lieu.cohortes.length > 0) {
-                    const cohorteIds = lieu.cohortes.map(c => c._id);
-                    
-                    const cohortesUtilisateurs = await CohorteUtilisateur.find({
-                        cohorte: { $in: cohorteIds }
-                    })
-                    .populate({
-                        path: 'utilisateur',
-                        select: '_id nom prenom'
-                    })
-                    .lean();
+        // Récupérer les groupes PLANIFIÉS/EN_COURS avec leurs formateurs
+        const groupes = await GroupeFormation.find({
+            theme: note.theme._id,
+            statut: { $in: ['PLANIFIE', 'EN_COURS'] }
+        })
+        .populate({
+            path: 'formateurs',
+            populate: { path: 'utilisateur', select: 'nom prenom' }
+        })
+        .sort({ numeroGroupe: 1 })
+        .lean();
 
-                    cohortesUtilisateurs.forEach(cu => {
-                        if (cu.utilisateur) {
-                            participantsMap.set(cu.utilisateur._id.toString(), cu.utilisateur);
-                        }
-                    });
-                }
-                
-                const uniqueUserIds = Array.from(participantsMap.keys());
+        if (!groupes || groupes.length === 0) {
+            throw new Error('Aucun groupe planifié trouvé pour ce thème');
+        }
 
-                const participantsDetails = await Utilisateur.find({ _id: { $in: uniqueUserIds } })
-                    .select('nom prenom matricule telephone grade posteDeTravail')
-                    .populate({ path: 'posteDeTravail', select: 'nomFr nomEn' })
-                    .populate({ path: 'grade', select: 'nomFr nomEn' })
-                    .lean();
+        // Récupérer tous les participants affectés en une seule requête
+        const groupeIds = groupes.map(g => g._id);
+
+        const participantFormations = await ParticipantFormation.find({
+            theme: note.theme._id,
+            groupe: { $in: groupeIds },
+            statut: { $in: ['AFFECTE', 'PRESENT'] }
+        })
+        .populate({
+            path: 'participant',
+            select: 'nom prenom matricule telephone grade posteDeTravail',
+            populate: [
+                { path: 'posteDeTravail', select: 'nomFr nomEn' },
+                { path: 'grade',          select: 'nomFr nomEn' },
+            ]
+        })
+        .lean();
+
+        // Grouper les participants par groupeId
+        const participantsParGroupe = new Map();
+        participantFormations.forEach(pf => {
+            const key = pf.groupe.toString();
+            if (!participantsParGroupe.has(key)) participantsParGroupe.set(key, []);
+            participantsParGroupe.get(key).push(pf.participant);
+        });
+
+        // Construire la liste des groupes avec leurs participants
+        const groupesAvecParticipants = groupes
+            .map(groupe => {
+                const participants = participantsParGroupe.get(groupe._id.toString()) || [];
+                if (participants.length === 0) return null;
+
+                const formatDate = (d) => d
+                    ? new Date(d).toLocaleDateString('fr-FR', {
+                        day: '2-digit', month: 'numeric', year: 'numeric'
+                      })
+                    : '';
+
+                const dateDebut = formatDate(groupe.dateDebut);
+                const dateFin   = formatDate(groupe.dateFin);
+                const periode   = (dateDebut && dateFin)
+                    ? `Du ${dateDebut} au ${dateFin}`
+                    : '';
 
                 return {
-                    lieu: lieu.lieu,
-                    dateDebut: lieu.dateDebut,
-                    dateFin: lieu.dateFin,
-                    participants: participantsDetails
+                    numeroGroupe: groupe.numeroGroupe,
+                    lieu:         groupe.lieu || '',
+                    periode,
+                    dateDebut:    groupe.dateDebut,
+                    dateFin:      groupe.dateFin,
+                    formateurs:   (groupe.formateurs || []).map(f =>
+                        `${f.prenom ? f.prenom + ' ' : ''}${f.nom}`.trim()
+                    ),
+                    participants,
+                    nombreParticipants: participants.length,
                 };
             })
-        );
+            .filter(Boolean);
 
-        const lieuxValides = lieuxAvecParticipants.filter(lieu => lieu.participants.length > 0);
-
+        if (groupesAvecParticipants.length === 0) {
+            throw new Error('Aucun participant affecté à un groupe planifié');
+        }
+        console.log(groupesAvecParticipants)
         return await genererPDFFichesPresence(
             themeData,
-            lieuxValides,
+            groupesAvecParticipants,
             lang,
             createur
         );

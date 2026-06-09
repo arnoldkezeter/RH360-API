@@ -5,6 +5,7 @@ import { GroupeFormation } from '../models/GroupeFormation.js';
 import { ParticipantFormation } from '../models/ParticipantFormation.js';
 import Utilisateur from '../models/Utilisateur.js';
 import ThemeFormation from '../models/ThemeFormation.js';
+import { addRoleToUser, removeRoleFromUserIfUnused } from '../utils/utilisateurRole.js';
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -158,24 +159,68 @@ export const configurerGroupe = async (req, res) => {
             return res.status(404).json({ success: false, message: t('groupe_non_trouve', lang) });
         }
 
+        // ── Garder trace des anciens formateurs pour diff des rôles ──────────
+        const anciensFormateursIds = (groupe.formateurs || []).map(id => id.toString());
+
         if (lieu !== undefined)       groupe.lieu       = lieu;
         if (formateurs !== undefined) groupe.formateurs = formateurs;
         if (dateDebut !== undefined)  groupe.dateDebut  = dateDebut;
         if (dateFin !== undefined)    groupe.dateFin    = dateFin;
 
-        // Passe en PLANIFIE si toutes les infos obligatoires sont renseignées
         groupe.statut = (groupe.lieu && groupe.dateDebut && groupe.dateFin)
             ? 'PLANIFIE'
             : 'BROUILLON';
 
         await groupe.save();
 
+        // ── Sync des rôles FORMATEUR ─────────────────────────────────────────
+        if (formateurs !== undefined) {
+            const nouveauxFormateursIds = formateurs.map(id => id.toString());
+
+            // Ajouter le rôle aux nouveaux formateurs
+            const aAjouter = nouveauxFormateursIds.filter(
+                id => !anciensFormateursIds.includes(id)
+            );
+            await Promise.all(aAjouter.map(id => addRoleToUser(id, 'FORMATEUR')));
+
+            // Retirer le rôle aux formateurs supprimés s'ils ne sont plus
+            // formateurs dans aucun autre groupe
+            const aRetirer = anciensFormateursIds.filter(
+                id => !nouveauxFormateursIds.includes(id)
+            );
+            await Promise.all(aRetirer.map(async (id) => {
+                const encoreFormateur = await GroupeFormation.findOne({
+                    _id: { $ne: groupeId },
+                    formateurs: id
+                });
+                if (!encoreFormateur) {
+                    await removeRoleFromUserIfUnused(id, 'FORMATEUR', GroupeFormation);
+                }
+            }));
+        }
+
+        // ── Sync des dates du thème ──────────────────────────────────────────
+        // Recalculer min(dateDebut) et max(dateFin) sur tous les groupes du thème
+        const tousLesGroupes = await GroupeFormation.find({ theme: themeId })
+            .select('dateDebut dateFin')
+            .lean();
+
+        const dateDebuts = tousLesGroupes.map(g => g.dateDebut).filter(Boolean);
+        const dateFins   = tousLesGroupes.map(g => g.dateFin).filter(Boolean);
+
+        await ThemeFormation.findByIdAndUpdate(themeId, {
+            dateDebut: dateDebuts.length > 0
+                ? new Date(Math.min(...dateDebuts.map(d => new Date(d))))
+                : null,
+            dateFin: dateFins.length > 0
+                ? new Date(Math.max(...dateFins.map(d => new Date(d))))
+                : null,
+        });
+
+        // ── Retourner le groupe populé ───────────────────────────────────────
         const groupePopule = await GroupeFormation.findById(groupeId)
             .populate('structure', 'nomFr nomEn')
-            .populate({
-                path: 'formateurs',
-                populate: { path: 'utilisateur', select: 'nom prenom' }
-            })
+            .populate('formateurs', 'nom prenom')
             .lean();
 
         return res.status(200).json({
@@ -188,6 +233,7 @@ export const configurerGroupe = async (req, res) => {
         return res.status(500).json({ success: false, message: t('erreur_serveur', lang), error: error.message });
     }
 };
+
 
 // Créer un groupe vide manuellement
 // POST /themes/:themeId/groupes

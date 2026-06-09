@@ -228,6 +228,32 @@
             line-height: 1.4;
         }
 
+        /* Cellules "fusionnées" visuellement sans rowspan */
+        .participants-table td.formateurs-cell,
+        .participants-table td.lieu-periode {
+            background-color: #ffffff !important;
+            border-top: none;
+            border-bottom: none;
+        }
+
+        /* Première ligne du groupe : bordure haute */
+        .participants-table tr.groupe-debut td.formateurs-cell,
+        .participants-table tr.groupe-debut td.lieu-periode {
+            border-top: 1px solid #333;
+        }
+
+        /* Dernière ligne du groupe : bordure basse */
+        .participants-table tr.groupe-fin td.formateurs-cell,
+        .participants-table tr.groupe-fin td.lieu-periode {
+            border-bottom: 1px solid #333;
+        }
+
+        /* Contenu visible uniquement sur la première ligne */
+        .participants-table tr:not(.groupe-debut) td.formateurs-cell span,
+        .participants-table tr:not(.groupe-debut) td.lieu-periode span {
+            visibility: hidden;
+        }
+
         /* ════════════════════════════════
            UTILITAIRES
         ════════════════════════════════ */
@@ -360,30 +386,29 @@
                 </tr>
             </thead>
             <tbody>
-                <% participants.forEach(function(participant) { %>
-                    <tr>
-                        <td class="numero"><%= participant.numero %></td>
-                        <td class="nom"><%= participant.nom %></td>
-                        <td class="fonction"><%= participant.fonction || '-' %></td>
-                        <td class="service"><%= participant.service %></td>
+            <% participants.forEach(function(participant) { %>
+            <tr class="<%= participant.classeGroupe %>">
+            <td class="numero"><%= participant.numero %></td>
+            <td class="nom"><%= participant.nom %></td>
+            <td class="fonction"><%= participant.fonction || '-' %></td>
+            <td class="service"><%= participant.service %></td>
 
-                        <% if (participant.afficherLieuPeriode) { %>
-                            <td class="formateurs-cell" rowspan="<%= participant.rowspan %>">
-                                <% if (participant.formateurs && participant.formateurs.length > 0) { %>
-                                    <% participant.formateurs.forEach(function(f) { %>
-                                        <span class="formateur-item">• <%= f %></span>
-                                    <% }); %>
-                                <% } else { %>
-                                    <span style="color:#999;font-style:italic;">—</span>
-                                <% } %>
-                            </td>
-                            <td class="lieu-periode" rowspan="<%= participant.rowspan %>">
-                                <span class="periode-text"><%= participant.periode %></span>
-                                <span class="lieu-text"><%= participant.lieu %></span>
-                            </td>
-                        <% } %>
-                    </tr>
-                <% }); %>
+            <td class="formateurs-cell">
+                <% if (participant.formateurs && participant.formateurs.length > 0) { %>
+                    <% participant.formateurs.forEach(function(f) { %>
+                        <span class="formateur-item">• <%= f %></span>
+                    <% }); %>
+                <% } else { %>
+                    <span style="color:#999;font-style:italic;">—</span>
+                <% } %>
+            </td>
+
+            <td class="lieu-periode">
+                <span class="periode-text"><%= participant.periode %></span>
+                <span class="lieu-text"><%= participant.lieu %></span>
+            </td>
+            </tr>
+            <% }); %>
             </tbody>
         </table>
 
@@ -391,55 +416,6 @@
             Total des participants : <span class="highlight"><%= nombreParticipants %></span>
         </p>
     </div>
-
-    <script>
-    /*
-     * ═══════════════════════════════════════════════════════════════════
-     * Bordure basse forcée sur les td[rowspan] coupés par un saut de page
-     * ═══════════════════════════════════════════════════════════════════
-     */
-    (function fixerBorduresRowspan() {
-        const PX_PAR_MM    = 96 / 25.4;
-        const PAGE_H_PX    = 297 * PX_PAR_MM;
-        const MARGE_HAUT   = 10  * PX_PAR_MM;
-        const MARGE_BAS    = 15  * PX_PAR_MM;
-        const ZONE_UTILE   = PAGE_H_PX - MARGE_HAUT - MARGE_BAS;
-
-        const annexe = document.querySelector('.annexe-section');
-        if (!annexe) return;
-        const offsetAnnexe = annexe.getBoundingClientRect().top + window.scrollY;
-
-        document.querySelectorAll('.participants-table td[rowspan]').forEach(function(td) {
-            const rs = parseInt(td.getAttribute('rowspan'), 10);
-            if (!rs || rs <= 1) return;
-
-            // Application systématique de la bordure basse pour parer aux défauts du rowspan
-            td.style.setProperty('border-bottom', '1px solid #333', 'important');
-
-            const rect       = td.getBoundingClientRect();
-            const topRel     = (rect.top  + window.scrollY) - offsetAnnexe;
-            const botRel     = (rect.bottom + window.scrollY) - offsetAnnexe;
-            const pageDebut  = Math.floor(topRel / ZONE_UTILE);
-            const pageFin    = Math.floor((botRel - 1) / ZONE_UTILE);
-
-            if (pageFin <= pageDebut) return;
-
-            const shadows = [];
-            for (let p = pageDebut; p < pageFin; p++) {
-                const coupure = (p + 1) * ZONE_UTILE - topRel;
-                const offsetY = -(rect.height - coupure);
-                shadows.push('inset 0 ' + offsetY + 'px 0 1px #333');
-            }
-
-            if (shadows.length) {
-                const existant = td.style.boxShadow;
-                td.style.boxShadow = existant
-                    ? existant + ', ' + shadows.join(', ')
-                    : shadows.join(', ');
-            }
-        });
-    })();
-    </script>
 
 </body>
 </html>

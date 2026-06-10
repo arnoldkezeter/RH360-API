@@ -167,8 +167,16 @@
     <!-- CONTENU -->
     <div class="body-content">
         <p>
-            <span class="highlight"><%= userSexe %> <%= userFullName %></span>, <%= etudiant %> en
-            <%= niveau %> de la filière <%= filiere %> <span class="highlight"><%= userUniversity %></span>,
+            <span class="highlight"><%= userSexe %> <%= userFullName %></span>,
+            <% if (typePersonne === 'ELEVE') { %>
+                <%= etudiant %> en classe de <%= niveau %>
+                <% if (userUniversity && userUniversity.trim() !== '______________') { %>
+                    série <%= filiere %> <span class="highlight"><%= userUniversity %></span>
+                <% } %>
+            <% } else { %>
+                <%= etudiant %> en <%= niveau %> de la filière <%= filiere %>
+                <span class="highlight"><%= userUniversity %></span>
+            <% } %>,
             <%= admis %> en stage académique à la Direction Générale des Impôts, effectuera ledit stage <%= article %>
             <span class="highlight"><%= userService %></span>
             du <%= dateDebut %> au <%= dateFin %>.

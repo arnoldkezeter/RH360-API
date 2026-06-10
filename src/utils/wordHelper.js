@@ -206,6 +206,8 @@ function getGender(word) {
         'programme': 'm',
         'ministère': 'm',
         'ministere': 'm',
+        'lycée': 'm',
+        'collège': 'm',
         
         // Féminins
         'cellule': 'f',

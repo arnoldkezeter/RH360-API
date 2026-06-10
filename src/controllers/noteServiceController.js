@@ -56,6 +56,8 @@ const genererReference = async () => {
 
 
 
+
+
 /**
  * Crée ou met à jour une note de service et génère automatiquement le PDF
  */
@@ -77,7 +79,6 @@ export const creerNoteService = async (req, res) => {
             designationTuteur,
             miseEnOeuvre
         } = req.body;
-        console.log(typeNote)
         // Validation des données requises
         if (!typeNote || !['convocation', 'acceptation_stage', 'mandat'].includes(typeNote)) {
             return res.status(400).json({
@@ -258,12 +259,12 @@ export const creerNoteServiceStage = async (req, res) => {
         const stageData = await Stage.findById(stage)
             .populate({
                 path: 'stagiaire',
-                select: 'nom prenom genre parcours',
+                select: 'nom prenom genre parcours typeStagiaire',
                 populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
             })
             .populate({
                 path: 'stagiaires',   // BATCH
-                select: 'nom prenom genre parcours',
+                select: 'nom prenom genre parcours typeStagiaire',
                 populate: { path: 'parcours.etablissement', select: 'nomFr nomEn' }
             })
             .populate('etablissement', 'nomFr nomEn')  // BATCH
@@ -313,10 +314,22 @@ export const creerNoteServiceStage = async (req, res) => {
 
         if (etablissementAnnee) {
             const genre = stageData.stagiaire?.genre;
-            const etudiantFr = genre === 'M' ? "un étudiant" : genre === 'F' ? "une étudiante" : "un(e) étudiant(e)";
+            const typePersonne = stageData.stagiaire?.typeStagiaire || 'ETUDIANT';
+           
+            const termes = (() => {
+                const estEleve = typePersonne === 'ELEVE';
+                const estFeminin = genre === 'F';
+
+                return {
+                    etudiant:       estEleve ? (estFeminin ? 'élève' : 'élève')         : (estFeminin ? 'étudiante' : 'étudiant'),
+                    unEtudiant:     estEleve ? (estFeminin ? 'une élève' : 'un élève')   : (estFeminin ? 'une étudiante' : 'un étudiant'),
+                    interesse:      estFeminin ? (estEleve ? 'Intéressée' : 'Intéressée') : (estEleve ? 'Intéressé' : 'Intéressé'),
+                };
+            })();
+
             const articleEtablissement = getArticleDe(etablissementAnnee.nomFr);
-            titreNoteFr = `Relative à la mise en stage d'${etudiantFr} ${articleEtablissement} ${etablissementAnnee.nomFr}`;
-            titreNoteEn = `Relating to the internship of a student from ${etablissementAnnee.nomEn}`;
+            titreNoteFr = `Relative à la mise en stage d'${termes.unEtudiant} ${articleEtablissement} ${etablissementAnnee.nomFr}`;
+            titreNoteEn = `Relating to the internship of a ${typePersonne === 'ELEVE' ? 'pupil' : 'student'} from ${etablissementAnnee.nomEn}`;
         }
 
         const genre = stageData.stagiaire?.genre;
@@ -813,6 +826,8 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             // QR Code
             qrCodeUrl: qrCodeDataUrl,
             urlVerification: urlVerification,
+            typePersonne: stageData.stagiaire?.typeStagiaire || 'ETUDIANT',
+
             
             // Titre de la note
             noteTitle: lang === 'fr' 
@@ -821,7 +836,12 @@ const genererPDFStageIndividuel = async (note, stageData, affectations, lang, cr
             
             // Informations du stagiaire
             userSexe: stageData.stagiaire.genre === 'M' ? "Monsieur" : "Madame",
-            etudiant: stageData.stagiaire.genre === 'M' ? "étudiant" : "étudiante",
+            etudiant: (() => {
+                const estEleve = (stageData.stagiaire?.typeStagiaire || 'ETUDIANT') === 'ELEVE';
+                const estFeminin = stageData.stagiaire?.genre === 'F';
+                if (estEleve) return 'élève';
+                return estFeminin ? 'étudiante' : 'étudiant';
+            })(),
             stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
             admis: stageData.stagiaire.genre === 'M' ? "admis" : "admise",
@@ -1035,7 +1055,12 @@ const genererPDFStageRotations = async (note, stageData, affectations, lang, cre
             
             // Informations du stagiaire
             userSexe: stageData.stagiaire.genre === 'M' ? "Monsieur" : "Madame",
-            etudiant: stageData.stagiaire.genre === 'M' ? "étudiant" : "étudiante",
+            etudiant: (() => {
+                const estEleve = (stageData.stagiaire?.typeStagiaire || 'ETUDIANT') === 'ELEVE';
+                const estFeminin = stageData.stagiaire?.genre === 'F';
+                if (estEleve) return 'élève';
+                return estFeminin ? 'étudiante' : 'étudiant';
+            })(),
             mise: stageData.stagiaire.genre === 'M' ? "mis" : "mise",
             stagiaire: stageData.stagiaire.genre === 'M' ? "le stagiaire" : "la stagiaire",
             leditStagiaire: stageData.stagiaire.genre === 'M' ? "dudit stagiaire" : "de ladite stagiaire",
@@ -3982,7 +4007,6 @@ const genererPDFFichePresence = async (note, lang) => {
         if (groupesAvecParticipants.length === 0) {
             throw new Error('Aucun participant affecté à un groupe planifié');
         }
-        console.log(groupesAvecParticipants)
         return await genererPDFFichesPresence(
             themeData,
             groupesAvecParticipants,

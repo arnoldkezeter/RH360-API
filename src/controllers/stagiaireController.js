@@ -23,7 +23,7 @@ export const createStagiaire = async (req, res) => {
     }
 
     try {
-        const { nom, prenom, email, genre, dateNaissance, lieuNaissance, telephone, commune, parcours } = req.body;
+        const { nom, prenom, email, genre, typeSagiaire, dateNaissance, lieuNaissance, telephone, commune, parcours } = req.body;
 
         // Vérifier si l'email existe déjà
         const exists = await BaseUtilisateur.exists({ email });
@@ -69,6 +69,7 @@ export const createStagiaire = async (req, res) => {
             email,
             motDePasse: password,
             genre,
+            typeSagiaire,
             dateNaissance,
             lieuNaissance,
             telephone,
@@ -442,6 +443,7 @@ export const getStagiaires = async (req, res) => {
                 prenom: 1,
                 email: 1,
                 genre: 1,
+                typeStagiaire:1,
                 dateNaissance: 1,
                 lieuNaissance: 1,
                 telephone: 1,
@@ -561,7 +563,7 @@ export const getStagiairesByEtablissements = async (req, res) => {
         const stagiaires = await Stagiaire.find(filter)
             .populate('parcours.etablissement', 'nomFr nomEn')
             .populate('commune', 'nomFr nomEn')
-            .select('_id nom prenom email genre telephone dateNaissance parcours')
+            .select('_id nom prenom email genre typeSagiaire telephone dateNaissance parcours')
             .sort({ nom: 1, prenom: 1 })
             .lean();
 
@@ -607,8 +609,6 @@ export const getStagiairesByEtablissements = async (req, res) => {
         });
     }
 };
-
-
 
 
 export const saveManyStagiaires = async (req, res) => {

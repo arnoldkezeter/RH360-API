@@ -8,6 +8,7 @@ const BaseUtilisateurSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     motDePasse: { type: String, required: true },
     genre: { type: String, enum: ['M', 'F'], required:true },
+    typeStagiaire:{type: String, enum: ['ETUDIANT', 'ELEVE'], default:'ETUDIANT'},
     dateNaissance: {type:Date},
     lieuNaissance:{type:String},
     telephone:{type:String, required:true},
